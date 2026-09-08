@@ -64,27 +64,29 @@ Named after **Pāṇini** (4th century BCE) — the ancient Indian grammarian wh
 
 ```
 Project Panini/
-├── README.md                          ← This file
+├── README.md                          ← This file (updated as we go)
 │
-├── 00_Discovery/                      ✅ Complete
-│   ├── 01_Project_Charter/
-│   │   ├── 01_Problem_Statement_and_Vision.md
-│   │   └── 02_SDLC_Roadmap.md
-│   ├── 02_Naming_and_Identity/
-│   │   └── 01_Project_Naming_Research.md
-│   ├── 03_OSS_Research/
-│   │   └── 01_OSS_Repository_Analysis.md
-│   └── 04_Design_Decisions/
-│       └── 01_Framework_Comparison_Analysis.md
+├── docs/                              ← All documentation (SDLC phases)
+│   ├── 00_Discovery/                  ✅ Complete
+│   │   ├── 01_Project_Charter/
+│   │   │   ├── 01_Problem_Statement_and_Vision.md
+│   │   │   └── 02_SDLC_Roadmap.md
+│   │   ├── 02_Naming_and_Identity/
+│   │   │   └── 01_Project_Naming_Research.md
+│   │   ├── 03_OSS_Research/
+│   │   │   └── 01_OSS_Repository_Analysis.md
+│   │   └── 04_Design_Decisions/
+│   │       └── 01_Framework_Comparison_Analysis.md
+│   ├── 01_BRD/                        🔲 Up next
+│   ├── 02_Solution_Design/
+│   ├── 03_FRD/
+│   ├── 04_HLD/
+│   ├── 05_LLD/
+│   ├── 06_Implementation/
+│   ├── 07_Testing/
+│   └── 08_Release/
 │
-├── 01_BRD/                            🔲 Up next
-├── 02_Solution_Design/
-├── 03_FRD/
-├── 04_HLD/
-├── 05_LLD/
-├── 06_Implementation/
-├── 07_Testing/
-└── 08_Release/
+└── src/                               ← All source code (populated from LLD onwards)
 ```
 
 ---
