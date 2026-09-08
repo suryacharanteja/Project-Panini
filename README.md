@@ -51,7 +51,7 @@ Named after **Pāṇini** (4th century BCE) — the ancient Indian grammarian wh
 | Voice TTS | Kokoro (local) | Open-LLM-VTuber |
 | Voice VAD | Silero VAD | Open-LLM-VTuber |
 | Wake word | OpenWakeWord | Sapphire |
-| Avatar | Live2D (+ VRM option) | Open-LLM-VTuber / Naia OS |
+| Avatar | VRM 3D primary (Live2D optional) | Naia OS / Open-LLM-VTuber |
 | Tool registry | 34-tool base | Thoth |
 | Plugin system | Manifest + signed | Sapphire |
 | Security model | 4-tier T0–T3 | Naia OS |
@@ -109,7 +109,7 @@ Project Panini/
 | 2026-09-08 | Project name finalised: **Project Panini** |
 | 2026-09-08 | Desktop framework: **Electron** (over Tauri 2) |
 | 2026-09-08 | LLM strategy: **Factory pattern, Ollama local default** |
-| 2026-09-08 | Avatar: **Live2D primary, VRM as config option** |
+| 2026-09-09 | Avatar: **VRM 3D primary, Live2D as config option** — Jarvis aesthetic, free VRoid Hub models, proven Naia OS stack |
 | 2026-09-08 | STT: **faster-whisper** (local) |
 | 2026-09-08 | TTS: **Kokoro** (local) |
 | 2026-09-08 | Wake word: **OpenWakeWord** |

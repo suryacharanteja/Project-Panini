@@ -96,13 +96,19 @@
 | GLB rigged | Three.js + GLB loader | Sapphire | Custom models, animation tracks |
 | 2D illustrated | Static image + CSS animations | Custom | Simplest, least immersive |
 
-### Decision: **Dual Avatar Support (Live2D + VRM), config-selectable**
+### Decision: **VRM 3D as primary, Live2D as optional**
 
-- `AvatarRenderer` component accepts a driver interface
-- Live2D driver: ported from Open-LLM-VTuber (most mature lip-sync)
-- VRM driver: ported from Naia OS Three.js implementation
-- User selects avatar type in `panini.yaml`
+- `AvatarRenderer` component accepts a driver interface — both drivers are supported
+- **VRM driver (primary):** Three.js + `@pixiv/three-vrm`, ported from Naia OS — full 3D, emotion blend shapes, lip-sync, gaze tracking, desktop-pet mode; thousands of free models on VRoid Hub
+- **Live2D driver (option):** ported from Open-LLM-VTuber — anime-style, for users who prefer it
+- User selects avatar type in `panini.yaml` (`avatar.type: vrm` or `avatar.type: live2d`)
 - Emotion signals fed from LLM output → both drivers translate to facial expressions
+
+**Rationale for VRM primary:**
+- Feels like a holographic AI presence (Jarvis aesthetic) vs a chat mascot (Live2D aesthetic)
+- Free VRM models are widely available; Live2D models are largely paid/proprietary
+- Naia OS has fully proven the VRM stack: Three.js + lip-sync + emotions + desktop-pet
+- `@pixiv/three-vrm` is actively maintained with a large community
 
 ---
 
@@ -157,7 +163,7 @@
 |---|---|---|
 | Desktop framework | **Electron** | WebRTC, mature avatar, Python IPC ease |
 | LLM architecture | **Factory + Hybrid** | Flexibility + local-first |
-| Avatar primary | **Live2D** (VRM as option) | Proven lip-sync, mature |
+| Avatar primary | **VRM 3D** (Live2D as option) | Jarvis aesthetic, free models, proven full stack in Naia OS |
 | STT | **faster-whisper** (local) | Quality + speed balance |
 | TTS | **Kokoro** (local) | Best local quality |
 | Wake word | **OpenWakeWord** | Offline, custom models |

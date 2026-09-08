@@ -113,7 +113,7 @@ Two primary candidates were researched and compared:
 | Wake word | "Hey Panini" |
 | Acronym | P.A.N.I.N.I. |
 | Tone | Intelligent, calm, precise, helpful |
-| Avatar style | Scholarly but approachable (Live2D or VRM) |
+| Avatar style | Scholarly but approachable — VRM 3D primary (Live2D optional) |
 | Color palette | To be defined in UI/UX phase |
 | Tagline (draft) | *"The intelligence that listens, understands, and acts."* |
 

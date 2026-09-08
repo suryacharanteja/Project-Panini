@@ -101,7 +101,7 @@ Open-LLM-VTuber/
 | **Full ASR layer** | `asr/` (all files) | 7 STT engines, factory pattern, clean interface — production-grade |
 | **Full TTS layer** | `tts/` (all files) | 20+ TTS engines, factory pattern — most comprehensive available |
 | **Full VAD layer** | `vad/` (all files) | Silero VAD with factory pattern — battle-tested |
-| **Live2D avatar** | `live2d_model.py` + frontend | Emotion mapping, lip-sync, desktop-pet mode |
+| **Live2D avatar** | `live2d_model.py` + frontend | Emotion mapping, lip-sync, desktop-pet mode — kept as optional driver |
 | **WebSocket server** | `server.py`, `routes.py`, `websocket_handler.py` | Real-time audio/text streaming proven |
 | **Config manager** | `config_manager/` | YAML-based swappable config pattern |
 
@@ -407,7 +407,7 @@ All executions logged to SQLite audit database.
 | Open-LLM-VTuber | `asr/` (full) | `backend/voice/asr/` |
 | Open-LLM-VTuber | `tts/` (full) | `backend/voice/tts/` |
 | Open-LLM-VTuber | `vad/` (full) | `backend/voice/vad/` |
-| Open-LLM-VTuber | `live2d_model.py` + frontend | `frontend/src/avatar/live2d/` |
+| Open-LLM-VTuber | `live2d_model.py` + frontend | `frontend/src/avatar/live2d/` *(optional driver)* |
 | Open-LLM-VTuber | `server.py`, `websocket_handler.py` | `backend/server/` |
 | Thoth | `tools/base.py`, `tools/registry.py` | `backend/tools/` |
 | Thoth | `tools/gmail_tool.py` | `backend/tools/gmail.py` |
@@ -423,7 +423,7 @@ All executions logged to SQLite audit database.
 | Sapphire | `core/audio/device_manager.py` | `backend/voice/audio_devices.py` |
 | Sapphire | `plugins/avatar/` (GLB) | `frontend/src/avatar/glb/` |
 | Sapphire | `user/personas/` | `backend/personas/` |
-| Naia OS | Three.js VRM components | `frontend/src/avatar/vrm/` |
+| Naia OS | Three.js VRM components | `frontend/src/avatar/vrm/` *(primary driver)* |
 | Naia OS | 4-tier permission model | `backend/security/permissions.py` |
 | Naia OS | SQLite audit log | `backend/security/audit.py` |
 | Naia OS | Daemon spawn logic | `backend/daemon/gateway.py` |
