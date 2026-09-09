@@ -204,6 +204,12 @@ Thoth implements tiered permissions for tool execution:
 **URL:** https://github.com/ddxfish/sapphire  
 **Stars:** 276  
 **Language:** Python (backend) + JavaScript (frontend)  
+**License:** 🔴 **AGPL-3.0**
+
+> ### ⚠️ CODE COPYING PROHIBITED (DD-074)
+> Sapphire is licensed **AGPL-3.0**. Copying any Sapphire code into Project Panini would place the **entire Panini codebase** under AGPL-3.0, forcing full source disclosure on distribution or network use.
+>
+> **Sapphire is retained as a DESIGN REFERENCE only.** Its architectural ideas may be studied and reimplemented; its code may not be copied. See `04_Design_Decisions/03_License_Audit.md`.
 
 ### Directory Structure Mapped
 
@@ -284,20 +290,21 @@ sapphire/
 - **Boot version tracking** — detects server restarts without clearing browser cache
 - **Events published:** AI typing, TTS/STT state, chat switches, wakeword detection, settings changes, errors
 
-### What We Take
+### What We Learn From (design reference — NO code copied)
 
-| Module | Files | Why |
+| Concept | Sapphire reference | Our replacement implementation |
 |---|---|---|
-| **Plugin loader** | `core/plugin_loader.py`, `core/plugin_verify.py` | Best-in-class dynamic plugin system with security |
-| **Hook system** | `core/hooks.py` | Clean extensibility without coupling |
-| **Event Bus** | `core/event_bus.py`, `core/event-bus.js` | Decoupled inter-module communication |
-| **Wake word** | `core/wakeword/wake_detector.py` | OpenWakeWord integration |
-| **Audio device manager** | `core/audio/device_manager.py` | Cross-platform audio handling |
-| **Persona system** | `user/personas/` | Switchable assistant personalities |
-| **Ghost messages** | `core/ghost_messages.py` | Per-turn injection without cache break |
-| **GLB avatar plugin** | `plugins/avatar/` | Rigged GLB models with animation tracks |
-| **ComfyUI plugin** | `plugins/comfyui/` | Local image generation integration |
-| **Plugin manifest pattern** | Plugin structure | Security + discoverability standard |
+| **Plugin loader** | `core/plugin_loader.py`, `core/plugin_verify.py` | Own impl: Python `importlib` + JSON manifest + `cryptography` (Apache 2.0) for ed25519 |
+| **Hook system** | `core/hooks.py` | Own impl: `prompt_inject` / `ghost_inject` / `pre_chat` hook points |
+| **Event Bus** | `core/event_bus.py`, `core/event-bus.js` | Own impl: `asyncio` pub/sub + FastAPI `StreamingResponse` for SSE |
+| **Wake word** | `core/wakeword/wake_detector.py` | Use **OpenWakeWord upstream directly** (Apache 2.0) — Sapphire was only a wrapper |
+| **Audio device manager** | `core/audio/device_manager.py` | Own impl on `sounddevice` (MIT) or PyAudio |
+| **Persona system** | `user/personas/` | Own impl: JSON config + system-prompt templating |
+| **Ghost messages** | `core/ghost_messages.py` | Own impl: labelled user-role messages excluded from history |
+| **Plugin manifest pattern** | Plugin structure | Own manifest schema, same concept |
+
+**Estimated additional effort from reimplementation: ~3–5 days.**  
+**Benefit: Project Panini stays free of copyleft and can be licensed however you choose.**
 
 ### What We Skip
 
@@ -416,13 +423,19 @@ All executions logged to SQLite audit database.
 | Thoth | `tools/filesystem_tool.py` | `backend/tools/filesystem.py` |
 | Thoth | `tools/shell_tool.py` | `backend/tools/shell.py` |
 | Thoth | `providers/` | `backend/llm/providers/` |
-| Sapphire | `core/plugin_loader.py` | `backend/plugins/loader.py` |
-| Sapphire | `core/hooks.py` | `backend/plugins/hooks.py` |
-| Sapphire | `core/event_bus.py` | `backend/events/event_bus.py` |
-| Sapphire | `core/wakeword/` | `backend/voice/wakeword/` |
-| Sapphire | `core/audio/device_manager.py` | `backend/voice/audio_devices.py` |
-| Sapphire | `plugins/avatar/` (GLB) | `frontend/src/avatar/glb/` |
-| Sapphire | `user/personas/` | `backend/personas/` |
+| ~~Sapphire~~ 🔴 | **AGPL-3.0 — NO CODE COPIED.** Design reference only (DD-074). | See table below |
+
+### Sapphire-Replacement Implementations (own code)
+
+| Capability | Target in Panini | Built on |
+|---|---|---|
+| Plugin loader | `backend/plugins/loader.py` | `importlib` + JSON manifest |
+| Plugin signing | `backend/plugins/verify.py` | `cryptography` (Apache 2.0) |
+| Plugin hooks | `backend/plugins/hooks.py` | Own |
+| Event bus | `backend/events/event_bus.py` | `asyncio` + FastAPI SSE |
+| Wake word | `backend/voice/wakeword/` | **OpenWakeWord upstream** (Apache 2.0) |
+| Audio devices | `backend/voice/audio_devices.py` | `sounddevice` (MIT) |
+| Personas | `backend/personas/` | JSON + prompt templating |
 | Naia OS | Three.js VRM components | `frontend/src/avatar/vrm/` *(primary driver)* |
 | Naia OS | 4-tier permission model | `backend/security/permissions.py` |
 | Naia OS | SQLite audit log | `backend/security/audit.py` |

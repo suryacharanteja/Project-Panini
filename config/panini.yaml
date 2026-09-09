@@ -1,0 +1,72 @@
+# Panini configuration.
+#
+# Every value below is annotated with the measurement or decision behind it.
+# Editing one, you should be able to see why it is what it is (DD-149).
+
+schema_version: 1
+
+llm:
+  provider: ollama                        # DD-041 — local by default
+
+  ollama:
+    host: http://localhost:11434
+    model: qwen2.5:7b-instruct-q4_K_M      # DD-104 — measured 35.26 tok/s
+    options:
+      # DD-102. Ollama's automatic layer placement left ~1.8 GB of VRAM unused,
+      # costing ~60% throughput (22.09 -> 35.26 tok/s). Required, not defaulted.
+      num_gpu: 29
+      # DD-103. 8k context = 4,857 MiB peak, leaving 1,287 MiB headroom on a
+      # 6 GB card. 16k also fits if you want longer conversations.
+      num_ctx: 8192
+      temperature: 0.7
+      keep_alive: 5m                       # DD-099 — release VRAM when idle
+
+  max_tool_calls_per_turn: 10              # DD-123 — bounds injected call loops
+
+voice:
+  enabled: false                           # not yet implemented (Stage 4)
+  stt:
+    # DD-020. `small` was rejected: 2.31 s for a 3 s utterance against a 1.5 s
+    # requirement. `base` measures 0.75 s.
+    model: base
+    device: cpu                            # DD-097 — keeps VRAM for the LLM
+  tts:
+    warm_on_start: true                    # DD-105 — 1.76 s cold vs 0.30 s warm
+    chunk:
+      # DD-124. Kokoro synthesis cost rises 5.4x above ~62 characters while
+      # audio duration stays linear. These caps keep every chunk in the cheap
+      # regime -- a throughput constraint, not only a latency one.
+      first_max_chars: 40
+      max_chars: 55
+      hard_max_chars: 60
+
+tools:
+  enabled:
+    fs_read: true
+    fs_list: true
+    fs_write: true
+    fs_delete: true
+    shell_exec: true
+
+  filesystem:
+    # Tools cannot read or write outside these roots (FR-416). The audit log and
+    # credential store are denied regardless of what is listed here (FR-563).
+    allow_roots:
+      - ~/Documents/Panini
+    max_read_bytes: 1048576
+
+  shell:
+    timeout_s: 30
+    max_output_bytes: 102400               # DD-130 — bounds context eviction
+    working_dir: ~/Documents/Panini
+
+security:
+  # Folders synchronised off-machine. A write into one is classified as egress,
+  # because it leaves the machine even though it looks local (DD-112).
+  synced_roots: []
+  approval_timeout_s: 120                  # timeout means deny
+  egress_allowlist: []
+  fatigue_warning_threshold: 15            # DD-138
+
+logging:
+  level: INFO
