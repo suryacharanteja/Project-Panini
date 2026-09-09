@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panini</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">Panini</div>
+  <div id="provider" class="provider">connecting…</div>
+  <nav>
+    <button data-tab="chat" class="active">Chat</button>
+    <button data-tab="memory">Memory <span id="memory-badge" class="badge" hidden>0</span></button>
+    <button data-tab="audit">Audit</button>
+  </nav>
+  <div id="conn" class="conn" title="event stream">●</div>
+</header>
+
+<main>
+  <!-- ── chat ───────────────────────────────────────────────────────── -->
+  <section id="tab-chat" class="tab active">
+    <div id="messages" class="messages">
+      <div class="hint">
+        Ask a question, or try something that should be refused —
+        <code>read C:\Windows\win.ini</code>
+      </div>
+    </div>
+    <form id="composer">
+      <textarea id="input" rows="1" placeholder="Message Panini…  (Enter to send, Shift+Enter for a new line)"></textarea>
+      <button id="send" type="submit">Send</button>
+    </form>
+  </section>
+
+  <!-- ── memory ─────────────────────────────────────────────────────── -->
+  <section id="tab-memory" class="tab">
+    <div class="pane-head">
+      <h2>What Panini remembers</h2>
+      <p>Facts from untrusted content are held for review and never used until you confirm them.</p>
+    </div>
+    <div id="memory-list"></div>
+  </section>
+
+  <!-- ── audit ──────────────────────────────────────────────────────── -->
+  <section id="tab-audit" class="tab">
+    <div class="pane-head">
+      <h2>Every action taken</h2>
+      <p>Append-only. Shows why each approval was requested.</p>
+    </div>
+    <div id="audit-list"></div>
+  </section>
+</main>
+
+<!-- ── approval dialog ──────────────────────────────────────────────── -->
+<div id="approval-backdrop" class="backdrop" hidden>
+  <div id="approval" class="dialog" role="dialog" aria-modal="true">
+    <div class="dialog-head">
+      <span id="approval-icon">⚠</span>
+      <h3>Approval required</h3>
+    </div>
+
+    <p id="approval-action" class="action"></p>
+
+    <div id="approval-taint" class="taint" hidden>
+      <strong>This follows content read from:</strong>
+      <ul id="approval-taint-list"></ul>
+    </div>
+
+    <div id="approval-dest" class="dest" hidden>
+      <span class="label">Sending to</span>
+      <span id="approval-dest-value"></span>
+      <span id="approval-dest-unknown" class="warn" hidden>not a known destination</span>
+    </div>
+
+    <div id="approval-payload-wrap" class="payload-wrap" hidden>
+      <span class="label">Content</span>
+      <pre id="approval-payload" class="payload"></pre>
+    </div>
+
+    <div id="approval-escalation" class="escalation" hidden></div>
+
+    <div class="dialog-actions">
+      <button id="approval-deny" class="deny" autofocus>Deny</button>
+      <button id="approval-approve" class="approve">Approve</button>
+    </div>
+    <p class="dialog-foot">Enter denies. Approving needs a deliberate click or Tab&nbsp;+&nbsp;Enter.</p>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
