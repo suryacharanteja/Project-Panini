@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import { ArrowRight, Plug, RefreshCw, Smartphone, Sparkles, Timer } from 'lucide-react';
+import { ArrowRight, Boxes, Plug, RefreshCw, Smartphone, Sparkles, Timer } from 'lucide-react';
 import { admin, ago, api, harness, useResource } from '../api';
 import { Badge, Button, Card, cx, StateDot, useAction } from '../components/ui';
 import { Genesis } from '../genesis/Genesis';
@@ -26,6 +26,7 @@ export function Home() {
   const overview = useResource<any>(admin('/overview'), 10000);
   const reviews = useResource<any>(harness('/reviews'), 15000);
   const notices = useResource<any>(harness('/notices'), 15000);
+  const projects = useResource<any>(harness('/projects'), 15000);
   const { busy, run } = useAction();
 
   const checks: any[] = health.data?.checks ?? [];
@@ -42,7 +43,7 @@ export function Home() {
 
   return (
     <div>
-      <section className="relative isolate h-[min(74vh,720px)] min-h-[460px] overflow-hidden border-b border-line">
+      <section className="relative isolate h-[min(42vh,420px)] min-h-[320px] overflow-hidden border-b border-line">
         <Genesis
           activity={status?.running ? 'working' : 'idle'}
           ready={ready}
@@ -95,6 +96,60 @@ export function Home() {
       </section>
 
       <div className="mx-auto grid w-full max-w-6xl gap-5 px-5 py-8 md:px-8 lg:grid-cols-3">
+        <Card
+          className="lg:col-span-3"
+          title="Continue your work"
+          actions={
+            <Link
+              to="/projects"
+              className="inline-flex items-center gap-1 text-sm text-copper-light hover:text-copper-glow"
+            >
+              All projects <ArrowRight size={14} />
+            </Link>
+          }
+        >
+          {(projects.data?.projects ?? []).length === 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-obsidian/50 p-4">
+              <div>
+                <p className="text-sm">Give PANINI a goal to carry forward.</p>
+                <p className="mt-1 text-xs text-muted">
+                  Projects keep context, plans, tasks and verified results together.
+                </p>
+              </div>
+              <Link
+                to="/projects"
+                className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-copper/40 px-3 text-sm text-copper-light"
+              >
+                <Boxes size={15} /> Open projects
+              </Link>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {projects.data.projects.slice(0, 3).map((project: any) => (
+                <Link
+                  key={project.id}
+                  to="/projects"
+                  onClick={() => sessionStorage.setItem('panini:selected-project', project.id)}
+                  className="group rounded-xl border border-line bg-obsidian/50 p-4 transition hover:border-copper/60"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-medium">{project.title}</span>
+                    <Badge tone={project.status === 'active' ? 'ok' : 'neutral'}>
+                      {project.status}
+                    </Badge>
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted">
+                    {project.goal}
+                  </p>
+                  <span className="mt-3 inline-flex items-center gap-1 text-xs text-copper-light">
+                    Open workspace{' '}
+                    <ArrowRight size={12} className="transition group-hover:translate-x-0.5" />
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </Card>
         <Card
           className="lg:col-span-2"
           title="System health"

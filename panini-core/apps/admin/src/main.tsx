@@ -16,7 +16,8 @@ import {
   LearningPage,
 } from './pages/Config';
 import { Home } from './pages/Home';
-import { AutomationsPage, InboxPage, MemoryPage, ProjectsPage, RunsPage } from './pages/Work';
+import { ProjectsPage } from './pages/Projects';
+import { AutomationsPage, InboxPage, MemoryPage, RunsPage } from './pages/Work';
 import './styles.css';
 
 const root = createRootRoute({ component: Shell, notFoundComponent: NotFound });

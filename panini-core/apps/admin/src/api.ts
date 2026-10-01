@@ -43,32 +43,42 @@ export function useResource<T>(path: string | null, intervalMs = 0) {
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const alive = useRef(true);
+  const request = useRef(0);
 
   const reload = useCallback(async () => {
     if (!path) return;
+    const current = ++request.current;
     try {
       const value = await api<T>(path);
-      if (alive.current) {
+      if (alive.current && current === request.current) {
         setData(value);
         setError('');
       }
     } catch (err) {
-      if (alive.current) setError((err as Error).message);
+      if (alive.current && current === request.current) setError((err as Error).message);
     } finally {
-      if (alive.current) setLoading(false);
+      if (alive.current && current === request.current) setLoading(false);
     }
   }, [path]);
 
   useEffect(() => {
     alive.current = true;
+    request.current++;
+    setData(null);
+    setError('');
     setLoading(true);
     void reload();
-    if (!intervalMs) return () => void (alive.current = false);
+    if (!intervalMs)
+      return () => {
+        alive.current = false;
+        request.current++;
+      };
     const timer = setInterval(() => {
       if (!document.hidden) void reload();
     }, intervalMs);
     return () => {
       alive.current = false;
+      request.current++;
       clearInterval(timer);
     };
   }, [reload, intervalMs]);
