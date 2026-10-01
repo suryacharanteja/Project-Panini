@@ -1,0 +1,225 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  color-scheme: light;
+  --radius: 0.5rem;
+  --background: #f4f6f8;
+  --foreground: #18283b;
+  --card: #ffffff;
+  --card-foreground: #18283b;
+  --popover: #ffffff;
+  --popover-foreground: #18283b;
+  --primary: #e7b760;
+  --primary-text: #056780;
+  --primary-foreground: #152238;
+  --secondary: #edf1f5;
+  --secondary-foreground: #18283b;
+  --muted: #edf1f5;
+  --muted-foreground: #536477;
+  --accent: #e4ebf1;
+  --accent-foreground: #18283b;
+  --destructive: #c2415a;
+  --border: #cdd6df;
+  --input: #cdd6df;
+  --ring: #087c99;
+  --link: #056780;
+  --visited: #6d4bb8;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #0b1420;
+  --foreground: #eef3f8;
+  --card: #111f30;
+  --card-foreground: #eef3f8;
+  --popover: #111f30;
+  --popover-foreground: #eef3f8;
+  --primary: #e7b760;
+  --primary-text: #7bd9ee;
+  --primary-foreground: #152238;
+  --secondary: #18283b;
+  --secondary-foreground: #eef3f8;
+  --muted: #18283b;
+  --muted-foreground: #a6b6c9;
+  --accent: #192b3f;
+  --accent-foreground: #eef3f8;
+  --destructive: #fb7185;
+  --border: #304359;
+  --input: #304359;
+  --ring: #7bd9ee;
+  --link: #7bd9ee;
+  --visited: #a78bfa;
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-text: var(--primary-text);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-link: var(--link);
+  --color-visited: var(--visited);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-variant-numeric: tabular-nums;
+    font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  }
+  /* Browser surfaces carry the brand too. */
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 22%, transparent);
+  }
+  :root {
+    caret-color: var(--primary);
+    accent-color: var(--primary);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  a {
+    text-underline-offset: 3px;
+  }
+}
+
+/* The one display voice, for the home headline only. */
+.display {
+  font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  font-weight: 650;
+  font-optical-sizing: auto;
+}
+
+/* ---- motion ---------------------------------------------------------- */
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-fast: 160ms;
+  --dur: 220ms;
+  --dur-focal: 320ms;
+}
+
+/* The search box and wordmark keep their identity across the home → results
+   navigation: the browser morphs them instead of swapping pages. */
+.vt-searchbox {
+  view-transition-name: searchbox;
+}
+.vt-wordmark {
+  view-transition-name: wordmark;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur);
+}
+::view-transition-old(searchbox),
+::view-transition-new(searchbox),
+::view-transition-old(wordmark),
+::view-transition-new(wordmark) {
+  animation-duration: var(--dur-focal);
+  animation-timing-function: var(--ease-out);
+}
+::view-transition-old(searchbox),
+::view-transition-old(wordmark) {
+  animation-name: none;
+  opacity: 0;
+}
+
+/* A result group arriving: a plain fade. Transition (not keyframes) so a
+   re-render can retarget it; @starting-style supplies the from-state. */
+.enter {
+  opacity: 1;
+  transition: opacity var(--dur) var(--ease-out);
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+/* The working block folding to its one-line summary: height and opacity
+   together, interruptible (a transition, not keyframes). */
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--dur-focal) var(--ease-in-out),
+    opacity var(--dur) var(--ease-out);
+}
+.fold[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.fold > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Chips: state changes are colour, not movement. */
+.chip {
+  transition:
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-out);
+}
+.chip:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter {
+    transition-duration: 120ms;
+  }
+  .fold {
+    transition-duration: 120ms;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 120ms;
+    animation-name: none;
+  }
+}
+
+.search-emblem {
+  border-radius: 20px;
+  box-shadow: 0 10px 32px #132c4920;
+}
+.search-home h1 .text-primary {
+  color: var(--j-gold);
+}
+.search-home > .eyebrow {
+  margin-top: 20px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chip {
+    transition: none;
+  }
+  .chip:active {
+    transform: none;
+  }
+}

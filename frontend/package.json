@@ -1,0 +1,16 @@
+{
+  "name": "jev-rev-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Jev-Rev Frontend: Real-time comparison UI (Express + WebSocket)",
+  "scripts": {
+    "dev": "node server/main.mjs",
+    "jev": "node jev_sidecar.mjs"
+  },
+  "dependencies": {
+    "ai": "^7.0.105",
+    "express": "^4.18.2",
+    "ws": "^8.21.3"
+  },
+  "private": true
+}

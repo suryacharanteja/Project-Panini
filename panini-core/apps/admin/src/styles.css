@@ -1,0 +1,186 @@
+@import 'tailwindcss';
+
+/* PANINI · Algorithmic Antiquity. Tokens from "PANINI UI/UX Design System" and the
+   Visual Lexicon: Obsidian base, Zinc surfaces, Copper primary, Amber strictly for
+   listening and active execution, Gold for success, Slate text. No pure white, no blue. */
+@theme {
+  --color-obsidian: #0a0a0c;
+  --color-zinc: #18181b;
+  --color-zinc-2: #1f1f23;
+  --color-zinc-3: #27272c;
+  --color-line: #2e2e34;
+  --color-copper: #b87333;
+  --color-copper-light: #d4905a;
+  --color-copper-glow: #e8b89a;
+  --color-amber: #ffbf00;
+  --color-gold: #d4af37;
+  --color-slate: #e2e8f0;
+  --color-muted: #9a9aa3;
+  --color-faint: #6b6b74;
+  --color-danger: #e0655a;
+
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', Inter, system-ui, sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI', Inter, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, 'Fira Code', monospace;
+  --font-deva: 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+  background: var(--color-obsidian);
+  color: var(--color-slate);
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 70% -10%, rgb(184 115 51 / 0.07), transparent 60%),
+    var(--color-obsidian);
+}
+
+::selection {
+  background: rgb(184 115 51 / 0.45);
+}
+
+/* Material 3 × Pāṇini: tonal borders instead of drop shadows. */
+.surface {
+  min-width: 0; /* Grid items must shrink, so long paths truncate instead of widening the page. */
+  background: var(--color-zinc);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+}
+
+.copper-text {
+  background: linear-gradient(135deg, #d4905a, #e8b89a 55%, #b87333);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.deva {
+  font-family: var(--font-deva);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* "Derive": lists populate sequentially, like rules applying one after another. */
+@keyframes derive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+.derive > * {
+  min-width: 0;
+  animation: derive 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.derive > *:nth-child(2) {
+  animation-delay: 45ms;
+}
+.derive > *:nth-child(3) {
+  animation-delay: 90ms;
+}
+.derive > *:nth-child(4) {
+  animation-delay: 135ms;
+}
+.derive > *:nth-child(5) {
+  animation-delay: 180ms;
+}
+.derive > *:nth-child(6) {
+  animation-delay: 225ms;
+}
+.derive > *:nth-child(7) {
+  animation-delay: 270ms;
+}
+.derive > *:nth-child(8) {
+  animation-delay: 315ms;
+}
+.derive > *:nth-child(n + 9) {
+  animation-delay: 360ms;
+}
+
+/* Success: a subtle amber flash across the component's border. */
+@keyframes success-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgb(255 191 0 / 0);
+    border-color: var(--color-line);
+  }
+  25% {
+    box-shadow: 0 0 0 2px rgb(255 191 0 / 0.55);
+    border-color: var(--color-amber);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(255 191 0 / 0);
+    border-color: var(--color-line);
+  }
+}
+.flash {
+  animation: success-flash 900ms ease-out;
+}
+
+/* Idle breathing at 12 BPM (one breath every 5 s). */
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.breathe {
+  animation: breathe 5s ease-in-out infinite;
+}
+
+@keyframes pulse-amber {
+  0% {
+    box-shadow: 0 0 0 0 rgb(255 191 0 / 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 8px rgb(255 191 0 / 0);
+  }
+}
+.pulse-amber {
+  animation: pulse-amber 1.6s ease-out infinite;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-copper-light);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* Scrollbars in keeping with the dark metal. */
+* {
+  scrollbar-color: #34343b transparent;
+  scrollbar-width: thin;
+}
+
+.display-font {
+  font-family: var(--font-display);
+}

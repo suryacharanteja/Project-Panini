@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    />
+    <title>PANINI · Agent</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/panini-activity.css" />
+    <link rel="stylesheet" href="/panini-agent.css" />
+  </head>
+  <body>
+    <header>
+      <a href="/agent">PANINI<span>AGENT</span></a>
+      <nav class="agent-nav" aria-label="Console">
+        <a href="/">Compare</a><a href="/browser">Browser</a><a href="/search">Search</a
+        ><a href="/activity">Activity</a><a href="/agent" aria-current="page">Agent</a>
+      </nav>
+    </header>
+    <main>
+      <div class="eyebrow">WHAT PANINI KNOWS AND DOES FOR YOU</div>
+      <h1>Memory, routines<br />and what needs you.</h1>
+      <p id="notice" role="status" aria-live="polite"></p>
+      <section class="summary" aria-label="Status">
+        <div><small>NOW</small><strong id="s-running">—</strong></div>
+        <div><small>QUEUED</small><strong id="s-queued">—</strong></div>
+        <div><small>TO REVIEW</small><strong id="s-reviews">—</strong></div>
+        <div><small>MEMORIES</small><strong id="s-memories">—</strong></div>
+      </section>
+
+      <div class="tabs" role="tablist" aria-label="Sections">
+        <button role="tab" data-tab="inbox" aria-selected="true">Inbox</button>
+        <button role="tab" data-tab="tasks">Tasks &amp; watches</button>
+        <button role="tab" data-tab="memories">Memories</button>
+        <button role="tab" data-tab="skills">Skills</button>
+        <button role="tab" data-tab="connectors">Connectors</button>
+        <button role="tab" data-tab="agents">Agents</button>
+        <button role="tab" data-tab="phone">Phone</button>
+      </div>
+
+      <section id="tab-inbox" class="panel" role="tabpanel">
+        <div class="panel-head">
+          <h2>Inbox</h2>
+          <button id="refresh-suggestions" class="quiet">Check for suggestions</button>
+        </div>
+        <p class="hint">
+          Results of background work, watch alerts, suggestions and decisions PANINI is waiting for.
+          Suggestions never act on their own.
+        </p>
+        <h3>Waiting for you</h3>
+        <ul id="reviews" class="cards"></ul>
+        <h3>Updates and suggestions</h3>
+        <ul id="notices" class="cards"></ul>
+      </section>
+
+      <section id="tab-tasks" class="panel" role="tabpanel" hidden>
+        <h2>New task or watch</h2>
+        <form id="task-form" class="stack">
+          <label
+            >What should PANINI do or check?
+            <textarea name="goal" rows="2" maxlength="4000" required></textarea>
+          </label>
+          <div class="row">
+            <label
+              >Start in (minutes) <input name="delay" type="number" min="0" value="0" max="10080"
+            /></label>
+            <label
+              >Repeat every (minutes, optional)
+              <input name="every" type="number" min="5" max="10080" placeholder="e.g. 1440"
+            /></label>
+          </div>
+          <label
+            >Only tell me when… (makes it a watch; needs a repeat)
+            <input
+              name="condition"
+              maxlength="1000"
+              placeholder="e.g. the price drops below ₹20,000"
+          /></label>
+          <button type="submit">Add</button>
+        </form>
+        <p class="hint">
+          Background runs use read-only research. Anything that needs your approval waits for you in
+          the avatar.
+        </p>
+        <h2>Tasks</h2>
+        <ul id="tasks" class="cards"></ul>
+      </section>
+
+      <section id="tab-memories" class="panel" role="tabpanel" hidden>
+        <div class="panel-head">
+          <h2>Memories</h2>
+          <div>
+            <button id="export" class="quiet">Export</button>
+            <button id="forget-all" class="danger">Forget everything</button>
+          </div>
+        </div>
+        <p class="hint">
+          Stored only on this PC. PANINI uses them as context, never as instructions, and refuses to
+          store secrets.
+        </p>
+        <form id="memory-search" class="row" role="search">
+          <input name="q" placeholder="Search memories" aria-label="Search memories" />
+          <button type="submit" class="quiet">Search</button>
+        </form>
+        <form id="memory-form" class="row">
+          <select name="kind" aria-label="Kind">
+            <option value="preference">Preference</option>
+            <option value="profile">About me</option>
+            <option value="fact">Fact</option>
+            <option value="episode">Event</option>
+          </select>
+          <input
+            name="text"
+            maxlength="2000"
+            placeholder="Something PANINI should remember"
+            required
+          />
+          <button type="submit">Remember</button>
+        </form>
+        <ul id="memories" class="cards"></ul>
+      </section>
+
+      <section id="tab-skills" class="panel" role="tabpanel" hidden>
+        <h2>Skills</h2>
+        <p class="hint">
+          Procedures PANINI loads when a task fits. Add your own as folders with a SKILL.md in
+          PANINI's data folder, or ask PANINI to save a task that went well.
+        </p>
+        <ul id="skills" class="cards"></ul>
+      </section>
+
+      <section id="tab-connectors" class="panel" role="tabpanel" hidden>
+        <div class="panel-head">
+          <h2>Connectors</h2>
+          <button id="reload-connectors" class="quiet">Reload</button>
+        </div>
+        <p class="hint">
+          Model Context Protocol servers PANINI can use as tools. Configure them in
+          <code id="connectors-path">connectors.json</code>. Actions that change data always ask you
+          first.
+        </p>
+        <ul id="connectors" class="cards"></ul>
+      </section>
+
+      <section id="tab-agents" class="panel" role="tabpanel" hidden>
+        <h2>Agents that can ask PANINI</h2>
+        <p class="hint">
+          Other agents send tasks to <code>/a2a</code> with a token you create here (A2A protocol).
+          Every request waits for your approval in the Inbox, runs with read-only research, and
+          never sees your memories.
+        </p>
+        <form id="a2a-form" class="row">
+          <input name="name" maxlength="80" placeholder="Name of the calling agent" required />
+          <button type="submit">Create token</button>
+        </form>
+        <p id="a2a-token" class="token" hidden></p>
+        <ul id="a2a-clients" class="cards"></ul>
+        <h2>Agents PANINI can ask</h2>
+        <p class="hint">
+          Listed in <code>agents.json</code> in PANINI's data folder. PANINI asks you before sending
+          any of them a message.
+        </p>
+        <ul id="a2a-remotes" class="cards"></ul>
+      </section>
+
+      <section id="tab-phone" class="panel" role="tabpanel" hidden>
+        <div class="panel-head">
+          <h2>Phone companion</h2>
+          <button id="phone-toggle" type="button">Turn on</button>
+        </div>
+        <p class="hint">
+          See PANINI's inbox, approve decisions and send requests from your phone on the same Wi-Fi.
+          It is off until you turn it on; only devices on your home network with a pairing code can
+          connect. Traffic is not encrypted on the network, so use it only on Wi-Fi you trust.
+          Windows may ask you to allow PANINI through the firewall the first time.
+        </p>
+        <div id="phone-on" hidden>
+          <p>Open on your phone: <strong id="phone-urls"></strong></p>
+          <button id="phone-code" type="button" class="quiet">Create pairing code</button>
+          <p id="phone-code-value" class="token" hidden></p>
+          <h3>Paired phones</h3>
+          <ul id="phone-devices" class="cards"></ul>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/panini-agent.mjs"></script>
+  </body>
+</html>

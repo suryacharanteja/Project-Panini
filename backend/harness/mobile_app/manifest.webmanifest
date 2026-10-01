@@ -1,0 +1,9 @@
+{
+  "name": "PANINI",
+  "short_name": "PANINI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1f2a1c",
+  "theme_color": "#1f2a1c",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

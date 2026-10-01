@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+  <head>
+    <title>JevRev Claw</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="popup-heading">
+      <img src="icons/icon-128.png" width="52" height="52" alt="" />
+      <div>
+        <p class="eyebrow">JEVREV BROWSER EXTENSION</p>
+        <h1>Claw</h1>
+      </div>
+    </header>
+    <p class="sub">Your browser. Your session. Your control.</p>
+    <div class="row"><span class="dot" id="dot"></span><span id="status">checking…</span></div>
+    <section id="pairing" hidden>
+      <label for="pair-code">Pairing code</label>
+      <input
+        id="pair-code"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="XXXX-XXXX"
+        maxlength="12"
+        aria-describedby="pair-hint"
+      />
+      <button id="pair">Pair with PANINI</button>
+      <p class="tab" id="pair-hint">
+        In PANINI choose <strong>Pair browser extension</strong> (or use the web console's Browser
+        page) to get a one-time code. You only pair once per Chrome profile.
+      </p>
+    </section>
+    <details class="connection">
+      <summary>App connection</summary>
+      <label for="url">Local app address</label>
+      <input id="url" spellcheck="false" />
+      <button id="reconnect" class="secondary">Reconnect to app</button>
+      <button id="forget" class="secondary">Forget pairing</button>
+    </details>
+    <label for="mode">Control mode</label>
+    <select id="mode">
+      <option value="single">Single tab</option>
+      <option value="workspace">Tab workspace</option>
+    </select>
+    <section id="single-panel">
+      <p id="hint" class="tab"></p>
+      <label for="tabs">Choose a website tab</label>
+      <select id="tabs">
+        <option value="">Loading tabs…</option>
+      </select>
+      <button id="attach" disabled>Attach selected tab</button>
+      <button id="detach" class="secondary" disabled>Detach tab</button>
+    </section>
+    <section id="workspace-panel" hidden>
+      <div id="workspace-existing" hidden>
+        <label for="workspace-group">Existing workspace</label>
+        <select id="workspace-group" aria-describedby="workspace-reconnect-hint"></select>
+        <p id="workspace-reconnect-hint" class="tab"></p>
+        <ul id="workspace-reconnect-tabs" class="workspace-reconnect-tabs"></ul>
+        <button id="workspace-reconnect">Reconnect workspace</button>
+      </div>
+      <details id="workspace-setup" class="workspace-setup" open>
+        <summary id="workspace-setup-label">Choose approved tabs</summary>
+        <p class="tab" id="workspace-hint">
+          Choose website tabs from one window. They will appear in a yellow JevRev group.
+        </p>
+        <label for="workspace-tabs"
+          >Approved tabs <span class="optional">· Ctrl/⌘ to select several</span></label
+        >
+        <select id="workspace-tabs" multiple size="5" aria-describedby="workspace-hint"></select>
+        <label class="check"
+          ><input id="allow-new" type="checkbox" /> Allow the agent to open new tabs in this
+          workspace</label
+        >
+        <button id="workspace-save">Create workspace</button>
+      </details>
+      <p id="workspace-summary" class="tab" role="status"></p>
+      <div id="workspace-active" hidden>
+        <label for="workspace-current">Current action target</label>
+        <select id="workspace-current"></select>
+        <div class="button-pair">
+          <button id="workspace-switch" class="secondary">Use this tab</button>
+          <button id="workspace-remove" class="secondary">Detach this tab</button>
+        </div>
+        <button id="workspace-detach" class="secondary">Detach workspace</button>
+        <p class="tab">
+          Changing the approved tabs stops the current task. Detaching leaves your pages open. Tabs
+          you drag into the group need explicit approval here.
+        </p>
+      </div>
+    </section>
+    <p id="error" role="alert"></p>
+    <p class="tab" id="tab"></p>
+    <button id="demo" class="secondary">Open demo website</button>
+    <footer><span id="version"></span>Inspired by Garuda · Built for action</footer>
+    <script src="popup.js"></script>
+  </body>
+</html>

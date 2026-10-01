@@ -1,0 +1,64 @@
+{
+  "name": "panini",
+  "version": "1.0.0",
+  "description": "PANINI: a voice-first assistant with Browser, Desktop, Search and PANINI-CLI capabilities",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "panini": "node scripts/panini-start.mjs",
+    "panini:code": "node scripts/panini-start.mjs --code",
+    "panini:test:code": "node panini-core/apps/shell/test/code-live.mjs",
+    "panini:test:agent": "node panini-core/apps/shell/test/agent-live.mjs",
+    "panini:test:avatar": "node panini-core/apps/shell/test/avatar-live.mjs",
+    "panini:test:orchestration": "node panini-core/apps/shell/test/orchestration-live.mjs",
+    "panini:build": "node scripts/panini-build.mjs",
+    "panini:typecheck": "npm run typecheck --workspace @panini/shell",
+    "panini:package": "node scripts/panini-package.mjs",
+    "panini:release:verify": "pwsh -NoProfile -File scripts/panini-release-gate.ps1",
+    "panini:cli:package": ".venv\\Scripts\\python.exe -m PyInstaller --noconfirm --distpath artifacts/panini-cli --workpath artifacts/panini-cli-work scripts/panini-cli.spec",
+    "panini:cli:smoke": "pwsh -NoProfile -File scripts/panini-cli-packaged-smoke.ps1",
+    "panini:smoke": "node panini-core/apps/shell/test/smoke.mjs",
+    "panini:test:paint": ".venv\\Scripts\\python.exe scripts/panini-paint-smoke.py",
+    "panini:test:desktop-live": "node panini-core/apps/shell/test/desktop-live.mjs",
+    "panini:test:desktop": ".venv\\Scripts\\python.exe scripts/panini-native-smoke.py",
+    "setup": "node scripts/setup.mjs",
+    "dev": "node frontend/server/main.mjs",
+    "start": "node frontend/server/main.mjs --production",
+    "build": "npm run build --workspace @panini/search && npm run build --workspace @panini/admin",
+    "admin:build": "npm run build --workspace @panini/admin",
+    "test": "node scripts/check.mjs",
+    "test:gateway": "node --test frontend/test/*.test.mjs",
+    "test:search": "npm run test --workspace @panini/search",
+    "typecheck": "npm run typecheck --workspace @panini/search && npm run typecheck --workspace @panini/admin",
+    "test:live": "node scripts/smoke.mjs",
+    "test:live:all": "node scripts/smoke.mjs --all-examples",
+    "format": "prettier --write frontend panini-core/capabilities/browser/extension scripts panini-core/capabilities/search/src panini-core/capabilities/search/test panini-core/apps/admin/src panini-core/apps/admin/test",
+    "format:check": "prettier --check frontend panini-core/capabilities/browser/extension scripts panini-core/capabilities/search/src panini-core/capabilities/search/test panini-core/apps/admin/src panini-core/apps/admin/test",
+    "console": "node scripts/console-link.mjs",
+    "test:runtime": ".venv\\Scripts\\python.exe scripts/runtime-smoke.py",
+    "panini:test:unified": "node panini-core/apps/shell/test/unified.mjs",
+    "cli": ".venv\\Scripts\\panini-cli.exe"
+  },
+  "keywords": [
+    "panini",
+    "assistant",
+    "voice",
+    "browser-automation",
+    "search",
+    "agent"
+  ],
+  "workspaces": [
+    "frontend",
+    "panini-core/capabilities/search",
+    "panini-core/apps/admin",
+    "panini-core/apps/shell"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "devDependencies": {
+    "electron": "44.4.3",
+    "esbuild": "0.28.2",
+    "prettier": "3.9.8"
+  }
+}

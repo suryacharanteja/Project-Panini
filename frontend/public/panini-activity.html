@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    />
+    <title>PANINI · Activity</title>
+    <link rel="stylesheet" href="/panini-activity.css" />
+  </head>
+  <body>
+    <header>
+      <a href="/activity">PANINI<span>ACTIVITY</span></a>
+      <div class="badge">Read-only observer</div>
+    </header>
+    <main>
+      <div class="eyebrow">A WINDOW INTO THE WORK</div>
+      <h1>Every action.<br />A clear record.</h1>
+      <p id="connection" role="status">Connecting to PANINI…</p>
+      <section class="summary">
+        <div><small>CONVERSATION</small><strong id="state">Not connected</strong></div>
+        <div><small>CAPABILITY</small><strong id="capability">—</strong></div>
+        <div><small>TARGET</small><strong id="target">—</strong></div>
+      </section>
+      <div class="columns">
+        <section>
+          <h2>Verified activity</h2>
+          <ol id="events"></ol>
+        </section>
+        <section>
+          <h2>Results</h2>
+          <div id="results"></div>
+          <h2>Captions</h2>
+          <p id="captions">Captions appear only when sharing was enabled in PANINI.</p>
+        </section>
+      </div>
+      <p class="note">
+        Give instructions, stop work, and approve actions in the floating PANINI interface.
+      </p>
+    </main>
+    <script type="module" src="/panini-activity.mjs"></script>
+  </body>
+</html>

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Workspace fixture</title>
+  <style>
+    body {
+      max-width: 720px;
+      margin: 70px auto;
+      padding: 24px;
+      font: 18px/1.6 system-ui;
+      color: #17293a;
+      background: #f6f8fb;
+    }
+    button {
+      padding: 14px 24px;
+      margin: 10px;
+      font: inherit;
+    }
+  </style>
+  <h1 id="title"></h1>
+  <p id="fact"></p>
+  <button id="review">Mark reviewed</button>
+  <button id="finish" hidden>Finish workspace review</button>
+  <p id="result" role="status">Not reviewed yet.</p>
+  <script>
+    const name = new URL(location.href).searchParams.get('name') || 'Alpha';
+    document.title = document.querySelector('#title').textContent = `Workspace ${name}`;
+    document.querySelector('#fact').textContent = `${name} project launch date: 12 October 2026.`;
+    document.querySelector('#finish').hidden = name !== 'Alpha';
+    document.querySelector('#review').onclick = () => {
+      document.body.dataset.reviewed = 'yes';
+      document.querySelector('#result').textContent = `${name} has been reviewed.`;
+    };
+    document.querySelector('#finish').onclick = () => {
+      document.body.dataset.finished = 'yes';
+      document.querySelector('#result').textContent = 'Workspace review finished on Alpha.';
+    };
+  </script>
+</html>

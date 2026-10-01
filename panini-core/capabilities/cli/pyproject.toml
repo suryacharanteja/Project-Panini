@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "panini-cli"
+version = "1.0.0"
+description = "PANINI-CLI: PANINI's Codex-like terminal/system agent capability"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+dependencies = ["openai>=2.0", "python-dotenv>=1.0", "rich>=13.0", "flatbuffers>=25.12.19"]
+
+[project.scripts]
+panini-cli = "panini_cli.agent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+

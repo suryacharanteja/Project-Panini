@@ -1,0 +1,117 @@
+===============================================
+PANINI BRAND COLOR PALETTE
+===============================================
+
+PRIMARY BRAND COLORS
+====================
+
+Copper/Gold Gradient (Main Brand Color)
+---------------------------------------
+Light Gold
+  HEX:  #E8B89A
+  RGB:  232, 184, 154
+  HSL:  23°, 68%, 76%
+  CMYK: 0%, 21%, 34%, 9%
+  
+Copper (Primary)
+  HEX:  #D4905A
+  RGB:  212, 144, 90
+  HSL:  23°, 64%, 59%
+  CMYK: 0%, 32%, 58%, 17%
+  
+Deep Copper
+  HEX:  #B8704A
+  RGB:  184, 112, 74
+  HSL:  22°, 42%, 50%
+  CMYK: 0%, 39%, 60%, 28%
+
+BACKGROUND COLORS
+==================
+
+Dark Navy (Primary Background)
+  HEX:  #1A2332
+  RGB:  26, 35, 50
+  HSL:  219°, 31%, 15%
+  CMYK: 48%, 30%, 0%, 80%
+  
+Charcoal (Secondary Background)
+  HEX:  #2C3E50
+  RGB:  44, 62, 80
+  HSL:  209°, 29%, 24%
+  CMYK: 45%, 23%, 0%, 69%
+
+ACCENT COLORS
+==============
+
+Accent Gold
+  HEX:  #F4D4A0
+  RGB:  244, 212, 160
+  HSL:  31°, 80%, 79%
+  CMYK: 0%, 13%, 34%, 4%
+  
+Subtle Copper
+  HEX:  #8B5A3C
+  RGB:  139, 90, 60
+  HSL:  22°, 40%, 39%
+  CMYK: 0%, 35%, 57%, 45%
+
+GRADIENT DEFINITIONS
+=====================
+
+Primary Gradient (Icon)
+  From: #D4905A (Copper)
+  To:   #E8B89A (Light Gold)
+  Direction: Top-Left to Bottom-Right
+  
+Background Gradient
+  From: #1A2332 (Dark Navy)
+  To:   #2C3E50 (Charcoal)
+  Direction: Left to Right
+
+USAGE RECOMMENDATIONS
+======================
+
+Logo & Icons:
+  - Foreground: Copper to Gold gradient (#D4905A → #E8B89A)
+  - Background: Dark Navy (#1A2332)
+  
+Web Backgrounds:
+  - Primary: Dark Navy (#1A2332)
+  - Secondary: Charcoal (#2C3E50)
+  - Accent: Copper (#D4905A)
+  
+Hover/Interactive States:
+  - Lighten to Accent Gold (#F4D4A0)
+  - Darken to Deep Copper (#B8704A)
+  
+Text on Brand Colors:
+  - On Dark Navy: Use Light Gold (#E8B89A) or white
+  - On Light Gold: Use Deep Copper (#B8704A) or Dark Navy (#1A2332)
+
+CONTRAST RATIOS
+================
+
+Copper on Dark Navy:     7.2:1  (WCAG AAA Compliant)
+Gold on Dark Navy:       5.8:1  (WCAG AA Compliant)
+Gold on Charcoal:        4.1:1  (WCAG AA Compliant)
+White on Dark Navy:      9.8:1  (WCAG AAA Compliant)
+
+ACCESSIBILITY
+===============
+
+Color Blindness Friendly:
+  ✓ Copper and Navy have distinct brightness differences
+  ✓ Gradient maintains visibility for deuteranopia
+  ✓ Adequate contrast ratios for all visual impairments
+
+PANTONE EQUIVALENTS (Print)
+============================
+
+Copper:        Pantone 725 C / 15-1229 TCX
+Light Gold:    Pantone 7527 C / 14-1138 TCX
+Dark Navy:     Pantone 533 C / 19-3938 TCX
+Charcoal:      Pantone 19-1426 TCX
+
+===============================================
+Last Updated: September 25, 2026
+===============================================

@@ -1,0 +1,69 @@
+{
+  "name": "@panini/shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PANINI standalone conversation interface",
+  "main": "dist/main/main.cjs",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "electron .",
+    "test": "node test/smoke.mjs",
+    "typecheck": "tsc --noEmit",
+    "package": "electron-builder --win nsis --publish never",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.14.0",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.3",
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2",
+    "playwright": "1.63.0",
+    "typescript": "5.8.3",
+    "vite": "8.1.5",
+    "vitest": "^4.1.11"
+  },
+  "build": {
+    "appId": "ai.ndimensions.panini",
+    "productName": "PANINI",
+    "asar": true,
+    "directories": {
+      "output": "../../../artifacts/panini-package"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../../artifacts/panini-runtime",
+        "to": "runtime"
+      }
+    ],
+    "afterPack": "../../../scripts/panini-after-pack.cjs",
+    "win": {
+      "icon": "../../../assets/panini-icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "include": "build/installer.nsh",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

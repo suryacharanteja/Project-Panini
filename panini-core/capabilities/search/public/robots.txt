@@ -1,0 +1,8 @@
+# Result pages send noindex in HTML. Do not Disallow /search, or crawlers
+# cannot see that directive on URLs they already discovered.
+
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: http://localhost:3000/search/sitemap.xml

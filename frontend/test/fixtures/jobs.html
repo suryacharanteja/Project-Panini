@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Job results fixture</title>
+    <style>
+      body {
+        font: 18px system-ui;
+        margin: 30px;
+        max-width: 760px;
+      }
+      #search-toggle {
+        cursor: pointer;
+        width: 36px;
+        height: 36px;
+        padding: 10px;
+      }
+      #search-toggle svg {
+        width: 28px;
+        height: 28px;
+      }
+      input,
+      button {
+        font: inherit;
+        padding: 12px;
+        margin: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" aria-hidden="true">
+      <defs>
+        <symbol id="search-icon" viewBox="0 0 24 24">
+          <circle cx="10" cy="10" r="7" fill="none" stroke="black" stroke-width="2" />
+          <path d="M15 15L23 23" stroke="black" stroke-width="2" />
+        </symbol>
+      </defs>
+    </svg>
+    <h1>Job search</h1>
+    <div id="shadow-host"></div>
+    <div id="search-toggle">
+      <svg><use href="#search-icon"></use></svg>
+    </div>
+    <section id="search-panel" hidden>
+      <label for="query">Search job titles</label>
+      <input id="query" type="search" autocomplete="off" />
+      <p>Press Enter to search</p>
+      <button id="suggestion">Senior Manager (Artificial Intelligence)</button>
+    </section>
+    <main id="results">
+      <h2>Results for Senior Manager (Artificial Intelligence)</h2>
+      <p>AI Manager at Example — a related result from a different search</p>
+    </main>
+    <script>
+      const shadowLayout = new URLSearchParams(location.search).has('shadow');
+      history.replaceState(null, '', '?keywords=Senior%20Manager%20(Artificial%20Intelligence)');
+      document.querySelector('#search-toggle').addEventListener('click', () => {
+        document.querySelector('#search-panel').hidden = false;
+      });
+      const input = document.querySelector('#query');
+      function search(query) {
+        history.pushState(null, '', '?keywords=' + encodeURIComponent(query));
+        const title = document.createElement('h2');
+        title.textContent = 'Results for ' + query;
+        const result = document.createElement('p');
+        result.textContent = query + ' at Example';
+        document.querySelector('#results').replaceChildren(title, result);
+      }
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && input.value.trim()) search(input.value);
+      });
+      document
+        .querySelector('#suggestion')
+        .addEventListener('click', () => search('Senior Manager (Artificial Intelligence)'));
+      if (shadowLayout) {
+        const root = document.querySelector('#shadow-host').attachShadow({ mode: 'open' });
+        const style = document.createElement('style');
+        style.textContent =
+          'svg{width:40px;height:40px} input,button{font:18px system-ui;padding:12px;margin:10px}';
+        root.append(style);
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('data-test-icon', 'search-medium');
+        icon.setAttribute('viewBox', '0 0 24 24');
+        icon.innerHTML =
+          '<circle cx="10" cy="10" r="7" fill="none" stroke="black"/><path d="M15 15L23 23" stroke="black"/>';
+        icon.addEventListener('click', () => {
+          document.querySelector('#shadow-host').shadowRoot.querySelector('#search-panel').hidden =
+            false;
+        });
+        root.append(icon, document.querySelector('#search-panel'));
+        document.querySelector('#search-toggle').remove();
+      }
+    </script>
+  </body>
+</html>

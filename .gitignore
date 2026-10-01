@@ -1,0 +1,33 @@
+# Secrets
+.env
+.env.*
+!.env.example
+.dev.vars*
+
+# Dependencies, generated output and local artifacts
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+bin/
+obj/
+dist-worker/
+.tanstack/
+.pytest_cache/
+.ruff_cache/
+artifacts/
+panini-core/capabilities/search/src/routeTree.gen.ts
+frontend/public/admin/
+panini-core/apps/frontend/public/admin/
+
+# Editor and runtime files
+.DS_Store
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*.log

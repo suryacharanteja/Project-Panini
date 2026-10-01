@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JevRev — Structured intelligence</title>
+    <meta name="theme-color" content="#f4f6f8" />
+    <meta
+      name="description"
+      content="JevRev: a Garuda-inspired workspace for structured intelligence, focused search and live browser action."
+    />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <script src="/brand-theme.js"></script>
+    <link rel="stylesheet" href="/brand.css" />
+    <link rel="stylesheet" href="/comparison.css" />
+  </head>
+  <body class="app-shell">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand-home" href="/" aria-label="JevRev home"
+          ><img src="/brand/jevrev.png" alt="" width="42" height="42" />
+          <div>
+            <span class="brand-word">Jev<span>Rev</span></span
+            ><span class="brand-caption">The Garuda ecosystem</span>
+          </div></a
+        >
+        <nav class="site-nav" aria-label="Main navigation">
+          <a href="/playground/compare" aria-current="page"
+            ><img src="/brand/jevrev.png" alt="" width="24" height="24" />Compare</a
+          ><a href="/browser"
+            ><img src="/brand/browser.png" alt="" width="24" height="24" />Browser</a
+          ><a href="/search"><img src="/brand/search.png" alt="" width="24" height="24" />Search</a
+          ><a href="/"
+            ><img src="/admin/brand/panini-icon-64.png" alt="" width="24" height="24" />Admin</a
+          >
+        </nav>
+        <div class="header-tools">
+          <span class="brand-motto">Speed. Precision. Control.</span
+          ><button
+            class="theme-button"
+            data-theme-toggle
+            type="button"
+            aria-label="Switch color theme"
+            title="Toggle light / dark mode"
+          >
+            <svg
+              class="theme-moon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              aria-hidden="true"
+            >
+              <path d="M20.5 14.5A9 9 0 0 1 9.5 3.5a9 9 0 1 0 11 11Z" /></svg
+            ><svg
+              class="theme-sun"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="4" />
+              <path
+                d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+    <main id="main-content" class="container" tabindex="-1">
+      <div class="page-hero">
+        <div>
+          <p class="eyebrow">The Garuda ecosystem</p>
+          <h1>Clarity at the speed <span>of intent.</span></h1>
+          <p class="intro">
+            Put structured intelligence to the test. Compare Jev and a direct LLM on the same task,
+            with evidence you can inspect.
+          </p>
+        </div>
+        <img
+          class="hero-mark"
+          src="/brand/jevrev.png"
+          width="112"
+          height="112"
+          alt="The JevRev Garuda emblem"
+        />
+      </div>
+      <div class="value-bar">
+        <div class="value-card">
+          <div class="big">Measured per run</div>
+          <div class="label">Latency, tokens and cost</div>
+          <div class="hint">Estimates use returned token usage</div>
+        </div>
+        <div class="value-card">
+          <div class="big">Same questions</div>
+          <div class="label">Independent boolean judgments</div>
+          <div class="hint">All seven task examples are editable</div>
+        </div>
+        <div class="value-card">
+          <div class="big">Inspect the evidence</div>
+          <div class="label">Probabilities and provider responses</div>
+          <div class="hint">Performance varies by input and provider</div>
+        </div>
+      </div>
+
+      <div class="input-section">
+        <div class="input-group">
+          <label for="task">Evaluation Task</label>
+          <select id="task" aria-describedby="task-description" onchange="onTaskChanged()">
+            <option value="">Loading tasks…</option>
+          </select>
+          <div id="task-description" class="task-description hidden"></div>
+          <div id="task-meta" class="task-meta"></div>
+        </div>
+
+        <div id="examples-container" class="input-group hidden">
+          <div class="examples-section">
+            <span class="examples-label">Try an example — select to load</span>
+            <div id="examples-grid" class="examples-grid"></div>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="text"
+            >Input Text
+            <span>— paste a ticket, email, 911 transcript, PR diff, invoice, or review</span></label
+          >
+          <textarea id="text" maxlength="20000" placeholder="Enter text to analyze...">
+Hi team, our production API has been returning 500 errors for the last 45 minutes and our customers are affected. This is blocking our launch — need urgent escalation to engineering. We're considering alternatives if not fixed today.</textarea>
+        </div>
+
+        <div class="button-row">
+          <button id="runBtn" onclick="runDemo()">Run comparison</button>
+          <button
+            id="bulkBtn"
+            class="secondary-btn"
+            onclick="runBulkDemo()"
+            title="Run three examples and compare average metrics"
+          >
+            Run Bulk (3×)
+          </button>
+        </div>
+        <div class="keyboard-hint">
+          Tip: Ctrl+Enter to run · Jev and Direct LLM run in parallel on the backend.
+        </div>
+      </div>
+
+      <div id="loading" class="loading hidden" role="status">
+        <div class="spinner"></div>
+        <p>Running both models in parallel…</p>
+      </div>
+
+      <div id="comparison-strip" class="comparison-strip hidden" role="status"></div>
+
+      <div id="results" class="results hidden">
+        <div class="result-card">
+          <h2>Direct LLM · OpenAI</h2>
+          <div id="direct-result"></div>
+        </div>
+        <div class="result-card jev">
+          <h2>JevRev · Jev</h2>
+          <div id="jev-result"></div>
+        </div>
+      </div>
+
+      <div class="footer">
+        JevRev compares generative evaluation with Jev's boolean probabilities. Inspect each result
+        and its token usage. Examples demonstrate model behavior; they are not validated decision
+        policies.
+      </div>
+    </main>
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-story">
+          <p>
+            <strong>Inspired by Garuda. Built to move ideas forward.</strong>JevRev brings
+            structured intelligence, browser action and focused search into one workspace. Wings to
+            explore. Eyes to discover. A claw to take action — with you in control.
+          </p>
+          <nav class="ecosystem" aria-label="Explore JevRev">
+            <a href="/browser"
+              ><img src="/brand/browser.png" alt="" width="28" height="28" />Browser</a
+            ><a href="/search"
+              ><img src="/brand/search.png" alt="" width="28" height="28" />Search</a
+            >
+          </nav>
+        </div>
+        <div class="footer-bottom">
+          <span>© 2026 JevRev. All rights reserved.</span
+          ><span
+            >Designed and developed by <strong>CharanTheAiGuy</strong> ·
+            <a href="https://ndimensions.ai" target="_blank" rel="noopener noreferrer"
+              >nDimensions.AI ↗</a
+            ></span
+          >
+        </div>
+      </div>
+    </footer>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,49 @@
+name: Validate
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m venv .venv
+      - run: .venv/bin/python -m pip install --upgrade pip==26.2.1
+      - run: .venv/bin/python -m pip install -r backend/requirements-dev.txt
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm audit
+      - run: .venv/bin/python -m pip check
+      - run: .venv/bin/python -m pip_audit
+  panini-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: python -m venv .venv
+      - run: .venv/Scripts/python.exe -m pip install -r backend/requirements-dev.txt
+      - run: npm ci
+      - run: npm run panini:build
+      - run: npm run panini:typecheck
+      - run: .venv/Scripts/python.exe -m pytest backend/tests/panini -q
+      - run: node --test --test-reporter=dot frontend/test/panini-gateway.test.mjs
+      # The real runtime end to end: console sign-in, boundaries, extension pairing and handshake.
+      - run: npm run test:runtime
+      # Real native input and microphone UAT require an interactive user session.

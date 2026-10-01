@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PANINI voice jobs test</title>
+    <style>
+      body {
+        font: 18px system-ui;
+        margin: 32px;
+        max-width: 900px;
+      }
+      button,
+      input {
+        font: inherit;
+        padding: 10px;
+        margin: 8px;
+      }
+      article {
+        padding: 12px;
+        border-bottom: 1px solid #ccc;
+      }
+      a {
+        color: #2452ac;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Job board</h1>
+    <div id="app"></div>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const companies = ['Acme', 'Northstar', 'Contoso', 'Fabrikam', 'Woodgrove'];
+      const app = document.querySelector('#app');
+      if (params.has('submitted')) {
+        app.innerHTML =
+          '<h2>Application submitted successfully</h2><p>Confirmation: TEST-123. Acme AI Manager. Notice period: 30 days.</p>';
+      } else if (params.has('job')) {
+        const company = companies[Number(params.get('job')) - 1] || 'Acme';
+        app.innerHTML = `<h2>AI Manager at ${company}</h2><p>Dubai, UAE. Lead an AI engineering team.</p><form><input type="hidden" name="submitted" value="1"><label>Notice period in days <input name="notice" type="number" required aria-label="Notice period in days"></label><button type="submit">Submit application</button></form>`;
+      } else {
+        const q = params.get('q') || '';
+        const form = document.createElement('form');
+        form.innerHTML =
+          '<label>Search job title <input name="q" aria-label="Search job title"></label><button>Search jobs</button>';
+        form.querySelector('input').value = q;
+        if (params.has('offscreen')) {
+          const flag = document.createElement('input');
+          flag.type = 'hidden';
+          flag.name = 'offscreen';
+          flag.value = '1';
+          form.append(flag);
+        }
+        app.append(form);
+        if (q) {
+          if (params.has('offscreen')) {
+            const space = document.createElement('div');
+            space.style.height = '1100px';
+            space.textContent = 'Search navigation';
+            app.append(space);
+          }
+          const heading = document.createElement('h2');
+          heading.textContent = `Results for ${q}: 5 jobs`;
+          app.append(heading);
+          companies.forEach((company, index) => {
+            const article = document.createElement('article');
+            const link = document.createElement('a');
+            link.href = `?job=${index + 1}`;
+            link.textContent = `AI Manager at ${company}`;
+            const detail = document.createElement('p');
+            detail.textContent = 'Dubai, UAE. Lead an AI engineering team.';
+            article.append(link, detail);
+            app.append(article);
+          });
+        }
+      }
+    </script>
+  </body>
+</html>

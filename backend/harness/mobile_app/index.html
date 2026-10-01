@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1f2a1c" />
+    <title>PANINI</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <header>
+      <strong>PANINI</strong>
+      <span id="state" class="pill">…</span>
+    </header>
+    <main>
+      <p id="message" role="status" aria-live="polite"></p>
+
+      <section id="pair" hidden>
+        <h1>Pair this phone</h1>
+        <p class="hint">
+          In the PANINI console on your PC, open Agent → Phone and create a pairing code.
+        </p>
+        <form id="pair-form">
+          <label>Code <input name="code" autocomplete="one-time-code" autocapitalize="characters" required /></label>
+          <label>Name for this phone <input name="name" value="My phone" maxlength="60" /></label>
+          <button type="submit">Pair</button>
+        </form>
+      </section>
+
+      <section id="app" hidden>
+        <form id="ask-form">
+          <label for="ask">Ask PANINI to look into something</label>
+          <textarea id="ask" name="text" rows="2" maxlength="2000" required></textarea>
+          <button type="submit">Send</button>
+          <p class="hint">Runs in the background on your PC with read-only research. Results arrive here.</p>
+        </form>
+        <h2>Waiting for you</h2>
+        <ul id="reviews" class="cards"></ul>
+        <h2>Inbox</h2>
+        <ul id="notices" class="cards"></ul>
+        <h2>Recent tasks</h2>
+        <ul id="tasks" class="cards"></ul>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

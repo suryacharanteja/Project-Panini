@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Jev browser demo</title>
+    <style>
+      body {
+        font: 18px system-ui;
+        margin: 4rem auto;
+        padding: 1rem;
+        max-width: 40rem;
+        background: #101722;
+        color: #e8f0ff;
+      }
+      input,
+      button {
+        font: inherit;
+        padding: 0.7rem;
+        margin: 0.5rem 0;
+      }
+      label {
+        display: block;
+      }
+      button {
+        cursor: pointer;
+      }
+      output {
+        display: block;
+        margin: 1rem 0;
+        color: #83efb4;
+      }
+      a {
+        color: #83caff;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Jev browser demo</h1>
+    <p>
+      This local form demonstrates navigation, typing and clicking. It stores and sends nothing.
+    </p>
+    <form id="demo-form">
+      <label for="demo-name">Your demo name</label
+      ><input id="demo-name" name="name" required autocomplete="off" /><button>
+        Show greeting
+      </button>
+    </form>
+    <output id="greeting" aria-live="polite">Waiting for a name.</output
+    ><a href="/browser">Back to browser control</a>
+    <script>
+      document.getElementById('demo-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        document.getElementById('greeting').textContent =
+          'Hello, ' + document.getElementById('demo-name').value + '! Browser task complete.';
+      });
+    </script>
+  </body>
+</html>

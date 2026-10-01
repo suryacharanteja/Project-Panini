@@ -1,0 +1,9 @@
+artifacts/
+node_modules/
+.venv/
+dist/
+jev-rev-search/src/routeTree.gen.ts
+package-lock.json
+frontend/public/admin/
+
+panini-core/capabilities/search/src/routeTree.gen.ts

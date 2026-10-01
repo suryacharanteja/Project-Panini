@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Search interaction fixture</title>
+    <style>
+      body {
+        font: 18px system-ui;
+        max-width: 950px;
+        margin: 30px auto;
+      }
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      textarea,
+      button {
+        font: inherit;
+        padding: 12px;
+      }
+      #suggestions {
+        min-height: 35px;
+      }
+    </style>
+  </head>
+  <body>
+    <nav id="navigation"></nav>
+    <h1>Search the test job listings</h1>
+    <form id="search-form">
+      <label for="query">Search</label>
+      <textarea id="query" name="q" role="combobox" aria-label="Search" rows="1"></textarea>
+      <button type="submit">Search jobs</button>
+      <div id="suggestions"></div>
+    </form>
+    <main id="results" aria-live="polite"></main>
+    <script>
+      for (let i = 1; i <= 22; i++) {
+        const link = document.createElement('a');
+        link.href = '#section-' + i;
+        link.textContent = 'Section ' + i;
+        document.querySelector('#navigation').append(link);
+      }
+      const query = document.querySelector('#query');
+      query.addEventListener('input', () => {
+        document.querySelector('#suggestions').textContent = query.value
+          ? 'Suggested: ' + query.value + ' manager'
+          : '';
+      });
+      document.querySelector('#search-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!query.value.trim()) return;
+        history.pushState(null, '', '?q=' + encodeURIComponent(query.value));
+        document.title = query.value + ' - Search results';
+        const heading = document.createElement('h2');
+        heading.textContent = 'Search results for ' + query.value;
+        document.querySelector('#results').replaceChildren(heading);
+        for (const title of [
+          'AI manager opening',
+          'AI engineering jobs',
+          'Applied AI research roles',
+        ]) {
+          const item = document.createElement('p');
+          const link = document.createElement('a');
+          link.href = '#job-' + title.replaceAll(' ', '-');
+          link.textContent = title;
+          item.append(link);
+          document.querySelector('#results').append(item);
+        }
+      });
+    </script>
+  </body>
+</html>

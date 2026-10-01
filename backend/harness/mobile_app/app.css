@@ -1,0 +1,143 @@
+:root {
+  --bg: #f6f7f1;
+  --ink: #293428;
+  --muted: #6c7862;
+  --card: #fff;
+  --line: #e0e6d6;
+  --accent: #62794b;
+  --warn: #c88a1d;
+  color-scheme: light dark;
+  font-family: system-ui, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151a13;
+    --ink: #e5eadc;
+    --muted: #9aa78d;
+    --card: #1f251d;
+    --line: #333d2e;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  letter-spacing: 3px;
+}
+main {
+  padding: 16px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+h1 {
+  font-size: 22px;
+}
+h2 {
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 24px 0 8px;
+}
+form {
+  display: grid;
+  gap: 10px;
+}
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--muted);
+}
+input,
+textarea {
+  font: inherit;
+  font-size: 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  width: 100%;
+}
+button {
+  font: inherit;
+  font-size: 15px;
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  min-height: 44px;
+}
+button.quiet {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line);
+}
+.cards {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+.card p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.card.attention {
+  border-left: 4px solid var(--warn);
+}
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pill {
+  justify-self: start;
+  font-size: 12px;
+  letter-spacing: 0;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: var(--line);
+}
+.pill.busy {
+  background: var(--accent);
+  color: #fff;
+}
+.hint,
+.empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+#message {
+  min-height: 1.2em;
+  color: var(--accent);
+}
+#message.bad {
+  color: #c0412b;
+}

@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JevRev Browser — Explore. Act. Converse.</title>
+    <meta name="theme-color" content="#f4f6f8" />
+    <meta
+      name="description"
+      content="JevRev: a Garuda-inspired workspace for structured intelligence, focused search and live browser action."
+    />
+    <link rel="icon" href="/brand/browser.ico" sizes="any" />
+    <script src="/brand-theme.js"></script>
+    <link rel="stylesheet" href="/brand.css" />
+    <link rel="stylesheet" href="/browser-workspace.css" />
+    <link rel="stylesheet" href="/live-voice.css" />
+  </head>
+  <body class="app-shell">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand-home" href="/" aria-label="JevRev home"
+          ><img src="/brand/jevrev.png" alt="" width="42" height="42" />
+          <div>
+            <span class="brand-word">Jev<span>Rev</span></span
+            ><span class="brand-caption">The Garuda ecosystem</span>
+          </div></a
+        >
+        <nav class="site-nav" aria-label="Main navigation">
+          <a href="/playground/compare"
+            ><img src="/brand/jevrev.png" alt="" width="24" height="24" />Compare</a
+          ><a href="/browser" aria-current="page"
+            ><img src="/brand/browser.png" alt="" width="24" height="24" />Browser</a
+          ><a href="/search"><img src="/brand/search.png" alt="" width="24" height="24" />Search</a
+          ><a href="/"
+            ><img src="/admin/brand/panini-icon-64.png" alt="" width="24" height="24" />Admin</a
+          >
+        </nav>
+        <div class="header-tools">
+          <span class="brand-motto">Speed. Precision. Control.</span
+          ><button
+            class="theme-button"
+            data-theme-toggle
+            type="button"
+            aria-label="Switch color theme"
+            title="Toggle light / dark mode"
+          >
+            <svg
+              class="theme-moon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              aria-hidden="true"
+            >
+              <path d="M20.5 14.5A9 9 0 0 1 9.5 3.5a9 9 0 1 0 11 11Z" /></svg
+            ><svg
+              class="theme-sun"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="4" />
+              <path
+                d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+    <main id="main-content" class="container" tabindex="-1">
+      <div class="page-hero browser-page-hero">
+        <div>
+          <p class="eyebrow">The wings of JevRev</p>
+          <h1>JevRev <span>Browser</span></h1>
+          <p class="intro">
+            Your intent, in motion. Speak or type, follow each action, and stay in control.
+          </p>
+        </div>
+        <img
+          class="hero-mark browser-hero-mark"
+          src="/brand/browser.png"
+          width="88"
+          height="88"
+          alt="Garuda in flight, the JevRev Browser emblem"
+        />
+      </div>
+      <section id="live-panel" class="live-panel" data-state="idle" aria-labelledby="live-title">
+        <header class="live-heading">
+          <div>
+            <h2 id="live-title">PANINI <span>Live conversation</span></h2>
+            <p>Your voice. JevRev in motion.</p>
+          </div>
+          <span id="live-connection" class="live-connection">Ready to connect</span>
+        </header>
+        <div class="live-stage">
+          <div class="live-presence" aria-hidden="true">
+            <div id="live-wave" class="live-wave"></div>
+            <div class="live-orb">
+              <span class="live-halo"></span><span class="live-orbit"></span>
+              <img src="/brand/panini.png" alt="" width="112" height="112" />
+            </div>
+          </div>
+          <p id="live-activity" class="live-activity" role="status">Ready when you are</p>
+          <p id="live-caption-speaker" class="live-caption-speaker">Speak, act, and follow up</p>
+          <p id="live-caption" class="live-caption">What would you like to do?</p>
+        </div>
+        <div class="live-work" aria-live="polite" aria-atomic="true">
+          <span class="live-work-mark" aria-hidden="true"></span>
+          <div class="live-work-copy">
+            <div class="live-work-heading">
+              <strong id="live-task-state">Browser ready</strong>
+              <span id="live-page">Choose your browser below</span>
+            </div>
+            <p id="live-task">Try: “Hey PANINI, find five AI manager jobs on LinkedIn.”</p>
+          </div>
+        </div>
+        <div id="live-feedback" class="live-feedback" hidden>
+          <strong id="live-feedback-title">Browser feedback</strong>
+          <p id="live-feedback-text"></p>
+        </div>
+        <section
+          id="live-results-section"
+          class="live-results-section"
+          aria-labelledby="live-results-title"
+          hidden
+        >
+          <h3 id="live-results-title">Results from your browser</h3>
+          <ol
+            id="live-results"
+            class="live-results"
+            aria-label="Results discussed in this conversation"
+          ></ol>
+        </section>
+        <div class="live-buttons">
+          <button
+            id="live-mute"
+            type="button"
+            class="voice-btn secondary"
+            aria-pressed="false"
+            disabled
+          >
+            Mute mic
+          </button>
+          <button id="live-stop" type="button" class="voice-btn secondary" disabled>
+            Stop browser task
+          </button>
+          <div class="live-session-control">
+            <button id="live-start" type="button" class="voice-btn">Start conversation</button>
+            <button id="live-end" type="button" class="voice-btn secondary" disabled hidden>
+              End conversation
+            </button>
+          </div>
+          <button id="live-play" type="button" class="voice-btn secondary" hidden>
+            Play voice
+          </button>
+        </div>
+        <p id="live-status" role="status">Choose your browser below, then start a conversation.</p>
+        <div id="live-wake" class="live-wake" data-state="off">
+          <div class="live-wake-overview">
+            <div class="live-wake-state">
+              <label class="live-wake-toggle">
+                <input
+                  id="live-wake-enabled"
+                  type="checkbox"
+                  aria-describedby="live-wake-help live-wake-status"
+                />
+                <span>Start with <strong>“Hey Panini”</strong></span>
+              </label>
+              <p id="live-wake-status" role="status">Off · Start a conversation with your voice.</p>
+            </div>
+            <button
+              id="live-wake-settings-toggle"
+              type="button"
+              aria-expanded="false"
+              aria-controls="live-wake-settings"
+            >
+              Wake settings
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="m6 9 6 6 6-6"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+          <div id="live-wake-settings" class="live-wake-settings" hidden>
+            <div class="live-wake-language">
+              <label for="live-wake-language">Recognition language</label>
+              <select id="live-wake-language" aria-describedby="live-wake-language-help">
+                <option value="en-US">English (US)</option>
+                <option value="en-IN">English (India)</option>
+                <option value="en-GB">English (UK)</option>
+                <option value="en-AU">English (Australia)</option>
+              </select>
+            </div>
+            <p id="live-wake-language-help">
+              Choose the English variant that best matches your pronunciation.
+            </p>
+            <p id="live-wake-help">
+              Keep this page visible. Say “Hey Panini”, then wait for Listening before your request.
+              Wake listening uses your default microphone and your browser’s speech service, which
+              may process audio online.
+            </p>
+            <details id="live-wake-details" class="live-wake-details">
+              <summary>Troubleshoot microphone</summary>
+              <p id="live-wake-diagnostic-status"></p>
+              <p id="live-wake-hints"></p>
+              <p id="live-wake-heard">Say “Hey Panini” while wake listening is on.</p>
+              <p>
+                Recognized words appear here only while troubleshooting is open and clear when
+                closed. If no words appear, check your default microphone.
+              </p>
+            </details>
+          </div>
+        </div>
+        <div class="live-secondary">
+          <details class="live-settings">
+            <summary>Microphone</summary>
+            <label for="live-device" class="sr-only">Microphone</label>
+            <select id="live-device" aria-describedby="live-device-help">
+              <option value="">Default microphone</option>
+            </select>
+            <p id="live-device-help">Choose a microphone before starting.</p>
+          </details>
+          <label class="live-motion"
+            ><input id="live-reduce-motion" type="checkbox" /> Reduce motion</label
+          >
+        </div>
+        <details id="live-history" class="live-history" hidden>
+          <summary>Conversation history <span id="live-caption-count"></span></summary>
+          <div
+            id="live-captions"
+            class="live-captions"
+            role="log"
+            aria-live="off"
+            aria-label="Conversation captions"
+          ></div>
+        </details>
+        <p class="live-privacy">
+          Microphone audio is sent to OpenAI while connected. Responses are AI-generated. Say “stop
+          the task” or “end the conversation” at any time.
+        </p>
+        <audio id="live-audio" autoplay></audio>
+      </section>
+      <div class="main-section">
+        <div class="input-card">
+          <label class="label" for="run-mode">Browser to control</label>
+          <select
+            id="run-mode"
+            onchange="onModeChanged()"
+            aria-describedby="target-help extension-state"
+          >
+            <option value="">Choose a browser…</option>
+            <option value="extension">My Chrome tabs · JevRev Claw</option>
+            <option value="chromium">Separate browser window · managed session</option>
+          </select>
+          <p id="target-help" class="note">Your choice is remembered on this device.</p>
+          <div
+            id="extension-state"
+            role="status"
+            class="note"
+            style="overflow-wrap: anywhere; margin-bottom: 16px"
+          >
+            Checking attached Chrome tab…
+          </div>
+          <p class="note" style="margin-bottom: 16px">
+            <button type="button" class="secondary" onclick="pairExtension()">
+              Pair JevRev Claw
+            </button>
+            <span id="pair-code" role="status"></span>
+          </p>
+          <div id="workspace-state" class="workspace-state" hidden></div>
+          <label class="label" for="run-policy">Run length</label>
+          <select id="run-policy" onchange="onRunPolicyChanged()" aria-describedby="run-help">
+            <option value="continuous">Until task completes · Stop anytime</option>
+            <option value="25">Up to 25 steps · 5 minutes</option>
+            <option value="100">Up to 100 steps · 15 minutes</option>
+          </select>
+          <p id="run-help" class="note" style="margin-bottom: 16px">
+            No step or time cutoff. Stops when done, blocked, disconnected, or when you press Stop.
+          </p>
+          <label class="label" for="voice-input">Type an instruction</label>
+          <textarea
+            id="voice-input"
+            maxlength="5000"
+            class="voice-input"
+            placeholder="Try: 'Go to google.com and search for Jev Rev' or 'Scroll down and click the first link' or 'Go back'"
+          ></textarea>
+          <div class="command-buttons">
+            <button id="process-btn" class="voice-btn" aria-describedby="run-readiness">
+              Run instruction
+            </button>
+            <button id="stop-btn" class="voice-btn secondary" disabled>Stop</button>
+            <button id="reset-btn" class="voice-btn secondary">Clear history</button>
+          </div>
+          <p id="run-readiness" class="note" role="status" style="overflow-wrap: anywhere"></p>
+          <details class="dictation-options" id="dictation-options">
+            <summary>Optional: dictate a text command</summary>
+            <p class="note">
+              Use this to turn speech into a command. It does not speak back. For a hands-free
+              conversation with spoken feedback, use PANINI above.
+            </p>
+            <div class="stt-bar" id="stt-bar">
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+                <span class="stt-pill off" id="stt-pill"
+                  ><span class="dot"></span><span id="stt-label">Checking voice engine…</span></span
+                >
+                <span class="note" id="stt-hint">Detecting AssemblyAI / Web Speech API</span>
+              </div>
+              <div style="display: flex; gap: 6px">
+                <button class="voice-btn secondary" onclick="checkSttStatus()">Check status</button>
+                <a
+                  href="https://www.assemblyai.com/dashboard"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="provider-link"
+                  >Get AssemblyAI Key</a
+                >
+              </div>
+            </div>
+            <div class="voice-controls">
+              <button id="record-btn" class="voice-btn">Record a command</button>
+              <button
+                id="record-assembly-btn"
+                class="voice-btn secondary"
+                title="Transcribe after recording"
+              >
+                AssemblyAI
+              </button>
+              <button
+                id="record-webspeech-btn"
+                class="voice-btn secondary"
+                title="Live transcript, completed utterances run in order"
+              >
+                Web Speech
+              </button>
+            </div>
+            <p class="note">
+              AssemblyAI transcribes a recording when you stop. Web Speech sends completed phrases
+              as commands. These options are separate from the live conversation.
+            </p>
+            <div id="stt-debug" role="status" class="note"></div>
+          </details>
+        </div>
+
+        <div class="decision-panel">
+          <div class="decision-header">Action timeline</div>
+          <div id="decision-actions">
+            <div class="empty-state">
+              Your actions will appear here. Choose a browser, then speak or type an instruction.
+            </div>
+          </div>
+        </div>
+
+        <div class="context-card">
+          <div class="label">Controlled page</div>
+          <div class="screenshot-area" id="screenshot">
+            <span>Choose a browser target to begin</span>
+          </div>
+          <div id="page-url">Ready to navigate</div>
+          <div class="status-controls">
+            <button
+              class="voice-btn secondary"
+              onclick="refreshExtensionState().then(fetchBrowserStatus)"
+            >
+              Refresh status
+            </button>
+            <span id="browser-mode">Checking…</span>
+          </div>
+          <div class="browser-status">
+            <span class="status-indicator" id="status-indicator"></span
+            ><span id="status-text" role="status">Choose a browser target to begin</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions-section">
+        <div class="stats-panel">
+          <div class="decision-header">Session metrics</div>
+          <div class="stat-row">
+            <span class="stat-label">Total Actions</span
+            ><span class="stat-value" id="stat-actions">0</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Avg Jev Latency</span
+            ><span class="stat-value" id="stat-latency">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Total Cost (Jev)</span
+            ><span class="stat-value" id="stat-cost">$0.00</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Avg Confidence</span
+            ><span class="stat-value" id="stat-confidence">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">STT Engine</span
+            ><span class="stat-value" id="stat-stt">—</span>
+          </div>
+          <div class="note" style="margin-top: 8px">
+            Jev cost is shown separately. Proposer and speech provider usage are additional.
+          </div>
+        </div>
+      </div>
+    </main>
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-story">
+          <p>
+            <strong>Inspired by Garuda. Built to move ideas forward.</strong>JevRev brings
+            structured intelligence, browser action and focused search into one workspace. Wings to
+            explore. Eyes to discover. A claw to take action — with you in control.
+          </p>
+          <nav class="ecosystem" aria-label="Explore JevRev">
+            <a href="/browser"
+              ><img src="/brand/browser.png" alt="" width="28" height="28" />Browser</a
+            ><a href="/search"
+              ><img src="/brand/search.png" alt="" width="28" height="28" />Search</a
+            >
+          </nav>
+        </div>
+        <div class="footer-bottom">
+          <span>© 2026 JevRev. All rights reserved.</span
+          ><span
+            >Designed and developed by <strong>CharanTheAiGuy</strong> ·
+            <a href="https://ndimensions.ai" target="_blank" rel="noopener noreferrer"
+              >nDimensions.AI ↗</a
+            ></span
+          >
+        </div>
+      </div>
+    </footer>
+    <script src="browser-use.js"></script>
+    <script type="module" src="/live-voice.mjs"></script>
+  </body>
+</html>

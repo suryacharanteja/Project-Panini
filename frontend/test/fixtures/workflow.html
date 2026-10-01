@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Continuous workflow test</title>
+  <style>
+    body {
+      font: 20px system-ui;
+      padding: 40px;
+    }
+    button {
+      font: inherit;
+      padding: 16px;
+    }
+  </style>
+  <h1>Complete the workflow</h1>
+  <p id="progress" aria-live="polite"></p>
+  <div id="controls"></div>
+  <script>
+    const goal = Number(new URL(location.href).searchParams.get('goal')) || 12;
+    let completed = 0;
+    function render() {
+      document.querySelector('#progress').textContent =
+        completed === goal
+          ? `All ${goal} stages completed successfully.`
+          : `${completed} of ${goal} stages completed. Click Next stage to advance.`;
+      const controls = document.querySelector('#controls');
+      controls.replaceChildren();
+      if (completed < goal) {
+        const button = document.createElement('button');
+        button.textContent = `Next stage (${completed + 1} of ${goal})`;
+        button.onclick = () => {
+          completed++;
+          render();
+        };
+        controls.append(button);
+      }
+      document.body.dataset.completed = String(completed);
+    }
+    render();
+  </script>
+</html>

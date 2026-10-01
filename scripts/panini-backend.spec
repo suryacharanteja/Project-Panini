@@ -1,0 +1,54 @@
+from pathlib import Path
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
+
+root = Path(SPECPATH).parent
+datas, binaries, hiddenimports = [(str(root / "backend/tasks.json"), "backend")], [], []
+# Built-in agent skills are data files (SKILL.md), not modules.
+datas += [
+    (str(p), str(p.parent.relative_to(root)))
+    for p in (root / "backend/harness/builtin_skills").rglob("SKILL.md")
+]
+# The phone companion's static app.
+datas += [
+    (str(p), "backend/harness/mobile_app")
+    for p in (root / "backend/harness/mobile_app").iterdir()
+    if p.is_file()
+]
+for package in ("browser_use", "panini", "uvicorn", "bubus", "cdp_use"):
+    data, binary, imports = collect_all(package)
+    datas += data
+    binaries += binary
+    hiddenimports += imports
+hiddenimports += collect_submodules("backend", filter=lambda name: ".tests" not in name)
+hiddenimports += collect_submodules("panini_cli")
+hiddenimports += collect_submodules("panini_browser")
+for package in ("browser-use", "pydantic", "openai", "httpx", "fastapi"):
+    datas += copy_metadata(package)
+a = Analysis(
+    [str(root / "scripts/panini-backend-entry.py")],
+    pathex=[
+        str(root),
+        str(root / "panini-core/voice/live-spoken-conversation"),
+        str(root / "panini-core/capabilities/cli/src"),
+        str(root / "panini-core/capabilities/browser/runtime"),
+    ],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
+    excludes=["backend.tests", "pytest", "ruff", "pip", "tkinter"],
+    noarchive=False,
+)
+pyz = PYZ(a.pure)
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name="Panini.Backend",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=True,
+)
+coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="Panini.Backend")

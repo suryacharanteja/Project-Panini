@@ -1,0 +1,218 @@
+{
+  "experiments": [
+    {
+      "id": "support-triage",
+      "name": "Support Triage — SaaS Ticket Router",
+      "description": "Evaluate billing, technical issues, urgency, escalation and churn risk independently in support tickets.",
+      "category": "operations",
+      "questions": {
+        "is_billing_issue": {
+          "type": "boolean",
+          "instructions": "Is this ticket about billing, payments, invoices, charges, refunds, or subscription/pricing?"
+        },
+        "is_technical_issue": {
+          "type": "boolean",
+          "instructions": "Is this ticket reporting a technical bug, error, outage, or product not working as expected?"
+        },
+        "is_urgent": {
+          "type": "boolean",
+          "instructions": "Does this ticket indicate urgency — service down, blocking work, or customer explicitly says urgent/ASAP?"
+        },
+        "needs_escalation": {
+          "type": "boolean",
+          "instructions": "Should this ticket be escalated to engineering or a senior agent (not solvable by L1 support)?"
+        },
+        "is_churn_risk": {
+          "type": "boolean",
+          "instructions": "Does this message suggest the customer may cancel or churn (mentions leaving, competitor, very frustrated, 'last chance')?"
+        }
+      },
+      "examples": [
+        "Hi team, our production API has been returning 500 errors for the last 45 minutes and our customers are affected. This is blocking our launch — need urgent escalation to engineering. We're considering alternatives if not fixed today.",
+        "Hello, I was charged twice on my invoice #INV-8842 for $299. The duplicate charge appeared yesterday. Can you please refund the extra payment? Account: acme-corp@acme.com",
+        "Hey, I can't log in since the password reset yesterday. I tried clearing cache and different browsers. It's not urgent, just my account. Thanks for checking when you have time.",
+        "We've been happy for 2 years but this is the third billing error this quarter. If this isn't resolved and compensated, we'll need to evaluate other vendors before renewal next month."
+      ]
+    },
+    {
+      "id": "email-security",
+      "name": "Email Threat Detection",
+      "description": "Evaluate phishing signals, suspicious links or requests, and legitimate correspondence in sample emails.",
+      "category": "security",
+      "questions": {
+        "is_phishing": {
+          "type": "boolean",
+          "instructions": "Is this email a phishing attempt, scam, or deceptive message trying to steal credentials, money, or sensitive info?"
+        },
+        "has_malicious_link_or_request": {
+          "type": "boolean",
+          "instructions": "Does this email contain a suspicious link, attachment, urgent wire-transfer request, or asks to verify account via clicking?"
+        },
+        "is_safe_legitimate": {
+          "type": "boolean",
+          "instructions": "Is this a normal legitimate personal or work email without deception or threat?"
+        }
+      },
+      "examples": [
+        "Subject: Action Required: Verify your Microsoft 365 account\n\nDear user, your mailbox is almost full. Click here to verify within 24h or your account will be suspended: http://microsof-365-secure-login.com/verify",
+        "Subject: Wire transfer needed\n\nHi Sarah, per our CEO's request, please wire $48,500 to account 987654321 by EOD. This is confidential. — John (CFO) — Sent from my iPhone",
+        "Subject: Lunch tomorrow? \n\nHey Alex, are we still on for lunch tomorrow at 12:30 near the downtown cafe? Let me know if you need to reschedule. — Priya",
+        "Subject: Invoice #4829 Overdue\n\nHi team, friendly reminder that invoice #4829 for $1,200 is due next week. Let me know if you have any questions. Best, accounting@vendor.com"
+      ]
+    },
+    {
+      "id": "content-moderation",
+      "name": "Trust & Safety — Content Moderation",
+      "description": "Evaluate toxicity, harassment, spam and self-harm signals against the supplied questions.",
+      "category": "trust-safety",
+      "questions": {
+        "is_toxic": {
+          "type": "boolean",
+          "instructions": "Does this content contain toxic language, hate, severe profanity, or personal attacks?"
+        },
+        "is_harassment": {
+          "type": "boolean",
+          "instructions": "Does this content harass, bully, threaten, dox, or target a specific person or group?"
+        },
+        "is_spam": {
+          "type": "boolean",
+          "instructions": "Is this content spam, unsolicited promotion, scam, or repetitive low-quality promotion?"
+        },
+        "is_self_harm": {
+          "type": "boolean",
+          "instructions": "Does this content express self-harm, suicidal ideation, or disordered eating intent?"
+        },
+        "is_safe": {
+          "type": "boolean",
+          "instructions": "Is this content safe, benign, and appropriate for a general audience with no policy violation?"
+        }
+      },
+      "examples": [
+        "You are a worthless idiot and everyone knows it. Go away and never post again — you're a waste of space.",
+        "Hey everyone! Check my new crypto giveaway — click bit.ly/freecoins now to get $500 free!!! Limited time!!!",
+        "I can't do this anymore. I feel hopeless and have been thinking about ending it. Is anyone there?",
+        "Great article! I found the section on caching very helpful. Perhaps you could also cover Redis vs Memcached differences in the next post?"
+      ]
+    },
+    {
+      "id": "emergency-dispatch",
+      "name": "911 Emergency Dispatch Router",
+      "description": "Explore routing signals in fictional emergency transcripts. This demonstration is not an operational dispatch system.",
+      "category": "decision",
+      "questions": {
+        "is_fire_emergency": {
+          "type": "boolean",
+          "instructions": "Is this an emergency involving fire, smoke, gas leak, explosion, or burn risk needing Fire Dept?"
+        },
+        "is_medical_emergency": {
+          "type": "boolean",
+          "instructions": "Is this a medical emergency needing ambulance — person injured, unconscious, chest pain, bleeding, or struggling to breathe?"
+        },
+        "is_police_emergency": {
+          "type": "boolean",
+          "instructions": "Is this an emergency involving crime, violence, weapons, intrusion, or immediate police need?"
+        },
+        "has_multiple_victims": {
+          "type": "boolean",
+          "instructions": "Does this emergency involve multiple people hurt, trapped, or in danger (not just one person)?"
+        },
+        "caller_in_immediate_danger": {
+          "type": "boolean",
+          "instructions": "Is the caller themselves currently in immediate physical danger or trapped?"
+        }
+      },
+      "examples": [
+        "Operator, there's a fire in the warehouse on 4th and Main — thick black smoke, alarms going off, I'm still inside with two coworkers near the loading dock, we can't get to the exit!",
+        "My husband is 58, collapsed in the kitchen, he's unconscious and not breathing properly, his face looks pale — please send an ambulance fast, address is 1420 Oak Drive.",
+        "There's an armed man in the corner store on Elm Street threatening the cashier with a gun, customers are on the floor — please send police immediately!",
+        "My neighbor's carbon monoxide alarm is beeping and she feels dizzy and nauseous, the whole apartment smells like gas — we evacuated but she's still feeling sick."
+      ]
+    },
+    {
+      "id": "code-review",
+      "name": "Code Review Guard — PR Risk",
+      "description": "Evaluate code changes for secrets, dangerous operations and other review risks.",
+      "category": "security",
+      "questions": {
+        "breaks_api_contract": {
+          "type": "boolean",
+          "instructions": "Does this code change break a public API or contract in a backward-incompatible way (renamed/removed endpoint, changed response shape without versioning)?"
+        },
+        "has_secret_leak": {
+          "type": "boolean",
+          "instructions": "Does this change introduce a hardcoded secret, API key, password, token, or credentials in code or config?"
+        },
+        "dangerous_operation": {
+          "type": "boolean",
+          "instructions": "Does this change include a dangerous operation like mass deletion (rm -rf), unvalidated shell execution, raw SQL from user input, or destructive DB migration?"
+        },
+        "has_disabled_tests": {
+          "type": "boolean",
+          "instructions": "Does this change disable, skip, comment out, or delete tests to make CI pass without fixing underlying issues?"
+        }
+      },
+      "examples": [
+        "PR: Changed GET /api/v1/users to GET /api/users and removed the v1 backward-compatibility shim. All clients must migrate immediately.",
+        "PR: Added config.py line: STRIPE_SECRET_KEY = 'sk_live_51H7x8...production_key_here' and committed to repo.",
+        "PR: Added utils/cleanup.py: os.system('rm -rf ' + user_supplied_path) without any validation or sanitization, called from API endpoint.",
+        "PR: Deleted 42 failing tests and added @pytest.mark.skip to 18 more to 'unblock CI' before release."
+      ]
+    },
+    {
+      "id": "invoice-risk",
+      "name": "Finance — Invoice Risk Review",
+      "description": "Evaluate fictional invoices for discrepancies and review signals.",
+      "category": "finance",
+      "questions": {
+        "has_missing_fields": {
+          "type": "boolean",
+          "instructions": "Does this invoice lack required fields — missing vendor, invoice number, date, line items, or total?"
+        },
+        "has_amount_mismatch": {
+          "type": "boolean",
+          "instructions": "Is there an amount mismatch — line items sum doesn't equal total, tax miscalc, or currency inconsistency?"
+        },
+        "is_likely_duplicate": {
+          "type": "boolean",
+          "instructions": "Is this likely a duplicate invoice — same vendor, invoice number, date and amount as a prior invoice?"
+        },
+        "needs_manual_review": {
+          "type": "boolean",
+          "instructions": "Should this invoice be flagged for manual human review due to risk, anomaly, or policy exception?"
+        }
+      },
+      "examples": [
+        "Invoice INV-2024-0842 | Vendor: Acme Supplies | Date: 2024-09-10 | Line: 100x Widgets @ $5 = $500 | Total: $750 (no tax/shipping breakdown, total mismatch)",
+        "Invoice from Global Parts — no invoice number, no date, just a total $12,400 with a note 'for services' and a bank account for wire transfer.",
+        "Invoice INV-8891 | Vendor: OfficeMax | Date: 2024-08-15 | Total: $1,200 | Note: This is the second submission of INV-8891 same date/amount (already paid Aug 15).",
+        "Invoice INV-7721 | Vendor: TechParts Inc | Date: 2024-09-12 | Line items: 2× Server @ $3000 = $6000, Tax: $480 (8%), Shipping: $0, Total: $6480 — all fields present and math checks out."
+      ]
+    },
+    {
+      "id": "sentiment",
+      "name": "E-commerce Sentiment & Review",
+      "description": "Evaluate positive, negative and neutral sentiment in product reviews.",
+      "category": "basic",
+      "questions": {
+        "positive": {
+          "type": "boolean",
+          "instructions": "Does this text express positive sentiment, praise, delight, or satisfaction about the product/service?"
+        },
+        "negative": {
+          "type": "boolean",
+          "instructions": "Does this text express negative sentiment, disappointment, complaint, or dissatisfaction?"
+        },
+        "neutral": {
+          "type": "boolean",
+          "instructions": "Is this text neutral, factual, mixed, or neither clearly positive nor negative?"
+        }
+      },
+      "examples": [
+        "Absolutely love this coffee machine! The build quality is fantastic, it heats up in 20 seconds and the crema is perfect every time. Best purchase I've made this year — 5 stars, will recommend to friends.",
+        "Ordered the headphones and they arrived with a broken hinge. Customer support took 5 days to reply and offered only a partial refund. Very disappointed for a $199 product.",
+        "The package arrived on time. The item looks as described. I haven't used it extensively yet, so I can't comment on durability — it's okay for now, does the job.",
+        "This product is amazing! Best purchase ever — exceeded expectations on every front and support was stellar."
+      ]
+    }
+  ]
+}

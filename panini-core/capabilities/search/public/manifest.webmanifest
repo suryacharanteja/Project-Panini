@@ -1,0 +1,61 @@
+{
+  "id": "/search/",
+  "name": "JevRev Search",
+  "short_name": "JevRev Search",
+  "description": "The eyes of JevRev. Focused search, ranked sources and linked evidence with AI summaries.",
+  "start_url": "/search/",
+  "scope": "/search/",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#f4f6f8",
+  "lang": "en",
+  "dir": "ltr",
+  "orientation": "any",
+  "categories": [
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/search/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/search/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/search/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New search",
+      "url": "/search/",
+      "icons": [
+        {
+          "src": "/search/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "share_target": {
+    "action": "/search/results",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "text": "q"
+    }
+  },
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  }
+}

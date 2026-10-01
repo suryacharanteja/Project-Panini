@@ -1,0 +1,268 @@
+================================================================================
+PANINI ICON SIZES & SPECIFICATIONS
+Voice-First Windows Assistant
+================================================================================
+
+WINDOWS APPLICATION ICONS
+==========================
+
+FAVICON SET (Web)
+-----------------
+16x16px   - Browser tabs, favorites bar, URL bar
+  Format: ICO, PNG
+  Colors: Full gradient (or monochromatic for simplicity)
+  Notes: Keep design clean and readable at small size
+  
+32x32px   - Legacy favicon support, toolbar icons
+  Format: ICO, PNG
+  Colors: Full gradient
+  Notes: Still required for older browser compatibility
+  
+64x64px   - High-resolution displays
+  Format: PNG
+  Colors: Full gradient
+  Notes: Modern browsers prefer this size
+
+APP ICONS (Desktop Application)
+-------------------------------
+16x16px   - Taskbar (compressed size)
+  Format: ICO, PNG
+  Style: Simplified, monochromatic or gradient
+  Notes: Minimal detail, clear and recognizable
+  
+32x32px   - Taskbar standard, system tray
+  Format: ICO, PNG
+  Style: Gradient with some detail
+  Notes: Most visible taskbar size
+  
+48x48px   - Windows explorer, file associations
+  Format: ICO, PNG
+  Style: Full detail, balanced design
+  Notes: Common in file dialogs
+  
+64x64px   - App launcher, context menus
+  Format: PNG
+  Style: Full gradient and detail
+  Notes: Good balance of detail and performance
+  
+128x128px - Installation wizard, application menus
+  Format: PNG
+  Style: Full detail, maximum clarity
+  Notes: Premium display quality
+  
+256x256px - Tile previews, high-DPI displays
+  Format: PNG
+  Style: Maximum detail and quality
+  Notes: Used for Windows 10/11 Start menu tiles
+  
+512x512px - Promotional materials, store listings
+  Format: PNG
+  Style: Maximum detail, ultra-high quality
+  Notes: Microsoft Store, Windows Gallery, marketing
+
+TILE ICONS (Windows Start Menu)
+-------------------------------
+128x128px - Small tile (2x2)
+  Format: PNG
+  Style: Optimized for small display
+  Notes: Square format, centered icon
+  
+256x256px - Medium tile (4x4)
+  Format: PNG
+  Style: Full detail medium display
+  Notes: Recommended primary tile size
+  
+512x512px - Large tile (8x8) / Splash screen
+  Format: PNG
+  Style: Maximum detail and clarity
+  Notes: Promotional quality
+
+NOTIFICATION ICONS
+-------------------
+16x16px   - Status bar, system tray badges
+  Format: PNG
+  Style: Simplified, monochromatic
+  Notes: Extreme simplification, core symbol only
+  
+32x32px   - Toast notifications, system alerts
+  Format: PNG
+  Style: Simplified gradient
+  Notes: Quick recognition needed
+  
+48x48px   - Windows notifications, action center
+  Format: PNG
+  Style: Clear detail
+  Notes: Better legibility than smaller sizes
+
+HIGH-DPI / RETINA DISPLAYS
+===========================
+
+Scale factors: 100%, 125%, 150%, 175%, 200%
+
+For each base icon size, generate:
+- 100%: Base size (e.g., 256x256px)
+- 125%: 1.25x (e.g., 320x320px)
+- 150%: 1.5x (e.g., 384x384px)
+- 175%: 1.75x (e.g., 448x448px)
+- 200%: 2x (e.g., 512x512px)
+
+Example DPI Scaling:
+  16px → 16 / 32 / 48 / 56 / 64px
+  32px → 32 / 64 / 96 / 112 / 128px
+  48px → 48 / 96 / 144 / 168 / 192px
+  64px → 64 / 128 / 192 / 224 / 256px
+  128px → 128 / 256 / 384 / 448 / 512px
+
+MOBILE & CROSS-PLATFORM
+========================
+
+iOS (Apple)
+-----------
+180x180px - iPhone app icon
+120x120px - iPhone Spotlight search
+167x167px - iPad Pro
+152x152px - iPad
+1024x1024px - App Store listing
+
+Android
+-------
+192x192px - HDPI display
+288x288px - XHDPI display
+432x432px - XXHDPI display
+512x512px - Google Play Store listing
+
+Web Progressive App (PWA)
+-------------------------
+192x192px - PWA home screen (Android)
+512x512px - PWA splash screen
+
+PLATFORM-SPECIFIC FORMATS
+==========================
+
+Windows ICO Format
+------------------
+Single file with multiple resolutions:
+- 16x16px
+- 32x32px
+- 48x48px
+- 64x64px
+(Optional: 128x128px, 256x256px for modern systems)
+
+Format Requirements:
+- 32-bit color depth (RGBA)
+- PNG compression within ICO
+- Alpha channel for transparency
+
+macOS ICNS Format
+-----------------
+16x16px, 32x32px, 64x64px, 128x128px, 256x256px, 512x512px, 1024x1024px
+
+Android Adaptive Icon
+---------------------
+- Foreground: 108x108dp (with 72dp safe zone)
+- Background: Solid color or gradient
+- Combine gradient icon with solid navy background
+
+EXPORT SETTINGS
+================
+
+PNG Export
+----------
+- Color Space: RGB (sRGB)
+- Bit Depth: 32-bit RGBA
+- Compression Level: 9 (maximum)
+- Interlacing: Adam7
+- Metadata: Remove for web optimization
+- Quality Assurance: No artifacts at intended size
+
+JPEG Export (Web Only)
+----------------------
+- Quality: 85-95%
+- Color Profile: sRGB
+- Optimization: Progressive
+- Note: Use PNG instead for icons (needs transparency)
+
+SVG Export
+----------
+- Color Space: RGB
+- Preserve Gradients: Yes
+- Convert text to paths: Yes
+- Embed fonts: Not needed
+- Optimize: Yes (remove metadata)
+- Viewbox: 0 0 256 256 (or proportional)
+
+WebP Export
+-----------
+- Quality: 90%
+- Method: 6
+- Lossless: No (use lossy for smaller file size)
+- Supports: Modern browsers only
+
+QUALITY STANDARDS
+==================
+
+Visual Quality Checklist:
+✓ No pixelation or jagged edges at intended size
+✓ Gradient smooth transitions (no banding)
+✓ Central question mark clearly visible
+✓ Network pattern maintains structure
+✓ Proper contrast on dark background
+✓ Consistent line weights
+✓ No anti-aliasing artifacts
+
+File Size Guidelines:
+- 16px-48px: <2 KB
+- 64px-128px: <5 KB
+- 256px: <10 KB
+- 512px: <20 KB
+- Target: Optimize with TinyPNG, ImageOptim
+
+NAMING CONVENTION
+=================
+
+Recommended file naming:
+- panini-icon-16.png
+- panini-icon-32.png
+- panini-icon-48.png
+- panini-icon-64.png
+- panini-icon-128.png
+- panini-icon-256.png
+- panini-icon-512.png
+- panini-icon.ico (multi-res)
+- panini-icon.svg (vector)
+
+Variant naming:
+- panini-icon-circular-48.png
+- panini-icon-monochrome-16.png
+- panini-icon-white-48.png
+
+IMPLEMENTATION CHECKLIST
+========================
+
+Windows Application:
+☐ ICO file with 16, 32, 48, 64px versions
+☐ 256x256px PNG for installer
+☐ Taskbar icon tested at 32x32px
+☐ Notification icons at 32px and 48px
+☐ Tile icons at 128px, 256px, 512px
+☐ High-DPI variants (125%, 150%, 200%)
+
+Web Implementation:
+☐ favicon.ico (16x16, 32x32 multi-res)
+☐ favicon-32.png
+☐ favicon-64.png
+☐ favicon-180.png (Apple touch icon)
+☐ svg favicon
+☐ Open Graph preview image (1200x630px)
+☐ Twitter Card image (1200x675px)
+
+Cross-Platform:
+☐ iOS icons (120, 152, 167, 180, 1024px)
+☐ Android icons (192, 288, 432, 512px)
+☐ PWA icons (192, 512px)
+☐ Adaptive icon foreground/background
+
+================================================================================
+Last Updated: September 25, 2026
+Version: 1.0
+================================================================================
