@@ -224,6 +224,35 @@ export function Avatar({
       const yaw = still ? 0.25 : Math.sin(time * 0.35) * 0.3 + leanX * 0.45;
       const pitch = still ? 0 : Math.sin(time * 0.23) * 0.06 + leanY * 0.25;
 
+      // Spatial shell: a transparent latitude field behind the living emblem.
+      if (stage) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        const radius = scale * 1.38;
+        const rotation = still ? 0.18 : time * 0.025 + leanX * 0.08;
+        ctx.rotate(rotation);
+        ctx.strokeStyle = rgba(GLOW, 0.075);
+        ctx.lineWidth = 0.7;
+        for (let latitude = -3; latitude <= 3; latitude++) {
+          const offset = latitude / 4;
+          const reach = Math.sqrt(1 - offset * offset) * radius;
+          ctx.beginPath();
+          ctx.ellipse(0, offset * radius * 0.88, reach, reach * 0.17, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        for (let meridian = 0; meridian < 5; meridian++) {
+          ctx.beginPath();
+          ctx.ellipse(0, 0, radius * (0.18 + meridian * 0.18), radius, 0.28, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        const aura = ctx.createRadialGradient(0, 0, radius * 0.12, 0, 0, radius * 1.2);
+        aura.addColorStop(0, rgba(tone, s === 'listening' || s === 'working' ? 0.12 : 0.055));
+        aura.addColorStop(1, rgba(tone, 0));
+        ctx.fillStyle = aura;
+        ctx.fillRect(-radius * 1.2, -radius * 1.2, radius * 2.4, radius * 2.4);
+        ctx.restore();
+      }
+
       // Tilted orbital layers give the emblem depth without obscuring its silhouette.
       if (stage) {
         ctx.save();

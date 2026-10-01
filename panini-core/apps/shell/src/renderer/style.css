@@ -1542,3 +1542,102 @@ main.stage {
 .stage .panel-title {
   letter-spacing: 1px;
 }
+
+/* Spatial command surface: luminous instruments suspended around the central core. */
+main.stage {
+  background:
+    radial-gradient(ellipse at 48% 33%, #4b30202b, transparent 54%),
+    linear-gradient(180deg, #07090d, #101014 68%, #07080b);
+}
+.stage .stage-backdrop::after {
+  content: '';
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: 4%;
+  height: 30%;
+  background:
+    linear-gradient(#e8b89a0d 1px, transparent 1px),
+    linear-gradient(90deg, #e8b89a0d 1px, transparent 1px);
+  background-size: 54px 38px;
+  transform: perspective(380px) rotateX(58deg);
+  transform-origin: bottom;
+  mask-image: linear-gradient(transparent, #0008);
+  pointer-events: none;
+}
+.stage .lexicon,
+.stage .quadrants,
+.stage .conversation,
+.stage .controls {
+  border-radius: 4px 22px 4px 22px;
+  border-color: #d4905a40;
+  background: linear-gradient(145deg, #252126b0, #0b0d12ed 65%);
+  box-shadow:
+    inset 0 1px #ffe8cd13,
+    inset 2px 0 #b8733315,
+    0 20px 60px #00000040;
+}
+.stage .conversation {
+  border-top: 2px solid #d4905a66;
+}
+.stage .engine::before {
+  border-color: #e8b89a30;
+  box-shadow: 0 0 80px #b8733314;
+}
+.interaction-orbit {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 48%;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.interaction-orbit span {
+  font:
+    10px 'JetBrains Mono',
+    monospace;
+  letter-spacing: 3px;
+  color: #d6ad8b;
+  padding: 8px 10px;
+  border-top: 1px solid #b8733360;
+}
+.interaction-orbit span:nth-child(2) {
+  transform: translateY(-210px);
+}
+.core-affordance {
+  font-size: 12px;
+  color: #b9b9c3;
+  margin-top: 6px;
+}
+.stage .engine.state-listening::before,
+.stage .engine.state-working::before {
+  border-color: #ffbf0060;
+  box-shadow: 0 0 70px #ffbf0010;
+}
+.stage .engine.state-approval::before {
+  border-color: #ffbf00;
+}
+.stage .engine.state-success::before {
+  border-color: #d4af3780;
+}
+.stage .quadrant {
+  border-radius: 3px 14px 3px 14px;
+}
+.stage .quadrant.selected {
+  border-color: #e8b89a;
+}
+.stage .controls textarea {
+  font-size: 15px;
+}
+.stage .controls {
+  border-top: 2px solid #b8733360;
+}
+.stage header .brand strong {
+  color: #f1c8a7;
+}
+@media (max-width: 1100px) {
+  .interaction-orbit {
+    display: none;
+  }
+}

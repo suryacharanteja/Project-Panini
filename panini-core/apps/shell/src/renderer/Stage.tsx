@@ -315,11 +315,11 @@ export function Engine({
         />
       </div>
       <section
-        className="engine"
+        className={`engine state-${state}`}
         aria-label={`PANINI is ${STATE_CAPTIONS[state][1].toLowerCase()}`}
       >
         <div className="panel-title">
-          2. ENGINE <span>(AṢṬĀDHYĀYĪ)</span>
+          PANINI <span> / AṢṬĀDHYĀYĪ</span>
         </div>
         <button
           type="button"
@@ -329,9 +329,19 @@ export function Engine({
           aria-label={listening ? 'Select the core to end the call' : 'Select the core to talk'}
           title={listening ? 'Select the core to end the call' : 'Select the core to talk'}
         />
+        <div className="interaction-orbit" aria-hidden="true">
+          <span>VOICE</span>
+          <span>CONTEXT</span>
+          <span>ACTION</span>
+        </div>
         <div className="engine-caption">
           <strong>{STATE_CAPTIONS[state][0]}</strong>
           <span>{STATE_CAPTIONS[state][1]}</span>
+          <small className="core-affordance">
+            {listening
+              ? 'Select the core to end your call'
+              : 'Speak or type. Select the core to talk.'}
+          </small>
         </div>
       </section>
     </>
