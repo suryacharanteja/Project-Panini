@@ -5,7 +5,7 @@ import { ExecutionPanel } from './ExecutionPanel';
 import { ComputerUsePanel, PanelBoundary } from './ComputerUsePanel';
 import { Avatar, type AvatarState, levelMeter } from './avatar/Avatar';
 import { avatarStateFor } from './avatar/state';
-import { Capabilities, Engine, Lexicon, StageTitle } from './Stage';
+import { Backdrop, Capabilities, Engine, Lexicon, StageTitle } from './Stage';
 
 declare global {
   interface Window {
@@ -472,6 +472,7 @@ function App() {
     >
       {staged && (
         <>
+          <Backdrop />
           <Engine
             state={avatarState}
             capability={activeCap}
@@ -482,28 +483,18 @@ function App() {
             listening={mic}
             onActivate={() => void (mic ? closeMic() : startMic())}
           />
-          <aside className="workspace-details" aria-label="Workspace details">
-            <details>
-              <summary>
-                Tools · {caps.filter((c: any) => c.state === 'ready').length} connected
-              </summary>
-              <Capabilities
-                caps={caps}
-                active={activeCap}
-                state={avatarState}
-                selected={capability}
-                onSelect={setCapability}
-                registerAnchor={(id, element) => {
-                  // React 19 treats a ref callback's return value as its cleanup: return nothing.
-                  anchors.current[id] = element;
-                }}
-              />
-            </details>
-            <details>
-              <summary>Advanced diagnostics</summary>
-              <Lexicon log={log} caps={caps} />
-            </details>
-          </aside>
+          <Lexicon log={log} caps={caps} />
+          <Capabilities
+            caps={caps}
+            active={activeCap}
+            state={avatarState}
+            selected={capability}
+            onSelect={setCapability}
+            registerAnchor={(id, element) => {
+              // React 19 treats a ref callback's return value as its cleanup: return nothing.
+              anchors.current[id] = element;
+            }}
+          />
         </>
       )}
       {!open && (
@@ -584,20 +575,20 @@ function App() {
       {open && (
         <>
           <section className="conversation">
-            <div className="eyebrow">Conversation</div>
+            <div className="eyebrow">YOUR CONVERSATION</div>
             <h1>
               {phase === 'completed'
-                ? 'Work complete.'
+                ? 'All set.'
                 : phase === 'needs_input'
                   ? 'One detail to continue.'
                   : phase === 'blocked' && outcome === 'partial'
                     ? 'Ready for your review.'
                     : phase === 'blocked'
-                      ? 'This task needs attention.'
+                      ? 'A little help needed.'
                       : phase === 'awaiting_confirmation'
-                        ? 'Review this action.'
+                        ? 'Your confirmation.'
                         : !terminal
-                          ? 'Work in progress.'
+                          ? 'On it.'
                           : 'Let’s get something done.'}
             </h1>
             <p className="message" role="status" aria-live="polite">

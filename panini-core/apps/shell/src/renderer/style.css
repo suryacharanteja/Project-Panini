@@ -1312,191 +1312,144 @@ main.capsule > header {
   transform: translateY(-1px);
   outline: none;
 }
-/* Conversation-first workspace. Supplemental tools and diagnostics are opt-in. */
+
+/* Immersive instrument stage: copper light, layered glass and quiet technical detail. */
 main.stage {
-  grid-template-columns: minmax(0, 760px) minmax(240px, 300px);
-  grid-template-rows: 64px minmax(280px, 1fr) auto auto;
-  grid-template-areas: 'head head' 'conv engine' 'dock details' 'foot details';
-  justify-content: center;
-  gap: 20px;
-  padding: 0 28px 24px;
-  background: #101013;
-  overflow-y: auto;
+  background:
+    radial-gradient(ellipse at 50% 36%, #b873331c, transparent 56%),
+    radial-gradient(ellipse at 80% 90%, #d4af3708, transparent 45%),
+    linear-gradient(160deg, #111114, #08080b 65%);
 }
-.stage .conversation {
-  background: #161619;
-  padding: 28px;
-}
-.stage .conversation h1 {
-  font-size: 30px;
-  line-height: 1.25;
-}
-.stage .message {
-  font-size: 16px;
-  line-height: 1.65;
-}
-.stage .controls {
-  width: 100%;
-  background: #161619;
-  padding: 18px;
-}
+.stage .lexicon,
+.stage .quadrants,
+.stage .conversation,
+.stage .controls,
 .stage footer {
-  background: transparent;
-  border: 0;
-  padding: 0;
+  background: linear-gradient(135deg, #202024c9, #101014e8);
+  border-color: #b8733338;
+  box-shadow:
+    inset 0 1px 0 #e8b89a0b,
+    0 12px 32px #00000030;
 }
-.stage-title {
-  align-items: flex-start;
+.stage .panel-title {
+  color: #e8b89a;
+  letter-spacing: 1.6px;
+  font-size: 12px;
 }
-.stage-title span {
-  font-size: 14px;
-  letter-spacing: 0;
-  font-weight: 500;
-  color: #b9b9c3;
-}
-.stage-title small {
-  display: none;
+.stage .panel-title span {
+  color: #aaaab4;
 }
 .stage .engine {
-  justify-content: center;
-  gap: 12px;
-  padding: 24px 10px;
+  position: relative;
 }
-.stage .engine .panel-title {
-  display: none;
+.stage .engine::before {
+  content: '';
+  position: absolute;
+  inset: 10% 4% 16%;
+  border-radius: 50%;
+  border: 1px solid #b8733326;
+  box-shadow:
+    0 0 70px #b8733309,
+    inset 0 0 65px #b8733308;
+  pointer-events: none;
 }
-.stage .engine-core {
-  flex: 0 0 180px;
-  width: 180px;
-  min-height: 180px;
+.stage .engine::after {
+  content: '';
+  position: absolute;
+  inset: 14% 8% 20%;
+  border-radius: 50%;
+  border: 1px dashed #e8b89a18;
+  pointer-events: none;
 }
-.engine-caption strong {
-  font-size: 20px;
-  letter-spacing: 0;
-  font-weight: 500;
+.stage .engine-caption {
+  position: relative;
+  z-index: 1;
+  padding: 12px 16px;
 }
-.engine-caption span,
-.engine-caption small {
-  font-size: 14px;
-  line-height: 1.5;
-  color: #b9b9c3;
-  text-align: center;
+.stage .engine-caption strong {
+  text-shadow: 0 0 24px #b8733340;
 }
-.engine-caption small {
-  margin-top: 6px;
+.stage .engine-caption span {
+  color: #b5b5bf;
 }
-.workspace-details {
-  grid-area: details;
-  align-self: start;
-  display: grid;
-  gap: 12px;
+.stage .quadrant {
+  background: linear-gradient(120deg, #211b1670, #0b0b0edb);
 }
-.workspace-details details {
-  border: 1px solid #34343b;
-  border-radius: 12px;
-  background: #18181b;
+.stage .quadrant:hover {
+  border-color: #d4905a;
+  box-shadow: 0 0 22px #b8733318;
 }
-.workspace-details summary {
-  cursor: pointer;
-  padding: 16px;
-  font-size: 14px;
-  color: #d5d5dd;
-}
-.workspace-details .quadrants,
-.workspace-details .lexicon {
-  display: flex;
-  flex-direction: column;
-  border: 0;
-  padding: 12px;
-  background: transparent;
-}
-.workspace-details .lexicon-stream {
-  max-height: 220px;
-  mask-image: none;
-}
-.workspace-details .panel-title {
-  font:
-    600 13px 'Segoe UI',
-    sans-serif;
-  letter-spacing: 0;
-}
-.quadrant.setup {
+.stage .quadrant.setup {
   opacity: 1;
 }
-.quadrant-text strong {
-  letter-spacing: 0;
-  font-size: 14px;
-}
-.quadrant-text small,
-.quadrant-text em {
-  font-size: 12px;
-  letter-spacing: 0;
-  color: #b9b9c3;
-}
-.quadrant-icon {
-  width: 36px;
-  height: 36px;
+.stage .quadrant.setup .quadrant-icon {
   filter: none;
+}
+.stage .quadrant-text small {
+  font-size: 12px;
+  color: #b5b5bf;
+}
+.stage .quadrant-text em {
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+.stage .lexicon-caps em {
+  color: #aaaab4;
 }
 .stage .composer-footer span {
   font-size: 12px;
-  color: #b9b9c3;
-}
-.stage .eyebrow {
-  font-size: 13px;
-  letter-spacing: 0;
-  color: #b9b9c3;
+  color: #b5b5bf;
 }
 .window-controls.labelled .control {
-  min-height: 36px;
+  min-height: 34px;
 }
+/* At zoomed or small widths, all work remains reachable in a single scroll. */
 @media (max-width: 760px) {
   main.stage {
     display: flex;
     height: auto;
     min-height: 100vh;
-    padding: 0 16px 20px;
-    gap: 16px;
     overflow: visible;
+    padding: 0 16px 20px;
   }
   .stage header {
-    flex-wrap: wrap;
+    order: 0;
     height: auto;
     min-height: 100px;
+    flex-wrap: wrap;
     padding: 12px 0;
   }
   .stage-title {
     display: none;
   }
   .stage .window-controls {
-    margin-left: auto;
     flex-wrap: wrap;
+    margin-left: auto;
     border-radius: 12px;
   }
-  .stage .conversation {
-    order: 1;
-    min-height: 220px;
-  }
-  .stage .controls {
-    order: 2;
-  }
   .stage .engine {
-    order: 3;
-    padding: 8px;
+    order: 1;
+    min-height: 300px;
   }
   .stage .engine-core {
-    flex-basis: 110px;
-    min-height: 110px;
-    width: 110px;
+    min-height: 230px;
+    width: 230px;
   }
-  .workspace-details {
+  .stage .conversation {
+    order: 2;
+    min-height: 200px;
+  }
+  .stage .controls {
+    order: 3;
+  }
+  .stage .quadrants {
     order: 4;
-    width: 100%;
   }
   .stage footer {
     order: 5;
   }
-  .stage .conversation h1 {
-    font-size: 24px;
+  .stage .engine-caption strong {
+    font-size: 17px;
+    letter-spacing: 2px;
   }
 }
