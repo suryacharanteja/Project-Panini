@@ -6,23 +6,23 @@ import { Avatar, type AvatarState, type StageGeometry } from './avatar/Avatar';
    on the right, with the conversation docked beneath. */
 
 export const STATE_CAPTIONS: Record<AvatarState, [string, string]> = {
-  offline: ['STATE · CONNECTING', 'The rule system is deriving itself'],
-  idle: ['STATE 0 | IDLE', 'Minimalist, pulsing geometric core'],
-  listening: ['STATE 1 | LISTENING', 'Listening ripples, not bars'],
-  thinking: ['STATE 1·5 | PARSING', 'Intent resolving into a derivation'],
-  working: ['STATE 2 | DELEGATING', 'Core fragmentation, dynamic thread routing'],
-  approval: ['STATE · AWAITING YOU', 'Nothing proceeds without your approval'],
-  success: ['STATE · VERIFIED', 'Derivation complete, evidence recorded'],
-  blocked: ['STATE · HALTED', 'The thread was cut; nothing was claimed'],
-  muted: ['STATE · MUTED', 'The microphone is closed'],
+  offline: ['Connecting', 'Connecting to your workspace'],
+  idle: ['Ready', 'Tell PANINI what you want to accomplish'],
+  listening: ['Listening', 'Your microphone is on'],
+  thinking: ['Planning', 'Preparing the next step'],
+  working: ['Working', 'Follow progress in the conversation'],
+  approval: ['Needs your input', 'Review the request in the conversation'],
+  success: ['Verified complete', 'Review the result and its evidence'],
+  blocked: ['Needs attention', 'Review what happened and the next step below'],
+  muted: ['Microphone muted', 'Unmute to continue talking'],
 };
 
 type Capability = { id: string; label: string; deva: string; sub: string };
 export const STAGE_CAPABILITIES: Capability[] = [
-  { id: 'search', label: 'Search', deva: 'अन्वेषण', sub: 'Anveshan · sourced research' },
-  { id: 'browser', label: 'Browser', deva: 'जाल', sub: 'JevRev Claw extension' },
-  { id: 'desktop', label: 'Desktop', deva: 'पटल', sub: 'Window cascade' },
-  { id: 'code', label: 'Code', deva: 'सूत्र', sub: 'Derivation tree · workspaces' },
+  { id: 'search', label: 'Search', deva: 'अन्वेषण', sub: 'Find information with sources' },
+  { id: 'browser', label: 'Browser', deva: 'जाल', sub: 'Use your connected browser' },
+  { id: 'desktop', label: 'Desktop', deva: 'पटल', sub: 'Work with desktop apps' },
+  { id: 'code', label: 'Code', deva: 'सूत्र', sub: 'Work with code and files' },
 ];
 
 /** Line-art icons per the design system, rendered with a 1px copper glow. */
@@ -98,9 +98,7 @@ export function StageTitle({ state }: { state: AvatarState }) {
   const now = useClock();
   return (
     <div className="stage-title" aria-hidden="true">
-      <span>
-        PANINI <b>|</b> THE ALGORITHMIC AVATAR
-      </span>
+      <span>Your workspace</span>
       <small>
         {STATE_CAPTIONS[state][0]} ·{' '}
         {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -155,9 +153,7 @@ export function Lexicon({ log, caps }: { log: string[]; caps: any[] }) {
   }, [log.length]);
   return (
     <aside className="lexicon" aria-label="Runtime telemetry">
-      <div className="panel-title">
-        1. THE LEXICON <span>(TELEMETRY)</span>
-      </div>
+      <div className="panel-title">Runtime diagnostics</div>
       <div className="lexicon-stream" role="log" aria-live="off">
         {log.map((line, i) => (
           <div
@@ -177,7 +173,7 @@ export function Lexicon({ log, caps }: { log: string[]; caps: any[] }) {
           ▍
         </div>
       </div>
-      <div className="panel-title">GATEWAY</div>
+      <div className="panel-title">Tool connections</div>
       <ul className="lexicon-caps">
         {caps.map((c) => (
           <li key={c.capability}>
@@ -209,9 +205,7 @@ export function Capabilities({
   const hot = state === 'working' || state === 'approval';
   return (
     <nav className="quadrants" aria-label="Capabilities">
-      <div className="panel-title">
-        3. CAPABILITIES <span>(VRITTI)</span>
-      </div>
+      <div className="panel-title">Tools</div>
       {STAGE_CAPABILITIES.map((cap) => {
         const info = caps.find((c) => c.capability === cap.id);
         const isActive = hot && (active === cap.id || active === 'agent');
@@ -233,9 +227,7 @@ export function Capabilities({
               <CapabilityIcon id={cap.id} />
             </span>
             <span className="quadrant-text">
-              <strong>
-                {cap.label.toUpperCase()} <i>{cap.deva}</i>
-              </strong>
+              <strong>{cap.label}</strong>
               <small>{cap.sub}</small>
               <em>{isActive ? 'ACTIVE' : info?.state === 'ready' ? 'READY' : 'NEEDS SETUP'}</em>
             </span>
@@ -302,20 +294,21 @@ export function Engine({
         className="engine"
         aria-label={`PANINI is ${STATE_CAPTIONS[state][1].toLowerCase()}`}
       >
-        <div className="panel-title">
-          2. ENGINE <span>(AṢṬĀDHYĀYĪ)</span>
-        </div>
+        <div className="panel-title">PANINI</div>
         <button
           type="button"
           className="engine-core"
           ref={core as unknown as React.RefObject<HTMLButtonElement>}
           onClick={onActivate}
-          aria-label={listening ? 'Tap the core to stop listening' : 'Tap the core to talk'}
-          title={listening ? 'Tap the core to stop listening' : 'Tap the core to talk'}
+          aria-label={listening ? 'Stop voice conversation' : 'Talk to PANINI'}
+          title={listening ? 'Stop voice conversation' : 'Talk to PANINI'}
         />
         <div className="engine-caption">
           <strong>{STATE_CAPTIONS[state][0]}</strong>
           <span>{STATE_CAPTIONS[state][1]}</span>
+          <small>
+            {listening ? 'Select the avatar to end the call' : 'Select the avatar to talk'}
+          </small>
         </div>
       </section>
     </>

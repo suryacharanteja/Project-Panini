@@ -37,13 +37,102 @@
   align-items: center;
 }
 
-.computer-use { margin-top: 14px; border: 1px solid #7c4a2c; border-radius: 14px; background: #111114; overflow: hidden; }
-.computer-use-heading { display: flex; align-items: baseline; gap: 9px; padding: 11px 13px; border-bottom: 1px solid #2e2e34; }
-.computer-use-heading strong { color: #e8b89a; font-size: 13px; }.computer-use-heading small { margin-left: auto; color: #9a9aa3; font-size: 10px; }
-.computer-use-frame { position: relative; min-height: 100px; max-height: 260px; display: grid; place-items: center; background: #08080a; overflow: auto; }
-.computer-use-frame img { display: block; max-width: 100%; max-height: 260px; }.computer-use-frame p { color: #9a9aa3; padding: 14px; font-size: 11px; text-align: center; }
-.computer-use-cursor { position: absolute; color: #ffbf00; font-size: 28px; transform: translate(-50%, -50%); text-shadow: 0 0 8px #000; pointer-events: none; }
-.computer-use-timeline { display: flex; gap: 6px; overflow-x: auto; padding: 9px; margin: 0; list-style: none; border-top: 1px solid #2e2e34; }.computer-use-timeline button { min-width: 88px; padding: 7px; text-align: left; border: 1px solid #34343b; border-radius: 8px; background: #18181b; color: #c9ced6; font-size: 10px; }.computer-use-timeline li.selected button { border-color: #d4905a; }.computer-use-timeline b,.computer-use-timeline span { display: block; }.computer-use-timeline b { color: #d4905a; text-transform: uppercase; font-size: 9px; }.computer-use-timeline span { margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }.computer-use-note { margin: 0; padding: 0 12px 11px; color: #9a9aa3; font-size: 11px; line-height: 1.45; }
+.computer-use {
+  margin-top: 14px;
+  border: 1px solid #7c4a2c;
+  border-radius: 14px;
+  background: #111114;
+  overflow: hidden;
+}
+.computer-use-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 11px 13px;
+  border-bottom: 1px solid #2e2e34;
+}
+.computer-use-heading strong {
+  color: #e8b89a;
+  font-size: 13px;
+}
+.computer-use-heading small {
+  margin-left: auto;
+  color: #9a9aa3;
+  font-size: 10px;
+}
+.computer-use-frame {
+  position: relative;
+  min-height: 100px;
+  max-height: 260px;
+  display: grid;
+  place-items: center;
+  background: #08080a;
+  overflow: auto;
+}
+.computer-use-frame img {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+}
+.computer-use-frame p {
+  color: #9a9aa3;
+  padding: 14px;
+  font-size: 11px;
+  text-align: center;
+}
+.computer-use-cursor {
+  position: absolute;
+  color: #ffbf00;
+  font-size: 28px;
+  transform: translate(-50%, -50%);
+  text-shadow: 0 0 8px #000;
+  pointer-events: none;
+}
+.computer-use-timeline {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 9px;
+  margin: 0;
+  list-style: none;
+  border-top: 1px solid #2e2e34;
+}
+.computer-use-timeline button {
+  min-width: 88px;
+  padding: 7px;
+  text-align: left;
+  border: 1px solid #34343b;
+  border-radius: 8px;
+  background: #18181b;
+  color: #c9ced6;
+  font-size: 10px;
+}
+.computer-use-timeline li.selected button {
+  border-color: #d4905a;
+}
+.computer-use-timeline b,
+.computer-use-timeline span {
+  display: block;
+}
+.computer-use-timeline b {
+  color: #d4905a;
+  text-transform: uppercase;
+  font-size: 9px;
+}
+.computer-use-timeline span {
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+.computer-use-note {
+  margin: 0;
+  padding: 0 12px 11px;
+  color: #9a9aa3;
+  font-size: 11px;
+  line-height: 1.45;
+}
 .execution-heading strong {
   display: block;
   margin-top: 5px;
@@ -1222,4 +1311,192 @@ main.capsule > header {
   border-color: #b87333;
   transform: translateY(-1px);
   outline: none;
+}
+/* Conversation-first workspace. Supplemental tools and diagnostics are opt-in. */
+main.stage {
+  grid-template-columns: minmax(0, 760px) minmax(240px, 300px);
+  grid-template-rows: 64px minmax(280px, 1fr) auto auto;
+  grid-template-areas: 'head head' 'conv engine' 'dock details' 'foot details';
+  justify-content: center;
+  gap: 20px;
+  padding: 0 28px 24px;
+  background: #101013;
+  overflow-y: auto;
+}
+.stage .conversation {
+  background: #161619;
+  padding: 28px;
+}
+.stage .conversation h1 {
+  font-size: 30px;
+  line-height: 1.25;
+}
+.stage .message {
+  font-size: 16px;
+  line-height: 1.65;
+}
+.stage .controls {
+  width: 100%;
+  background: #161619;
+  padding: 18px;
+}
+.stage footer {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.stage-title {
+  align-items: flex-start;
+}
+.stage-title span {
+  font-size: 14px;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: #b9b9c3;
+}
+.stage-title small {
+  display: none;
+}
+.stage .engine {
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 10px;
+}
+.stage .engine .panel-title {
+  display: none;
+}
+.stage .engine-core {
+  flex: 0 0 180px;
+  width: 180px;
+  min-height: 180px;
+}
+.engine-caption strong {
+  font-size: 20px;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.engine-caption span,
+.engine-caption small {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #b9b9c3;
+  text-align: center;
+}
+.engine-caption small {
+  margin-top: 6px;
+}
+.workspace-details {
+  grid-area: details;
+  align-self: start;
+  display: grid;
+  gap: 12px;
+}
+.workspace-details details {
+  border: 1px solid #34343b;
+  border-radius: 12px;
+  background: #18181b;
+}
+.workspace-details summary {
+  cursor: pointer;
+  padding: 16px;
+  font-size: 14px;
+  color: #d5d5dd;
+}
+.workspace-details .quadrants,
+.workspace-details .lexicon {
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  padding: 12px;
+  background: transparent;
+}
+.workspace-details .lexicon-stream {
+  max-height: 220px;
+  mask-image: none;
+}
+.workspace-details .panel-title {
+  font:
+    600 13px 'Segoe UI',
+    sans-serif;
+  letter-spacing: 0;
+}
+.quadrant.setup {
+  opacity: 1;
+}
+.quadrant-text strong {
+  letter-spacing: 0;
+  font-size: 14px;
+}
+.quadrant-text small,
+.quadrant-text em {
+  font-size: 12px;
+  letter-spacing: 0;
+  color: #b9b9c3;
+}
+.quadrant-icon {
+  width: 36px;
+  height: 36px;
+  filter: none;
+}
+.stage .composer-footer span {
+  font-size: 12px;
+  color: #b9b9c3;
+}
+.stage .eyebrow {
+  font-size: 13px;
+  letter-spacing: 0;
+  color: #b9b9c3;
+}
+.window-controls.labelled .control {
+  min-height: 36px;
+}
+@media (max-width: 760px) {
+  main.stage {
+    display: flex;
+    height: auto;
+    min-height: 100vh;
+    padding: 0 16px 20px;
+    gap: 16px;
+    overflow: visible;
+  }
+  .stage header {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 100px;
+    padding: 12px 0;
+  }
+  .stage-title {
+    display: none;
+  }
+  .stage .window-controls {
+    margin-left: auto;
+    flex-wrap: wrap;
+    border-radius: 12px;
+  }
+  .stage .conversation {
+    order: 1;
+    min-height: 220px;
+  }
+  .stage .controls {
+    order: 2;
+  }
+  .stage .engine {
+    order: 3;
+    padding: 8px;
+  }
+  .stage .engine-core {
+    flex-basis: 110px;
+    min-height: 110px;
+    width: 110px;
+  }
+  .workspace-details {
+    order: 4;
+    width: 100%;
+  }
+  .stage footer {
+    order: 5;
+  }
+  .stage .conversation h1 {
+    font-size: 24px;
+  }
 }

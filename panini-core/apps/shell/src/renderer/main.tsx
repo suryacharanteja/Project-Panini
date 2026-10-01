@@ -5,7 +5,7 @@ import { ExecutionPanel } from './ExecutionPanel';
 import { ComputerUsePanel, PanelBoundary } from './ComputerUsePanel';
 import { Avatar, type AvatarState, levelMeter } from './avatar/Avatar';
 import { avatarStateFor } from './avatar/state';
-import { Backdrop, Capabilities, Engine, Lexicon, StageTitle } from './Stage';
+import { Capabilities, Engine, Lexicon, StageTitle } from './Stage';
 
 declare global {
   interface Window {
@@ -279,7 +279,9 @@ function App() {
         executionTask.current = event.task_id;
         setExecution(data);
       } else if (event.type === 'computer.activity') {
-        setComputerEvents((all) => [...all.filter((item) => item.sequence !== data.sequence), data].slice(-48));
+        setComputerEvents((all) =>
+          [...all.filter((item) => item.sequence !== data.sequence), data].slice(-48),
+        );
       } else if (event.type.startsWith('task.')) {
         const state = event.type.slice(5);
         if (event.task_id && event.task_id !== executionTask.current) {
@@ -470,7 +472,6 @@ function App() {
     >
       {staged && (
         <>
-          <Backdrop />
           <Engine
             state={avatarState}
             capability={activeCap}
@@ -481,18 +482,28 @@ function App() {
             listening={mic}
             onActivate={() => void (mic ? closeMic() : startMic())}
           />
-          <Lexicon log={log} caps={caps} />
-          <Capabilities
-            caps={caps}
-            active={activeCap}
-            state={avatarState}
-            selected={capability}
-            onSelect={setCapability}
-            registerAnchor={(id, element) => {
-              // React 19 treats a ref callback's return value as its cleanup: return nothing.
-              anchors.current[id] = element;
-            }}
-          />
+          <aside className="workspace-details" aria-label="Workspace details">
+            <details>
+              <summary>
+                Tools · {caps.filter((c: any) => c.state === 'ready').length} connected
+              </summary>
+              <Capabilities
+                caps={caps}
+                active={activeCap}
+                state={avatarState}
+                selected={capability}
+                onSelect={setCapability}
+                registerAnchor={(id, element) => {
+                  // React 19 treats a ref callback's return value as its cleanup: return nothing.
+                  anchors.current[id] = element;
+                }}
+              />
+            </details>
+            <details>
+              <summary>Advanced diagnostics</summary>
+              <Lexicon log={log} caps={caps} />
+            </details>
+          </aside>
         </>
       )}
       {!open && (
@@ -536,7 +547,7 @@ function App() {
           </span>
         </div>
         {staged && <StageTitle state={avatarState} />}
-        <nav className={`window-controls ${staged ? 'labelled' : ''}`} aria-label="Window">
+        <nav className="window-controls labelled" aria-label="Window">
           {open && (
             <button
               className="control"
@@ -573,20 +584,20 @@ function App() {
       {open && (
         <>
           <section className="conversation">
-            <div className="eyebrow">YOUR CONVERSATION</div>
+            <div className="eyebrow">Conversation</div>
             <h1>
               {phase === 'completed'
-                ? 'All set.'
+                ? 'Work complete.'
                 : phase === 'needs_input'
                   ? 'One detail to continue.'
                   : phase === 'blocked' && outcome === 'partial'
                     ? 'Ready for your review.'
                     : phase === 'blocked'
-                      ? 'A little help needed.'
+                      ? 'This task needs attention.'
                       : phase === 'awaiting_confirmation'
-                        ? 'Your confirmation.'
+                        ? 'Review this action.'
                         : !terminal
-                          ? 'On it.'
+                          ? 'Work in progress.'
                           : 'Let’s get something done.'}
             </h1>
             <p className="message" role="status" aria-live="polite">
