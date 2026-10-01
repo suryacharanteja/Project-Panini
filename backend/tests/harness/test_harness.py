@@ -154,12 +154,30 @@ def test_projects_persist_and_paused_project_tasks_wait(tmp_path):
 
 
 def test_agent_project_tools_and_background_boundary(tmp_path):
-    h, _ = make_harness(tmp_path, [])
+    h, _ = make_harness(
+        tmp_path,
+        [
+            {
+                "calls": [
+                    {
+                        "name": "propose_project_plan",
+                        "arguments": {"steps": [{"title": "Research", "goal": "Find official sources"}]},
+                    }
+                ]
+            }
+        ],
+    )
 
     async def delegate(*_):
         return {}
 
-    agent = h.agent(delegate=delegate, capabilities=())
+    approvals = []
+
+    async def confirm(summary, detail):
+        approvals.append((summary, detail))
+        return True
+
+    agent = h.agent(delegate=delegate, capabilities=(), confirm=confirm)
 
     async def exercise():
         created, _ = await agent.call(
@@ -173,6 +191,13 @@ def test_agent_project_tools_and_background_boundary(tmp_path):
             json.dumps({"project_id": project_id, "goal": "Check release", "delay_minutes": 0}),
         )
         assert h.tasks.get(task["task_id"])["project_id"] == project_id
+        draft, _ = await agent.call("draft_project_plan", json.dumps({"project_id": project_id}))
+        assert draft["steps"][0]["title"] == "Research"
+        approved, _ = await agent.call(
+            "approve_project_plan",
+            json.dumps({"project_id": project_id, "revision": draft["revision"]}),
+        )
+        assert approved["status"] == "running" and approvals[0][0] == "Start project research plan"
         background = h.agent(delegate=delegate, capabilities=("search",), background=True)
         denied, _ = await background.call(
             "create_project", json.dumps({"title": "Wrong", "goal": "No", "context": ""})

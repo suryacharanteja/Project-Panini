@@ -222,6 +222,16 @@ TOOLS = [
         {"project_id": STRING, "status": {"type": "string", "enum": ["active", "paused", "completed"]}},
     ),
     _tool(
+        "draft_project_plan",
+        "Draft sequential research steps for a project without starting work.",
+        {"project_id": STRING},
+    ),
+    _tool(
+        "approve_project_plan",
+        "Approve a reviewed project plan revision and start its first step.",
+        {"project_id": STRING, "revision": {"type": "integer"}},
+    ),
+    _tool(
         "use_connector",
         "Call a tool of a configured connector (MCP server).",
         {
@@ -272,7 +282,14 @@ TOOLS = [
 TOOL_GROUPS = {
     "memory": ("recall", "remember", "forget"),
     "schedule": ("schedule_task", "watch"),
-    "projects": ("list_projects", "create_project", "add_project_task", "set_project_status"),
+    "projects": (
+        "list_projects",
+        "create_project",
+        "add_project_task",
+        "set_project_status",
+        "draft_project_plan",
+        "approve_project_plan",
+    ),
     "subagents": ("run_subagents",),
     "agents": ("ask_agent",),
     "new_skill": ("create_skill",),
@@ -715,6 +732,24 @@ class Agent:
             project = self.h.projects.update(a["project_id"], status=a["status"])
             self.evidence.append(f"project:{project['id']}:{project['status']}")
             return {"ok": True, "status": project["status"]}, None
+        if name == "draft_project_plan":
+            plan = await self.h.project_planner.draft(a["project_id"])
+            self.evidence.append(f"project-plan:{a['project_id']}:{plan['revision']}")
+            return {"ok": True, "revision": plan["revision"], "steps": plan["steps"]}, None
+        if name == "approve_project_plan":
+            if self.confirm is None:
+                return {"error": "Starting a project plan needs the person in the foreground."}, None
+            plan = self.h.project_planner.get(a["project_id"])
+            if not plan or plan["revision"] != a["revision"] or plan["status"] != "draft":
+                return {"error": "The plan revision is no longer a draft."}, None
+            detail = "\n".join(
+                f"{i + 1}. {step['title']}: {step['goal']}" for i, step in enumerate(plan["steps"])
+            )
+            if not await self.confirm("Start project research plan", detail[:3000]):
+                return {"error": "The person declined the project plan."}, None
+            approved = self.h.project_planner.approve(a["project_id"], a["revision"])
+            self.evidence.append(f"project-plan:{a['project_id']}:{approved['revision']}:approved")
+            return {"ok": True, "status": approved["status"]}, None
         if name == "use_connector":
             return await self._connector(a), None
         if name == "ask_agent":

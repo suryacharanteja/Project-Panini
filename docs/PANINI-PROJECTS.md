@@ -12,7 +12,9 @@ The shell uses the same paths under `/api/panini/harness`. Project state is stor
 in the local harness SQLite database. Existing tasks remain unassigned.
 The foreground agent can list and create projects, add a background task, and
 change project status through its tools, so these actions can start from a typed
-or spoken request. Background agents cannot invoke those management tools.
+or spoken request. It can also draft a plan and start an exact draft revision
+after showing its steps and receiving foreground approval. Background agents
+cannot invoke those management tools.
 
 ## Reviewed research plans
 
