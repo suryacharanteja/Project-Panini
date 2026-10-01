@@ -197,7 +197,12 @@ def test_agent_project_tools_and_background_boundary(tmp_path):
             "approve_project_plan",
             json.dumps({"project_id": project_id, "revision": draft["revision"]}),
         )
-        assert approved["status"] == "running" and approvals[0][0] == "Start project research plan"
+        assert approved["status"] == "running" and approvals[0][0] == "Start project plan"
+        assert "Success criteria:" in approvals[0][1]
+        stopped, _ = await agent.call(
+            "cancel_project_plan", json.dumps({"project_id": project_id, "revision": draft["revision"]})
+        )
+        assert stopped["status"] == "cancelled"
         background = h.agent(delegate=delegate, capabilities=("search",), background=True)
         denied, _ = await background.call(
             "create_project", json.dumps({"title": "Wrong", "goal": "No", "context": ""})
@@ -205,6 +210,46 @@ def test_agent_project_tools_and_background_boundary(tmp_path):
         assert "unavailable" in denied["error"]
 
     asyncio.run(exercise())
+
+
+def test_large_project_plan_is_not_approved_with_hidden_steps(tmp_path):
+    h, _ = make_harness(
+        tmp_path,
+        [
+            {
+                "calls": [
+                    {
+                        "name": "propose_project_plan",
+                        "arguments": {
+                            "steps": [
+                                {"title": f"Step {i}", "goal": "g" * 500, "success_criteria": "c" * 1000}
+                                for i in range(6)
+                            ]
+                        },
+                    }
+                ]
+            }
+        ],
+    )
+
+    async def confirm(*_args):
+        raise AssertionError("A truncated plan must never reach confirmation")
+
+    async def delegate(*_args):
+        return {}
+
+    async def go():
+        project = h.projects.create("Large plan", "Research")
+        draft = await h.project_planner.draft(project["id"])
+        agent = h.agent(delegate=delegate, capabilities=(), confirm=confirm)
+        result, _ = await agent.call(
+            "approve_project_plan", json.dumps({"project_id": project["id"], "revision": draft["revision"]})
+        )
+        assert "too long" in result["error"]
+        assert h.tasks.list() == []
+        await h.close()
+
+    asyncio.run(go())
 
 
 def test_reviews_expire(store):

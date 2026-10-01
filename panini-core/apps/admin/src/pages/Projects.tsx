@@ -14,11 +14,12 @@ type Project = {
   updated: number;
   tasks?: ProjectTask[];
 };
-type Step = { title: string; goal: string; task_id: string | null };
+type Step = { title: string; goal: string; success_criteria?: string; task_id: string | null };
 type Plan = {
   project_id: string;
   revision: number;
-  status: 'draft' | 'running' | 'needs_review' | 'completed';
+  review_reason?: string;
+  status: 'draft' | 'running' | 'needs_review' | 'completed' | 'cancelled';
   steps: Step[];
 };
 
@@ -87,6 +88,11 @@ function PlanView({ plan, tasks }: { plan: Plan; tasks: ProjectTask[] }) {
                   </Badge>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-muted">{step.goal}</p>
+                {step.success_criteria && (
+                  <p className="mt-2 text-xs leading-relaxed text-slate/80">
+                    <span className="font-medium">Success criteria:</span> {step.success_criteria}
+                  </p>
+                )}
                 {task?.result?.message && (
                   <p className="mt-2 whitespace-pre-wrap text-xs text-slate/85">
                     {task.result.message}
@@ -116,8 +122,8 @@ function PlanView({ plan, tasks }: { plan: Plan; tasks: ProjectTask[] }) {
           role="alert"
           className="rounded-lg border border-amber/30 bg-amber/5 p-3 text-sm text-amber"
         >
-          PANINI stopped this plan because a step could not be verified. Review the result before
-          drafting a new plan.
+          {plan.review_reason ??
+            'PANINI stopped this plan because a step could not be verified. Review the result before drafting a new plan.'}
         </p>
       )}
     </div>
@@ -344,27 +350,50 @@ export function ProjectsPage() {
             <Card
               title="Research plan"
               actions={
-                <Button
-                  busy={busy === 'draft-plan'}
-                  disabled={current.status !== 'active' || currentPlan?.status === 'running'}
-                  onClick={() =>
-                    void run(
-                      'draft-plan',
-                      async () => {
-                        await api(harness(`/projects/${selected}/plan`), { method: 'POST' });
-                        await plan.reload();
-                      },
-                      'Plan drafted for review.',
-                    )
-                  }
-                >
-                  Draft plan
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {currentPlan && !['completed', 'cancelled'].includes(currentPlan.status) && (
+                    <Button
+                      tone="danger"
+                      busy={busy === 'cancel-plan'}
+                      onClick={() =>
+                        void run(
+                          'cancel-plan',
+                          async () => {
+                            await api(harness(`/projects/${selected}/plan/cancel`), {
+                              body: { revision: currentPlan.revision },
+                            });
+                            await refresh();
+                          },
+                          'Plan stopped. Its unfinished tasks are cancelled.',
+                        )
+                      }
+                    >
+                      Stop plan
+                    </Button>
+                  )}
+                  <Button
+                    busy={busy === 'draft-plan'}
+                    disabled={current.status !== 'active' || currentPlan?.status === 'running'}
+                    onClick={() =>
+                      void run(
+                        'draft-plan',
+                        async () => {
+                          await api(harness(`/projects/${selected}/plan`), { method: 'POST' });
+                          await plan.reload();
+                        },
+                        'Plan drafted for review.',
+                      )
+                    }
+                  >
+                    Draft plan
+                  </Button>
+                </div>
               }
             >
               <p className="mb-4 text-xs leading-relaxed text-muted">
-                PANINI proposes read-only research steps. You review the full sequence before the
-                first task starts. Each next step waits for verified evidence.
+                PANINI proposes read-only steps using web research and app tools you granted for
+                background work. Review the sequence and success criteria before starting. Each next
+                step waits for verified evidence.
               </p>
               {plan.error && (
                 <p role="alert" className="text-sm text-danger">

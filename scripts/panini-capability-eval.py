@@ -212,6 +212,7 @@ async def main(only, output):
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(results, indent=2), encoding="utf-8")
     await c.close()
+    return 0 if results and all(row["passed"] for row in results) else 1
 
 
 if __name__ == "__main__":
@@ -220,4 +221,4 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts" / "capability-eval.json")
     args = parser.parse_args()
     only = {int(x) for x in args.only.split(",")} if args.only else set()
-    asyncio.run(main(only, args.output))
+    raise SystemExit(asyncio.run(main(only, args.output)))

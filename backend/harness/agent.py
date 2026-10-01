@@ -223,12 +223,17 @@ TOOLS = [
     ),
     _tool(
         "draft_project_plan",
-        "Draft sequential research steps for a project without starting work.",
+        "Draft read-only project steps across web research and granted app tools, with success criteria.",
         {"project_id": STRING},
     ),
     _tool(
         "approve_project_plan",
         "Approve a reviewed project plan revision and start its first step.",
+        {"project_id": STRING, "revision": {"type": "integer"}},
+    ),
+    _tool(
+        "cancel_project_plan",
+        "Stop an exact project plan revision and cancel its unfinished tasks.",
         {"project_id": STRING, "revision": {"type": "integer"}},
     ),
     _tool(
@@ -289,6 +294,7 @@ TOOL_GROUPS = {
         "set_project_status",
         "draft_project_plan",
         "approve_project_plan",
+        "cancel_project_plan",
     ),
     "subagents": ("run_subagents",),
     "agents": ("ask_agent",),
@@ -742,14 +748,23 @@ class Agent:
             plan = self.h.project_planner.get(a["project_id"])
             if not plan or plan["revision"] != a["revision"] or plan["status"] != "draft":
                 return {"error": "The plan revision is no longer a draft."}, None
-            detail = "\n".join(
-                f"{i + 1}. {step['title']}: {step['goal']}" for i, step in enumerate(plan["steps"])
+            detail = f"Revision {plan['revision']}\n" + "\n\n".join(
+                f"{i + 1}. {step['title']}: {step['goal']}\nSuccess criteria: {step.get('success_criteria', step['goal'])}"
+                for i, step in enumerate(plan["steps"])
             )
-            if not await self.confirm("Start project research plan", detail[:3000]):
+            if len(detail) > 3900:
+                return {
+                    "error": "This plan is too long for the confirmation card. Review and approve the full revision in Admin Projects."
+                }, None
+            if not await self.confirm("Start project plan", detail):
                 return {"error": "The person declined the project plan."}, None
             approved = self.h.project_planner.approve(a["project_id"], a["revision"])
             self.evidence.append(f"project-plan:{a['project_id']}:{approved['revision']}:approved")
             return {"ok": True, "status": approved["status"]}, None
+        if name == "cancel_project_plan":
+            cancelled = self.h.project_planner.cancel(a["project_id"], a["revision"])
+            self.evidence.append(f"project-plan:{a['project_id']}:{cancelled['revision']}:cancelled")
+            return {"ok": True, "status": cancelled["status"]}, None
         if name == "use_connector":
             return await self._connector(a), None
         if name == "ask_agent":

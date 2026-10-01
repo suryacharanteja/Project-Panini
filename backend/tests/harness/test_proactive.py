@@ -36,6 +36,74 @@ def fake_connectors(tmp_path):
     return Connectors(path)
 
 
+def test_approved_project_app_workflow_finishes_with_receipt_and_advances(tmp_path):
+    connectors = fake_connectors(tmp_path)
+    h, _ = make(
+        tmp_path,
+        [
+            {
+                "calls": [
+                    {
+                        "name": "propose_project_plan",
+                        "arguments": {
+                            "steps": [
+                                {
+                                    "title": "Find decisions",
+                                    "goal": "Use notes.lookup to find launch decisions",
+                                    "success_criteria": "Read the notes and retain a connector receipt",
+                                },
+                                {
+                                    "title": "Find follow ups",
+                                    "goal": "Use notes.lookup to find unresolved launch follow ups",
+                                    "success_criteria": "Read related notes and cite receipts",
+                                },
+                            ]
+                        },
+                    }
+                ]
+            },
+            {
+                "calls": [
+                    {
+                        "name": "use_connector",
+                        "arguments": {"server": "notes", "tool": "lookup", "arguments": '{"q":"launch"}'},
+                    }
+                ]
+            },
+            {
+                "calls": [
+                    {
+                        "name": "finish",
+                        "arguments": {"outcome": "verified_complete", "message": "Launch notes retrieved."},
+                    }
+                ]
+            },
+        ],
+        connectors,
+    )
+
+    async def go():
+        try:
+            await connectors.status()
+            connectors.set_background_grant("notes", "lookup", True)
+            project = h.projects.create("Launch", "Review launch decisions")
+            draft = await h.project_planner.draft(project["id"])
+            h.project_planner.approve(project["id"], draft["revision"])
+            claim = h.tasks.claim()
+            outcome, message, evidence = await h.run_background(claim, h.tasks)
+            assert outcome == "verified_complete" and evidence[0].startswith("connector:")
+            h.tasks.finish(claim["id"], claim["lease_id"], outcome, message, evidence)
+            h.project_planner.reconcile()
+            plan = h.project_planner.get(project["id"])
+            assert plan["steps"][1]["task_id"] and len(h.tasks.list()) == 2
+            assert h.projects.verified_history(project["id"])[0]["evidence"] == evidence
+            assert h.store.one("SELECT COUNT(*) AS n FROM connector_receipts")["n"] == 1
+        finally:
+            await h.close()
+
+    asyncio.run(go())
+
+
 class Search:
     async def availability(self):
         return {"state": "ready", "reason": ""}

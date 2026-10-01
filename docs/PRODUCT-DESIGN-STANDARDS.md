@@ -9,7 +9,7 @@ This is PANINI's implementation guide for a persistent, supervised assistant. It
 3. **Show the supervision boundary.** A drafted plan names the exact revision and all steps before approval. A running plan shows the current task and verified progress. A failed or evidence-free step stops in `needs_review`.
 4. **Make state understandable without color.** Text labels accompany every status. Success requires evidence; queued and merely completed are distinct.
 5. **Keep control visible.** Pause and resume are available in the workspace. Connector access is granted per server for read-only background use. Activity and receipts let the person inspect what happened.
-6. **Match the promise to the implementation.** Current autonomous plans are sequential read-only web research. Multi-app effects, cloud continuity, and head-to-head Dot quality are future qualification work, not interface claims.
+6. **Match the promise to the implementation.** Current autonomous plans use sequential read-only web research and explicitly granted app tools. Each step includes success criteria. Multi-app effects, cloud continuity, and head-to-head Dot quality remain qualification work.
 
 ## Interaction and visual rules
 
@@ -31,6 +31,7 @@ This is PANINI's implementation guide for a persistent, supervised assistant. It
 | `backend/harness/projects.py` | Durable goal and context records |
 | `backend/harness/project_planner.py` | Plan revisions, approval and evidence-gated advancement |
 | `backend/harness/connectors.py` | MCP connector access and background grants |
+| `backend/harness/mcp_tools.py` | Shared bounded discovery, boolean permissions and structured results |
 | `backend/routes/harness.py` | Project and task HTTP boundary |
 | `scripts/panini-longrun-eval.py` | Repeated live evaluation, separate from product claims |
 | `scripts/panini-release-gate.ps1` | Packaged integrity and promotion requirements |
@@ -41,7 +42,10 @@ Keep components near their owning feature. Move a feature into a directory when 
 
 - Admin typecheck, build and tests pass.
 - Project creation, draft, exact-revision approval, sequential advancement, pause and `needs_review` have backend coverage.
-- The live evaluation records all three scheduled samples before any multi-day claim; its three research cases are not a Dot benchmark.
+- A draft cannot overwrite a concurrently approved plan. Changed project context invalidates the draft before approval and stops unfinished work after approval. Stopping an exact plan preserves unrelated tasks.
+- App planning sees only available, granted read-only tools. Both MCP transports walk bounded catalogue pagination and preserve structured results. A successful app workflow produces a receipt before the project advances.
+- The live evaluation records all three scheduled samples before any multi-day claim; its three capability cases are not a Dot benchmark.
+- Evaluation process success is insufficient: every selected case must pass, result rows must be complete and unique, and later samples must pass the baseline comparison. Daily samples remain separated after delays. Each new sample records the source commit and dirty state.
 - Release promotion requires a clean committed source revision, verified packaged hashes, valid signing, and clean Windows VM evidence. An unsigned build is a development candidate.
 
 ## Outstanding parity gaps

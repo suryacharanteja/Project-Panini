@@ -19,7 +19,8 @@ cannot invoke those management tools.
 ## Reviewed research plans
 
 On a project's Admin page, **Draft plan** asks the configured model for one to
-six ordered, read-only research steps. The draft is stored with a revision and
+six ordered, read-only research or app steps with explicit success criteria. Only
+available app tools with an explicit background grant are included. The draft is stored with a revision and
 does not queue work. **Approve and start** checks that exact revision, then
 queues the first step. After a step finishes with `verified_complete` and at
 least one evidence ID, the background worker queues the next step. A failure,
@@ -29,15 +30,23 @@ unknown outcome, cancellation, or evidence-free completion puts the plan in
 Plan advancement and task creation share one SQLite transaction. A restarted
 worker reconciles approved plans, so a crash between steps does not duplicate
 tasks. The plan is marked complete only after every step has verified evidence.
-The project itself remains active for other work. Drafts are restricted to
-research because background execution currently has Search access only.
+The project itself remains active for other work. Background steps can use Search
+and granted read-only connector tools. Successful connector calls retain hash-only
+receipts as evidence.
+
+Changing the goal or context invalidates a draft before approval and stops an approved
+plan at the next reconciliation. A slow draft cannot replace a concurrently approved
+revision. **Stop plan** cancels unfinished tasks from that exact revision and preserves
+unrelated project work. The conversational agent also supports `cancel_project_plan`.
+Success criteria are displayed during approval; a plan too large for the foreground
+confirmation card must be reviewed in Admin Projects.
 
 Run `.venv\Scripts\python.exe scripts/panini-project-plan-smoke.py` for an
 isolated live provider check. It verifies a draft remains non-executing and
 that approval queues exactly the first step.
 
 Project context is passed to a background run as task data. The worker still has
-only read-only Search access. Pausing a project prevents queued tasks from being
+only Search and granted read-only app access. Pausing a project prevents queued tasks from being
 claimed; it does not interrupt a task that is already running. Completing a
 project also prevents new project tasks until it is set active again. The existing
 lease recovery and review rules apply to project tasks without change.

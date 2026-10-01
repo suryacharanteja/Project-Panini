@@ -19,10 +19,10 @@ import os
 import subprocess
 
 from ..extension_pairing import data_directory
+from .mcp_tools import list_tools, tool_result
 
 logger = logging.getLogger(__name__)
 PROTOCOL = "2025-06-18"
-MAX_RESULT = 20000
 
 
 class ConnectorError(RuntimeError):
@@ -60,25 +60,25 @@ class Server:
             self.error = f"Could not start: {exc}"
             raise ConnectorError(f"Connector {self.name} could not start.") from None
         self.reader = asyncio.create_task(self._read())
-        await self.request(
-            "initialize",
-            {
-                "protocolVersion": PROTOCOL,
-                "capabilities": {},
-                "clientInfo": {"name": "PANINI", "version": "1.0.0"},
-            },
-        )
-        self.notify("notifications/initialized", {})
-        listed = await self.request("tools/list", {})
-        self.tools = [
-            {
-                "name": t["name"],
-                "description": (t.get("description") or "")[:500],
-                "read_only": bool((t.get("annotations") or {}).get("readOnlyHint")),
-                "input_schema": t.get("inputSchema") or {"type": "object"},
-            }
-            for t in (listed or {}).get("tools", [])[:100]
-        ]
+        self.tools = []
+        try:
+            await self.request(
+                "initialize",
+                {
+                    "protocolVersion": PROTOCOL,
+                    "capabilities": {},
+                    "clientInfo": {"name": "PANINI", "version": "1.0.0"},
+                },
+            )
+            self.notify("notifications/initialized", {})
+            self.tools = await list_tools(self.request)
+        except asyncio.CancelledError:
+            await self.close()
+            raise
+        except (ConnectorError, OSError, ValueError) as exc:
+            await self.close()
+            self.error = str(exc)
+            raise ConnectorError(self.error) from None
         self.error = ""
 
     async def _read(self):
@@ -113,26 +113,27 @@ class Server:
         identifier = self.sequence
         future = asyncio.get_running_loop().create_future()
         self.pending[identifier] = future
-        self._send({"jsonrpc": "2.0", "id": identifier, "method": method, "params": params})
-        await self.process.stdin.drain()
         try:
+            self._send({"jsonrpc": "2.0", "id": identifier, "method": method, "params": params})
+            await self.process.stdin.drain()
             return await asyncio.wait_for(future, timeout)
         except TimeoutError:
-            self.pending.pop(identifier, None)
             raise ConnectorError(f"Connector {self.name} did not answer in time.") from None
+        except (OSError, ConnectionError):
+            raise ConnectorError(f"Connector {self.name} disconnected.") from None
+        finally:
+            self.pending.pop(identifier, None)
+            if not future.done():
+                future.cancel()
 
     async def call(self, tool, arguments):
         async with self.lock:
             await self.start()
             result = await self.request("tools/call", {"name": tool, "arguments": arguments}, timeout=120)
-        parts = []
-        for part in (result or {}).get("content", []):
-            if part.get("type") == "text":
-                parts.append(part.get("text", ""))
-            else:
-                parts.append(f"[{part.get('type', 'content')} omitted]")
-        text = "\n".join(parts)[:MAX_RESULT]
-        return {"is_error": bool((result or {}).get("isError")), "text": text}
+        try:
+            return tool_result(result)
+        except ValueError as exc:
+            raise ConnectorError(str(exc)) from None
 
     async def close(self):
         if self.process and self.process.returncode is None:

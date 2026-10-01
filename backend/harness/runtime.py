@@ -51,9 +51,11 @@ class Harness:
         self.sessions = Sessions(self.store)
         self.tasks = Tasks(self.store)
         self.projects = Projects(self.store)
-        self.project_planner = ProjectPlanner(self.projects, self.tasks, model_factory)
         self.notices = proactive.Notices(self.store)
         self.connectors = connectors if connectors is not None else Connectors()
+        self.project_planner = ProjectPlanner(
+            self.projects, self.tasks, model_factory, connectors=self.connectors
+        )
         self.a2a_clients = a2a.Clients(self.store)
         self.remotes = remotes if remotes is not None else a2a.Remotes()
         from .mobile import Mobile

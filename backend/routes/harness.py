@@ -221,6 +221,16 @@ def build(prefix, guard):
         except ValueError as exc:
             raise _bad(exc) from None
 
+    @r.post("/projects/{project_id}/plan/cancel")
+    async def cancel_project_plan(project_id: str, payload: ApprovePlan, request: Request):
+        guard(request)
+        try:
+            return harness(request).project_planner.cancel(project_id, payload.revision)
+        except KeyError:
+            raise HTTPException(404, "Unknown project") from None
+        except ValueError as exc:
+            raise _bad(exc) from None
+
     @r.post("/tasks")
     async def submit(payload: NewTask, request: Request):
         guard(request)

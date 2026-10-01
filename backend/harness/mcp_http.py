@@ -24,6 +24,7 @@ from urllib.parse import urlencode, urlsplit
 import httpx
 
 from .connectors import PROTOCOL, ConnectorError
+from .mcp_tools import list_tools, tool_result
 
 
 class SignInRequired(ConnectorError):
@@ -148,22 +149,14 @@ class HttpServer:
                 },
             )
             await self._post({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
-            listed = await self.request("tools/list", {})
+            tools = await list_tools(self.request)
         except SignInRequired as exc:
             self.error = str(exc)
             raise
         except (httpx.HTTPError, ValueError) as exc:
             self.error = f"Could not reach the server: {str(exc)[:200]}"
             raise ConnectorError(self.error) from None
-        self.tools = [
-            {
-                "name": t["name"],
-                "description": (t.get("description") or "")[:500],
-                "read_only": bool((t.get("annotations") or {}).get("readOnlyHint")),
-                "input_schema": t.get("inputSchema") or {"type": "object"},
-            }
-            for t in (listed or {}).get("tools", [])[:100]
-        ]
+        self.tools = tools
         self.started, self.error, self.sign_in_url = True, "", ""
 
     async def call(self, tool, arguments):
@@ -171,13 +164,12 @@ class HttpServer:
             await self.start()
             try:
                 result = await self.request("tools/call", {"name": tool, "arguments": arguments})
-            except httpx.HTTPError as exc:
+            except (httpx.HTTPError, ValueError) as exc:
                 raise ConnectorError(f"Connector {self.name} failed: {str(exc)[:200]}") from None
-        parts = [
-            p.get("text", "") if p.get("type") == "text" else f"[{p.get('type', 'content')} omitted]"
-            for p in (result or {}).get("content", [])
-        ]
-        return {"is_error": bool((result or {}).get("isError")), "text": "\n".join(parts)[:20000]}
+        try:
+            return tool_result(result)
+        except ValueError as exc:
+            raise ConnectorError(str(exc)) from None
 
     async def close(self):
         if self.client is not None and not self.spec.get("_shared_client"):
