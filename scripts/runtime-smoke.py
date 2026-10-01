@@ -6,17 +6,21 @@ console sign-in, the console boundary, extension pairing and the mutual
 handshake, impostor rejection, and the PANINI shell API. Run: npm run test:runtime
 """
 
+import argparse
 import asyncio
 import hashlib
 import hmac
 import json
 import os
+import queue
 import re
 import secrets
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+from collections import deque
 from pathlib import Path
 
 import httpx
@@ -70,11 +74,25 @@ async def handshake(device, *, secret=None, origin=EXTENSION):
             return server_ok, {"closed": closed.rcvd.code if closed.rcvd else None}
 
 
-async def main():
+async def main(packaged=False):
     data = tempfile.mkdtemp(prefix="panini-smoke-")
     env = {**os.environ, "PANINI_DATA_DIR": data}
+    command = ["node", str(ROOT / "frontend/server/main.mjs")]
+    if packaged:
+        runtime_root = ROOT / "artifacts/panini-package/win-unpacked/resources/runtime"
+        env.update(
+            {
+                "PANINI_RUNTIME_ROOT": str(runtime_root),
+                "PANINI_BACKEND_EXECUTABLE": str(runtime_root / "backend/Panini.Backend.exe"),
+            }
+        )
+        command = [
+            str(runtime_root / "node/node.exe"),
+            str(runtime_root / "scripts/panini-runtime.mjs"),
+            "--production",
+        ]
     runtime = subprocess.Popen(
-        ["node", str(ROOT / "frontend/server/main.mjs")],
+        command,
         cwd=ROOT,
         env=env,
         stdout=subprocess.PIPE,
@@ -83,27 +101,45 @@ async def main():
         encoding="utf-8",
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
     )
+    output = queue.Queue(maxsize=128)
+    diagnostics = deque(maxlen=20)
+
+    def drain():
+        for line in runtime.stdout:
+            diagnostics.append(re.sub(r"ticket=\S+", "ticket=[redacted]", line.strip()))
+            try:
+                output.put_nowait(line)
+            except queue.Full:
+                pass
+
+    threading.Thread(target=drain, daemon=True).start()
     link = None
     try:
         deadline = time.monotonic() + 60
-        for line in runtime.stdout:
+        while time.monotonic() < deadline:
+            if runtime.poll() is not None:
+                raise AssertionError("Runtime exited during startup: " + "\n".join(diagnostics))
+            try:
+                line = await asyncio.to_thread(output.get, True, 1)
+            except queue.Empty:
+                continue
             match = re.search(r"(http://localhost:\d+/auth/login\?ticket=\S+)", line)
             if match:
                 link = match.group(1)
                 break
-            if time.monotonic() > deadline:
-                break
         check(link is not None, "runtime starts and prints a one-time console sign-in link")
         async with httpx.AsyncClient(timeout=10) as http:
             for _ in range(60):
+                if runtime.poll() is not None:
+                    raise AssertionError("Runtime exited before readiness: " + "\n".join(diagnostics))
                 try:
-                    if (await http.get(f"{BASE}/api/panini/health")).status_code == 200:
+                    if (await http.get(f"{BASE}/api/panini/health", timeout=1)).status_code == 200:
                         break
                 except httpx.HTTPError:
                     pass
                 await asyncio.sleep(0.5)
             health = (await http.get(f"{BASE}/api/panini/health")).json()
-            check(health["status"] == "ok", "PANINI coordinator is always on in the runtime")
+            check(health.get("status") == "ok", "PANINI coordinator is always on in the runtime")
 
             # Console boundary: nothing controls capabilities without signing in.
             check(
@@ -207,8 +243,13 @@ async def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--packaged", action="store_true", help="Check the packaged production runtime and frozen backend"
+    )
+    args = parser.parse_args()
     try:
-        asyncio.run(main())
+        asyncio.run(main(args.packaged))
     except AssertionError as error:
         print("FAIL", error)
         sys.exit(1)

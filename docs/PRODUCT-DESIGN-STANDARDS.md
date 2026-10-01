@@ -47,6 +47,7 @@ Keep components near their owning feature. Move a feature into a directory when 
 - The live evaluation records all three scheduled samples before any multi-day claim; its three capability cases are not a Dot benchmark.
 - Evaluation process success is insufficient: every selected case must pass, result rows must be complete and unique, and later samples must pass the baseline comparison. Daily samples remain separated after delays. Each new sample records the source commit and dirty state.
 - Release promotion requires a clean committed source revision, verified packaged hashes, valid signing, and clean Windows VM evidence. An unsigned build is a development candidate.
+- Packaging must import the frozen backend's capability modules and pass the unified runtime smoke against the packaged production Node runtime and backend. Source tests alone cannot qualify dynamically collected modules.
 
 ## Outstanding parity gaps
 

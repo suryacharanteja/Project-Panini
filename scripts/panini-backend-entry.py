@@ -13,4 +13,10 @@ if __name__ == "__main__":
 
     from backend.app import app
 
+    if sys.argv[1:2] == ["--check-runtime"]:
+        from backend.harness.runtime import Harness  # noqa: F401
+
+        print("PANINI_BACKEND_RUNTIME_IMPORTS_OK", flush=True)
+        raise SystemExit(0)
+
     uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("BACKEND_PORT", "8200")), access_log=False)

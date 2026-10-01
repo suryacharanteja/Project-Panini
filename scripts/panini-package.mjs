@@ -133,6 +133,13 @@ if (process.platform === 'win32') {
   const isolatedPath = { [pathKey]: systemOnlyPath };
   await run(
     join(runtime, 'backend/Panini.Backend.exe'),
+    ['--check-runtime'],
+    runtime,
+    isolatedPath,
+    'PANINI_BACKEND_RUNTIME_IMPORTS_OK',
+  );
+  await run(
+    join(runtime, 'backend/Panini.Backend.exe'),
     [
       'panini-cli',
       '-C',
@@ -319,6 +326,13 @@ await run(
     ...(unsigned ? ['--config.win.signExecutable=false'] : ['--config.forceCodeSigning=true']),
   ],
   join(root, 'panini-core/apps/shell'),
+);
+await run(
+  join(root, '.venv/Scripts/python.exe'),
+  ['scripts/runtime-smoke.py', '--packaged'],
+  root,
+  {},
+  'Unified runtime smoke passed.',
 );
 if (!unsigned) {
   await run('pwsh', [
