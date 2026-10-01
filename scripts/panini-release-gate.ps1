@@ -59,6 +59,9 @@ Write-Output "Verified $($manifest.files.Count) packaged runtime file hashes."
 if ($manifest.signatureStatus -eq 'unsigned-development-candidate') {
     throw 'This artifact is explicitly marked as an unsigned development candidate.'
 }
+if ($manifest.sourceCommit -notmatch '^[A-Fa-f0-9]{40}$' -or $manifest.sourceDirty -ne $false) {
+    throw 'A signed release must identify a clean Git source commit.'
+}
 if (!$BuildOnly) {
     if (!$QualificationEvidence -or !(Test-Path -LiteralPath $QualificationEvidence -PathType Leaf)) {
         throw 'Release promotion requires PANINI_RELEASE_QUALIFICATION_EVIDENCE from a clean VM.'

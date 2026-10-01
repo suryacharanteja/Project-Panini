@@ -16,6 +16,8 @@
   A three-sample, 24-hour-spaced reliability run has started with a 3/3 baseline.
 - The release gate verified 3,063 packaged file hashes and correctly refused
   the unsigned development installer. Signing and clean-VM qualification remain.
+- Signed package builds now require a clean Git checkout and record its commit
+  in the manifest; the promotion gate rejects a missing or dirty source identity.
 
 **Last updated:** 2026-09-27  
 **Scope:** `D:\AI\Jev-Rev-PANINI` source, docs, runtime tests, PANINI agent capability architecture, and the PANINI-CLI production-release track. Credentials were not read or reproduced.

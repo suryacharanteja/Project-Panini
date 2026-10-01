@@ -57,6 +57,11 @@ class ToolCall(Strict):
     arguments: dict = Field(default_factory=dict)
 
 
+class BackgroundGrant(Strict):
+    tool: str = Field(min_length=1, max_length=200)
+    allowed: bool
+
+
 def admin(request: Request) -> Admin:
     state = request.app.state
     if getattr(state, "admin", None) is None:
@@ -184,6 +189,17 @@ async def connectors(request: Request):
     return {"path": str(h.connectors.path), "connectors": rows}
 
 
+@router.get("/connectors/receipts")
+async def connector_receipts(request: Request):
+    h = harness(request)
+    return {
+        "receipts": h.store.all(
+            "SELECT id,server,tool,read_only,ok,created FROM connector_receipts "
+            "ORDER BY created DESC LIMIT 50"
+        )
+    }
+
+
 @router.put("/connectors/{name}")
 async def save_connector(name: str, payload: ConnectorSpec, request: Request):
     h = harness(request)
@@ -242,6 +258,25 @@ async def try_tool(name: str, tool: str, payload: ToolCall, request: Request):
         return await server.call(tool, payload.arguments)
     except ConnectorError as exc:
         raise HTTPException(502, str(exc)) from None
+
+
+@router.post("/connectors/{name}/background-grant")
+async def background_grant(name: str, payload: BackgroundGrant, request: Request):
+    h = harness(request)
+    await h.connectors.status()
+    try:
+        granted = h.connectors.set_background_grant(name, payload.tool, payload.allowed)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc).strip("'")) from None
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    admin(request).audit(
+        "connector",
+        name,
+        "background_grant",
+        f"{'Allowed' if payload.allowed else 'Revoked'} {payload.tool} for background research",
+    )
+    return {"granted": granted}
 
 
 # -- Agents PANINI can ask ------------------------------------------------------

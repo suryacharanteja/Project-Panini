@@ -30,6 +30,10 @@ tasks. The plan is marked complete only after every step has verified evidence.
 The project itself remains active for other work. Drafts are restricted to
 research because background execution currently has Search access only.
 
+Run `.venv\Scripts\python.exe scripts/panini-project-plan-smoke.py` for an
+isolated live provider check. It verifies a draft remains non-executing and
+that approval queues exactly the first step.
+
 Project context is passed to a background run as task data. The worker still has
 only read-only Search access. Pausing a project prevents queued tasks from being
 claimed; it does not interrupt a task that is already running. Completing a

@@ -265,6 +265,7 @@ const DIRECTORY: (Partial<Draft> & { title: string; blurb: string })[] = [
 
 export function ConnectorsPage() {
   const connectors = useResource<any>(admin('/connectors'));
+  const receipts = useResource<any>(admin('/connectors/receipts'), 10000);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [trying, setTrying] = useState<{
     server: string;
@@ -581,23 +582,52 @@ export function ConnectorsPage() {
                   {(c.tools ?? []).length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {c.tools.map((t: any) => (
-                        <button
-                          key={t.name}
-                          type="button"
-                          title={t.description}
-                          onClick={() =>
-                            t.read_only && setTrying({ server: c.name, tool: t.name, args: '{}' })
-                          }
-                          className={cx(
-                            'mono rounded-md border px-2 py-1 text-[11px]',
-                            t.read_only
-                              ? 'border-gold/30 text-gold hover:bg-gold/10'
-                              : 'cursor-default border-line text-muted',
+                        <div key={t.name} className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            title={t.description}
+                            onClick={() =>
+                              t.read_only && setTrying({ server: c.name, tool: t.name, args: '{}' })
+                            }
+                            className={cx(
+                              'mono rounded-md border px-2 py-1 text-[11px]',
+                              t.read_only
+                                ? 'border-gold/30 text-gold hover:bg-gold/10'
+                                : 'cursor-default border-line text-muted',
+                            )}
+                          >
+                            {t.name}
+                            {t.read_only ? ' · try' : ' · asks first'}
+                          </button>
+                          {t.read_only && (
+                            <Button
+                              tone="ghost"
+                              className="mono text-[11px]"
+                              busy={busy === `grant-${c.name}-${t.name}`}
+                              onClick={() =>
+                                run(
+                                  `grant-${c.name}-${t.name}`,
+                                  async () => {
+                                    await api(admin(`/connectors/${c.name}/background-grant`), {
+                                      body: {
+                                        tool: t.name,
+                                        allowed: !(c.spec?.background_read_only ?? []).includes(
+                                          t.name,
+                                        ),
+                                      },
+                                    });
+                                    await connectors.reload();
+                                  },
+                                  'Background access updated.',
+                                )
+                              }
+                            >
+                              {(c.spec?.background_read_only ?? []).includes(t.name)
+                                ? 'Background on'
+                                : 'Allow background'}
+                            </Button>
                           )}
-                        >
-                          {t.name}
-                          {t.read_only ? ' · try' : ' · asks first'}
-                        </button>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -643,8 +673,34 @@ export function ConnectorsPage() {
             </ul>
           )}
           <p className="mt-4 text-xs text-faint">
-            Read-only tools run without asking. Anything that changes data asks you first in the
-            avatar, and is refused in background runs.
+            Read-only tools run without asking in the foreground. Allow specific read-only tools for
+            background research here. Anything that changes data asks you first in the avatar.
+          </p>
+        </Card>
+
+        <Card title="Recent connector calls">
+          {(receipts.data?.receipts ?? []).length === 0 ? (
+            <Empty>No connector calls yet.</Empty>
+          ) : (
+            <ul className="grid gap-2">
+              {receipts.data.receipts.map((receipt: any) => (
+                <li
+                  key={receipt.id}
+                  className="mono flex flex-wrap items-center gap-2 rounded-lg border border-line p-2 text-xs"
+                >
+                  <Badge tone={receipt.ok ? 'ok' : 'error'}>{receipt.ok ? 'ok' : 'error'}</Badge>
+                  <span>
+                    {receipt.server}.{receipt.tool}
+                  </span>
+                  <span className="text-faint">
+                    {receipt.read_only ? 'read-only' : 'approved write'} · {ago(receipt.created)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-3 text-xs text-faint">
+            Receipts store hashes of arguments and results, not their contents.
           </p>
         </Card>
 

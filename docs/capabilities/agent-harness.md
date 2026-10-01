@@ -154,7 +154,8 @@ List Model Context Protocol servers in `connectors.json` in the data directory:
   - background runs accept a read-only tool only when its server entry also names
     it in `background_read_only`, for example
     `{"servers":{"issues":{"url":"https://example.com/mcp","background_read_only":["list_issues"]}}}`.
-    Other connector tools are refused in background.
+    In PANINI Admin → Connectors, use **Allow background** beside an available
+    read-only tool to set this grant. Other connector tools are refused in background.
 - **Receipts.** Successful connector calls record a local receipt with the server,
   tool, read-only flag, success flag and hashes of arguments and result. The
   receipt ID can support a verified agent result without storing connector data

@@ -208,6 +208,25 @@ class Connectors:
         self.secrets.set(f"oauth:{name}", None)
         self.secrets.set(f"client:{name}", None)
 
+    def set_background_grant(self, name, tool_name, allowed):
+        """Owner grant for an MCP tool already declared read-only by its server."""
+        server = self.servers.get(name)
+        if not server:
+            raise KeyError(f"No connector named {name}.")
+        tool = next((item for item in server.tools if item["name"] == tool_name), None)
+        if not tool or not tool["read_only"]:
+            raise ValueError("Only an available read-only tool can be granted background access.")
+        specs = self.specs()
+        granted = set(specs[name].get("background_read_only") or [])
+        if allowed:
+            granted.add(tool_name)
+        else:
+            granted.discard(tool_name)
+        specs[name]["background_read_only"] = sorted(granted)
+        self._write(specs)
+        server.spec["background_read_only"] = sorted(granted)
+        return sorted(granted)
+
     def _write(self, specs):
         import os as _os
 

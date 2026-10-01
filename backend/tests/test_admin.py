@@ -163,6 +163,31 @@ def test_connectors_agents_skills_and_hooks_without_files(client, tmp_path, monk
     assert tried.json()["text"] == 'lookup -> {"q": "x"}'
     refused = client.post("/api/admin/v1/connectors/notes/tools/create_note/try", json={}, headers=HEADERS)
     assert refused.status_code == 409
+    grant = client.post(
+        "/api/admin/v1/connectors/notes/background-grant",
+        json={"tool": "lookup", "allowed": True},
+        headers=HEADERS,
+    )
+    assert grant.json()["granted"] == ["lookup"]
+    assert client.get("/api/admin/v1/connectors", headers=HEADERS).json()["connectors"][0]["spec"][
+        "background_read_only"
+    ] == ["lookup"]
+    assert (
+        client.post(
+            "/api/admin/v1/connectors/notes/background-grant",
+            json={"tool": "create_note", "allowed": True},
+            headers=HEADERS,
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/admin/v1/connectors/notes/background-grant",
+            json={"tool": "lookup", "allowed": False},
+            headers=HEADERS,
+        ).json()["granted"]
+        == []
+    )
     assert client.delete("/api/admin/v1/connectors/notes", headers=HEADERS).json() == {"ok": True}
     assert (
         client.put(

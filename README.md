@@ -202,7 +202,8 @@ This produces an unsigned development installer in `artifacts/panini-package/`.
 For the source-versus-install layout and the exact location of PANINI's bundled
 Windows sandbox, see [PANINI product architecture](docs/PANINI-PRODUCT-ARCHITECTURE.md).
 `npm run panini:release:verify` is the fail-closed promotion gate for packaged
-runtime hashes, secret-file exclusion, Authenticode signatures, and clean-VM
+runtime hashes, secret-file exclusion, clean Git source provenance,
+Authenticode signatures, and clean-VM
 qualification evidence. It must fail for an unsigned candidate. A signed
 package build runs the hash/signature stage (`-BuildOnly`) first; it is only a
 candidate until clean-VM evidence for that exact installer is supplied through

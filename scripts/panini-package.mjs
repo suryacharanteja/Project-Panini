@@ -1,5 +1,5 @@
 /** Build a self-contained candidate. Production signing is an explicit release gate. */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   mkdir,
   cp,
@@ -18,6 +18,20 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 process.chdir(root);
 const unsigned = process.argv.includes('--unsigned');
+const gitCommit = spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
+  cwd: root,
+  encoding: 'utf8',
+  windowsHide: true,
+});
+const sourceCommit = gitCommit.status === 0 ? gitCommit.stdout.trim() : null;
+const gitStatus = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], {
+  cwd: root,
+  encoding: 'utf8',
+  windowsHide: true,
+});
+const sourceDirty = gitStatus.status !== 0 || Boolean(gitStatus.stdout.trim());
+if (!unsigned && (!sourceCommit || sourceDirty))
+  throw new Error('A signed release requires a committed, clean Git source state.');
 const shellManifest = JSON.parse(
   await readFile(join(root, 'panini-core/apps/shell/package.json'), 'utf8'),
 );
@@ -284,6 +298,8 @@ await writeFile(
       signatureStatus: unsigned
         ? 'unsigned-development-candidate'
         : 'requires-release-verification',
+      sourceCommit,
+      sourceDirty,
       builtAt: new Date().toISOString(),
       files,
     },

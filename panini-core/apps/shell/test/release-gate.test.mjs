@@ -54,6 +54,8 @@ test(
       const manifest = {
         product: 'PANINI',
         signatureStatus: 'unsigned-development-candidate',
+        sourceCommit: 'a'.repeat(40),
+        sourceDirty: false,
         files: [
           'cli/PANINI-CLI.exe',
           'backend/Panini.Backend.exe',
@@ -67,6 +69,10 @@ test(
       assert.match(runGate(root, runtime), /Unlisted runtime file/);
       await rm(unexpected);
       manifest.signatureStatus = 'requires-release-verification';
+      manifest.sourceDirty = true;
+      await writeFile(join(runtime, 'release.json'), JSON.stringify(manifest));
+      assert.match(runGate(root, runtime), /clean Git source commit/);
+      manifest.sourceDirty = false;
       await writeFile(join(runtime, 'release.json'), JSON.stringify(manifest));
       assert.match(runGate(root, runtime), /requires PANINI_RELEASE_QUALIFICATION_EVIDENCE/);
       const evidencePath = join(root, 'qualification.json');
