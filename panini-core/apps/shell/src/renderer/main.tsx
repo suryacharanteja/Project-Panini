@@ -832,7 +832,13 @@ function App() {
                 disabled={!ready || connectingMic}
                 onClick={() => void (mic ? closeMic() : startMic())}
               >
-                {connectingMic ? 'Connecting…' : mic ? '● Mic on' : '◉ Talk to PANINI'}
+                {connectingMic
+                  ? 'Connecting…'
+                  : mic
+                    ? muted
+                      ? 'Microphone muted · End call'
+                      : 'Listening · End call'
+                    : '◉ Talk to PANINI'}
               </button>
               {mic && <button onClick={() => mute(!muted)}>{muted ? 'Unmute' : 'Mute'}</button>}
               <button className="stop" disabled={!ready} onClick={() => void call('stop')}>

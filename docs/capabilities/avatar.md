@@ -100,3 +100,10 @@ Visual test pages, run with `npx vite panini-core/apps/shell/test/gallery`:
 - `/` shows every state, with `?speaking` adding PANINI's voice;
 - `/shell.html` shows the real window with a simulated task.
 
+## Instrument refinement
+
+Tilted orbital layers add depth around the central P and become still under reduced motion.
+Telemetry shows the six latest events with earlier activity in an expandable history.
+The result panel has more desktop space, the voice action is prominent, and captions
+describe runtime state. Capability cards distinguish execution from a pending decision.
+Desktop and narrow preview checks use simulated events, not live account workflows.

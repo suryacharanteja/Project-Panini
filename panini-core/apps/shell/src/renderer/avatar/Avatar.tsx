@@ -224,6 +224,37 @@ export function Avatar({
       const yaw = still ? 0.25 : Math.sin(time * 0.35) * 0.3 + leanX * 0.45;
       const pitch = still ? 0 : Math.sin(time * 0.23) * 0.06 + leanY * 0.25;
 
+      // Tilted orbital layers give the emblem depth without obscuring its silhouette.
+      if (stage) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        for (let orbit = 0; orbit < 3; orbit++) {
+          ctx.save();
+          ctx.rotate((orbit - 1) * 0.48 + (still ? 0 : Math.sin(time * 0.12) * 0.08));
+          const r = scale * (1.28 + orbit * 0.15);
+          ctx.strokeStyle = rgba(orbit === 1 ? GLOW : COPPER, 0.18);
+          ctx.lineWidth = orbit === 1 ? 1.2 : 0.7;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, r, r * (0.48 + orbit * 0.12), 0, 0, Math.PI * 2);
+          ctx.stroke();
+          const angle = time * (0.1 + orbit * 0.04) + orbit * 2;
+          ctx.fillStyle = rgba(GLOW, 0.7);
+          ctx.shadowColor = rgba(COPPER, 0.7);
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(
+            Math.cos(angle) * r,
+            Math.sin(angle) * r * (0.48 + orbit * 0.12),
+            2,
+            0,
+            Math.PI * 2,
+          );
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+
       // HUD scanner (stage): thin ticked rings rotating in opposite directions and a slow
       // radar sweep. Calm instrumentation around the core, never over the emblem.
       if (stage && !still) {

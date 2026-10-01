@@ -6,13 +6,13 @@ import { Avatar, type AvatarState, type StageGeometry } from './avatar/Avatar';
    on the right, with the conversation docked beneath. */
 
 export const STATE_CAPTIONS: Record<AvatarState, [string, string]> = {
-  offline: ['STATE · CONNECTING', 'The rule system is deriving itself'],
-  idle: ['STATE 0 | IDLE', 'Minimalist, pulsing geometric core'],
-  listening: ['STATE 1 | LISTENING', 'Listening ripples, not bars'],
-  thinking: ['STATE 1·5 | PARSING', 'Intent resolving into a derivation'],
-  working: ['STATE 2 | DELEGATING', 'Core fragmentation, dynamic thread routing'],
+  offline: ['STATE · CONNECTING', 'Connecting to your workspace'],
+  idle: ['STATE 0 | IDLE', 'Ready for your next instruction'],
+  listening: ['STATE 1 | LISTENING', 'Your microphone is on'],
+  thinking: ['STATE 1·5 | PARSING', 'Preparing the next step'],
+  working: ['STATE 2 | DELEGATING', 'Following your instruction'],
   approval: ['STATE · AWAITING YOU', 'Review the requested action to continue'],
-  success: ['STATE · VERIFIED', 'Derivation complete, evidence recorded'],
+  success: ['STATE · VERIFIED', 'Result verified; review the evidence'],
   blocked: ['STATE · HALTED', 'Review the task details and next step'],
   muted: ['STATE · MUTED', 'The microphone is closed'],
 };
@@ -159,7 +159,7 @@ export function Lexicon({ log, caps }: { log: string[]; caps: any[] }) {
         1. THE LEXICON <span>(TELEMETRY)</span>
       </div>
       <div className="lexicon-stream" role="log" aria-live="off">
-        {log.map((line, i) => (
+        {log.slice(-6).map((line, i) => (
           <div
             key={i}
             className={
@@ -177,7 +177,15 @@ export function Lexicon({ log, caps }: { log: string[]; caps: any[] }) {
           ▍
         </div>
       </div>
-      <div className="panel-title">GATEWAY</div>
+      <details className="telemetry-history">
+        <summary>Earlier activity · {Math.max(0, log.length - 6)} events</summary>
+        <div>
+          {log.slice(0, -6).map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
+        </div>
+      </details>
+      <div className="panel-title">CONNECTIONS</div>
       <ul className="lexicon-caps">
         {caps.map((c) => (
           <li key={c.capability}>
@@ -237,7 +245,15 @@ export function Capabilities({
                 {cap.label.toUpperCase()} <i>{cap.deva}</i>
               </strong>
               <small>{cap.sub}</small>
-              <em>{isActive ? 'ACTIVE' : info?.state === 'ready' ? 'READY' : 'NEEDS SETUP'}</em>
+              <em>
+                {isActive
+                  ? state === 'approval'
+                    ? 'Waiting for your decision'
+                    : 'Working on your instruction'
+                  : info?.state === 'ready'
+                    ? 'READY'
+                    : 'NEEDS SETUP'}
+              </em>
             </span>
           </button>
         );
