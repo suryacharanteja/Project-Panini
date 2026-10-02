@@ -1,0 +1,28 @@
+id: computer.count-files
+title: Count files
+modes:
+- live
+needs:
+- openai
+turn: How many files are in {work}?
+files:
+  notes.txt: 'Meeting with Priya on Friday at 3pm.
+
+    Budget: 12,500 AED.
+
+    TODO: send the deck.
+
+    '
+  numbers.csv: 'item,amount
+
+    rent,4200
+
+    food,1800
+
+    travel,950
+
+    '
+expect:
+  message_contains_file_count: '{work}'
+tags:
+- simple

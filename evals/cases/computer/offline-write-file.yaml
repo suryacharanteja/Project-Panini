@@ -1,0 +1,25 @@
+id: computer.offline-write-file
+title: Write a file (scripted)
+modes:
+- offline
+turn: Create todo.txt in {work} containing buy milk.
+files: {}
+approvals: decline
+script:
+- calls:
+  - name: run_command
+    arguments:
+      command: Set-Content -Path todo.txt -Value 'buy milk' -Encoding utf8
+      cwd: '{work}'
+      timeout_seconds: 30
+- calls:
+  - name: finish
+    arguments:
+      outcome: verified_complete
+      message: Created todo.txt with 'buy milk'.
+expect:
+  outcome_in:
+  - verified_complete
+  file_contains:
+    '{work}\todo.txt': buy milk
+tags: []

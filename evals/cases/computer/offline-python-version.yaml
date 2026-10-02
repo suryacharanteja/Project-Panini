@@ -1,0 +1,26 @@
+id: computer.offline-python-version
+title: Python version (scripted)
+modes:
+- offline
+turn: Which Python version is installed?
+files: {}
+approvals: decline
+script:
+- calls:
+  - name: run_command
+    arguments:
+      command: python --version
+      cwd: '{work}'
+      timeout_seconds: 30
+- calls:
+  - name: finish
+    arguments:
+      outcome: verified_complete
+      message: Python 3 is installed.
+expect:
+  outcome_in:
+  - verified_complete
+  message_contains_all:
+  - python
+tags:
+- simple

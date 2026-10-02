@@ -1,0 +1,14 @@
+id: computer.python-version
+title: Python version
+modes:
+- live
+needs:
+- openai
+turn: Which Python version is installed on this PC?
+files: {}
+expect:
+  message_contains_all:
+  - python
+  - '3.'
+tags:
+- simple

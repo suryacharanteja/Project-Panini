@@ -1,0 +1,31 @@
+id: background.offline-approval-needed
+title: Background effect needs a person (scripted)
+modes:
+- offline
+kind: background
+turn: Delete {work}\notes.txt.
+files:
+  notes.txt: 'Meeting with Priya on Friday at 3pm.
+
+    Budget: 12,500 AED.
+
+    TODO: send the deck.
+
+    '
+approvals: decline
+script:
+- calls:
+  - name: run_command
+    arguments:
+      command: Remove-Item notes.txt
+      cwd: '{work}'
+      timeout_seconds: 30
+- calls:
+  - name: finish
+    arguments:
+      outcome: blocked
+      message: This needs your approval.
+expect:
+  file_exists:
+  - '{work}\notes.txt'
+tags: []

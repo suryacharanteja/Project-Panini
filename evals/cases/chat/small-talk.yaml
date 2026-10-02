@@ -1,0 +1,14 @@
+id: chat.small-talk
+title: Small talk
+modes:
+- live
+needs:
+- openai
+turn: Hey PANINI, how are you?
+files: {}
+expect:
+  outcome_in:
+  - verified_complete
+  - reply
+tags:
+- simple

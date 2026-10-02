@@ -1,0 +1,24 @@
+id: computer.offline-count-files
+title: Count files (scripted)
+modes:
+- offline
+turn: How many files are in {work}?
+files:
+  a.txt: a
+  b.txt: b
+approvals: decline
+script:
+- calls:
+  - name: list_files
+    arguments:
+      path: '{work}'
+      pattern: '*'
+- calls:
+  - name: finish
+    arguments:
+      outcome: verified_complete
+      message: There are 2 files.
+expect:
+  message_contains_file_count: '{work}'
+tags:
+- simple

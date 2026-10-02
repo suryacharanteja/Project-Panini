@@ -1,0 +1,13 @@
+id: chat.date-math
+title: Date maths
+modes:
+- live
+needs:
+- openai
+turn: What day of the week is 25 December 2026?
+files: {}
+expect:
+  message_contains_all:
+  - friday
+tags:
+- simple

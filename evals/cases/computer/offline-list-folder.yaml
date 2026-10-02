@@ -1,0 +1,43 @@
+id: computer.offline-list-folder
+title: List a folder (scripted)
+modes:
+- offline
+turn: List the files in {work}.
+files:
+  notes.txt: 'Meeting with Priya on Friday at 3pm.
+
+    Budget: 12,500 AED.
+
+    TODO: send the deck.
+
+    '
+  numbers.csv: 'item,amount
+
+    rent,4200
+
+    food,1800
+
+    travel,950
+
+    '
+approvals: decline
+script:
+- calls:
+  - name: list_files
+    arguments:
+      path: '{work}'
+      pattern: '*'
+- calls:
+  - name: finish
+    arguments:
+      outcome: verified_complete
+      message: There are notes.txt and numbers.csv.
+expect:
+  outcome_in:
+  - verified_complete
+  message_contains_all:
+  - notes.txt
+  - numbers.csv
+  evidence_min: 1
+tags:
+- simple

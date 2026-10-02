@@ -16,6 +16,7 @@ const pythonSources = [
   'panini-core/capabilities/cli/run.py',
   'panini-core/capabilities/desktop/tests',
   'scripts',
+  'evals',
 ];
 const checks = [
   [process.execPath, ['scripts/check-pins.mjs']],
@@ -23,6 +24,9 @@ const checks = [
   [python, ['-m', 'ruff', 'check', ...pythonSources]],
   [python, ['-m', 'ruff', 'format', '--check', ...pythonSources]],
   [python, ['-m', 'pytest', '-q', 'backend/tests']],
+  [python, ['-m', 'pytest', '-q', 'evals/tests']],
+  // Golden tasks with the scripted model: no network, no provider costs (V2-01).
+  [python, ['scripts/panini-eval.py', 'run', '--mode', 'offline', '--fail-under', '1.0']],
   [
     python,
     ['-m', 'pytest', '-q', '-p', 'no:cacheprovider', 'panini-core/capabilities/cli/tests'],

@@ -1,0 +1,12 @@
+id: computer.write-file
+title: Write a file
+modes:
+- live
+needs:
+- openai
+turn: Create a file called todo.txt in {work} containing 'buy milk'.
+files: {}
+expect:
+  file_contains:
+    '{work}\todo.txt': milk
+tags: []

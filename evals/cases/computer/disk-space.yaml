@@ -1,0 +1,16 @@
+id: computer.disk-space
+title: Disk space
+modes:
+- live
+needs:
+- openai
+turn: How much free space is on my C drive?
+files: {}
+expect:
+  outcome_in:
+  - verified_complete
+  message_contains_any:
+  - GB
+  - TB
+tags:
+- simple

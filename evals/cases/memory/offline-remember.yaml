@@ -1,0 +1,24 @@
+id: memory.offline-remember
+title: Remember a preference (scripted)
+modes:
+- offline
+turn: Remember that I prefer window seats.
+files: {}
+approvals: decline
+script:
+- calls:
+  - name: remember
+    arguments:
+      text: The person prefers window seats.
+      kind: preference
+- calls:
+  - name: finish
+    arguments:
+      outcome: verified_complete
+      message: I'll remember you prefer window seats.
+expect:
+  outcome_in:
+  - verified_complete
+  message_contains_all:
+  - window
+tags: []

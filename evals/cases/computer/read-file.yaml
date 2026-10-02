@@ -1,0 +1,20 @@
+id: computer.read-file
+title: Read a file
+modes:
+- live
+needs:
+- openai
+turn: Read {work}\notes.txt and tell me when the meeting is.
+files:
+  notes.txt: 'Meeting with Priya on Friday at 3pm.
+
+    Budget: 12,500 AED.
+
+    TODO: send the deck.
+
+    '
+expect:
+  message_contains_all:
+  - friday
+tags:
+- simple

@@ -1,0 +1,13 @@
+id: web.open-site
+title: Open a site
+modes:
+- live
+needs:
+- openai
+turn: Open youtube.com.
+files: {}
+expect:
+  outcome_in:
+  - verified_complete
+tags:
+- simple

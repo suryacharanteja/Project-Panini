@@ -82,7 +82,7 @@ Sizes: **S** ≤ 2 days · **M** 3–5 days · **L** 1–2 weeks.
 | ID | Work item | Ph | Pri | Size | Depends on | Flag | LLD | Exit criteria (summary) | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | V2-00 | Program setup: OpenDots reference move, flags, migrations, notices | 0 | P0 | S | — | — | [LLD](lld/V2-00-program-setup.md) | Snapshot moved to `references/opendots/` and ignored; `v2flags` + migration runner tested; notices updated | Done |
-| V2-01 | Eval baseline and scorecard | 0 | P0 | M | V2-00 | — | [LLD](lld/V2-01-eval-scorecard.md) | 40 golden tasks (offline + live); v1 baseline stored; `scripts/panini-eval.py --compare` works | Not started |
+| V2-01 | Eval baseline and scorecard | 0 | P0 | M | V2-00 | — | [LLD](lld/V2-01-eval-scorecard.md) | 40 golden tasks (offline + live); v1 baseline stored; `scripts/panini-eval.py --compare` works | Done |
 | V2-02 | Capability and tool registry (manifests) | 1 | P0 | M | V2-00 | `PANINI_V2_REGISTRY` | [LLD](lld/V2-02-capability-registry.md) | All five v1 capabilities and the agent's direct tools served from manifests; MCP connectors synthesized; prompts generated from the registry; parity tests | Not started |
 | V2-03 | Policy engine: effect classes, grants, epochs, taint | 1 | P0 | M | V2-02 | `PANINI_V2_POLICY` | [LLD](lld/V2-03-policy-engine.md) | Shadow mode agrees with `approvals.py` on the existing corpus; grant epochs stop runs ≤ 100 ms; taint escalation tests | Not started |
 | V2-04 | Receipts and artifacts ledger | 1 | P0 | M | V2-02 | `PANINI_V2_LEDGER` | [LLD](lld/V2-04-receipts-ledger.md) | Every tool call receipted (I1); chain verifies; idempotent replay skips dispatched operations after a kill | Not started |
@@ -219,6 +219,7 @@ command output summary.
 | Date | Item | Check | Command / method | Result |
 | --- | --- | --- | --- | --- |
 | 2026-10-02 | V2-00 | Flags, Admin v2 group, migrations, reference move, pin check | npm test | Green: backend 431 passed (11 new), CLI 124, frontend/search/admin/shell suites, typechecks |
+| 2026-10-02 | V2-01 | Offline scorecard in npm test; v1 live baseline | scripts/panini-eval.py run --mode offline; run --mode live --engine v1 | Offline 16/16 (no network, ~2 s). v1 live baseline 20/20, p50 3.72 s, p95 13.27 s, USD 0.14 total (artifacts/evals/baseline-v1-live-1.json; one sample, more to follow) |
 | — | — | — | — | — |
 
 ---

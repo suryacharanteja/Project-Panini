@@ -1,0 +1,13 @@
+id: desktop.open-notepad
+title: Open Notepad
+modes:
+- live
+needs:
+- openai
+turn: Open Notepad.
+files: {}
+expect:
+  outcome_in:
+  - verified_complete
+tags:
+- simple

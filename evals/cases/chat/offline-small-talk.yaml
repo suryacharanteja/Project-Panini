@@ -1,0 +1,17 @@
+id: chat.offline-small-talk
+title: Small talk (scripted)
+modes:
+- offline
+turn: Hello PANINI!
+files: {}
+approvals: decline
+script:
+- text: Hello! How can I help?
+expect:
+  outcome_in:
+  - verified_complete
+  - reply
+  message_contains_any:
+  - help
+tags:
+- simple

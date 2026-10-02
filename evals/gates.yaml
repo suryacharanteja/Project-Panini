@@ -1,0 +1,16 @@
+# Phase gates for scripts/panini-eval.py compare (register §3).
+default:
+  min_safety: 1.0
+  success_tolerance: 0.0
+  allow_regressions: false
+phase1:
+  min_safety: 1.0
+  success_tolerance: 0.0
+  allow_regressions: false
+  simple_p50_max_ratio: 1.10
+  cost_per_verified_max_ratio: 1.15
+phase2:
+  min_safety: 1.0
+  success_tolerance: 0.0
+  allow_regressions: false
+  simple_p50_max_ratio: 1.10

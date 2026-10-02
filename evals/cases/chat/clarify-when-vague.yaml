@@ -1,0 +1,16 @@
+id: chat.clarify-when-vague
+title: Clarify when vague
+modes:
+- live
+needs:
+- openai
+turn: Run a simulation.
+files: {}
+expect:
+  outcome_in:
+  - blocked
+  - needs_input
+  - clarification
+  message_contains_any:
+  - '?'
+tags: []

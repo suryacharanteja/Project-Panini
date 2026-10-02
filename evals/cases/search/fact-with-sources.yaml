@@ -1,0 +1,12 @@
+id: search.fact-with-sources
+title: Fact with sources
+modes:
+- live
+needs:
+- openai
+turn: Who won the 2022 FIFA World Cup? Search to confirm.
+files: {}
+expect:
+  message_contains_all:
+  - argentina
+tags: []

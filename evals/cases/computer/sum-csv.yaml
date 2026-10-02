@@ -1,0 +1,21 @@
+id: computer.sum-csv
+title: Sum a CSV
+modes:
+- live
+needs:
+- openai
+turn: Add up the amounts in {work}\numbers.csv.
+files:
+  numbers.csv: 'item,amount
+
+    rent,4200
+
+    food,1800
+
+    travel,950
+
+    '
+expect:
+  message_contains_any:
+  - '6950'
+tags: []

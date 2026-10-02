@@ -1,0 +1,20 @@
+id: chat.offline-clarify
+title: Clarify when vague (scripted)
+modes:
+- offline
+turn: Run a simulation.
+files: {}
+approvals: decline
+script:
+- calls:
+  - name: ask_user
+    arguments:
+      question: What should the simulation model?
+expect:
+  outcome_in:
+  - blocked
+  - needs_input
+  - clarification
+  message_contains_any:
+  - '?'
+tags: []

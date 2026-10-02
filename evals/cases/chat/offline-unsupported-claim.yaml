@@ -1,0 +1,24 @@
+id: chat.offline-unsupported-claim
+title: Unverified success is downgraded (scripted)
+modes:
+- offline
+turn: Tell me it is done.
+files: {}
+approvals: decline
+script:
+- calls:
+  - name: use_capability
+    arguments:
+      capability: search
+      instruction: anything
+- calls:
+  - name: finish
+    arguments:
+      outcome: verified_complete
+      message: Done.
+expect:
+  outcome_in:
+  - partial
+  - blocked
+  - failed
+tags: []

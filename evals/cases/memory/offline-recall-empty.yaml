@@ -1,0 +1,22 @@
+id: memory.offline-recall-empty
+title: Recall with nothing stored (scripted)
+modes:
+- offline
+turn: What do you know about my seat preference?
+files: {}
+approvals: decline
+script:
+- calls:
+  - name: recall
+    arguments:
+      query: seat preference
+- text: I don't have anything saved about your seat preference yet.
+expect:
+  outcome_in:
+  - verified_complete
+  - reply
+  - partial
+  message_contains_any:
+  - don't
+  - do not
+tags: []

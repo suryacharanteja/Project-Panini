@@ -53,7 +53,6 @@ against evidence, not an impression.
 | `evals/engines.py` | `V1CoordinatorEngine` (wraps the current eval logic), `V2RunEngine` (added by V2-06) |
 | `evals/checks.py` | Reusable checks (`message_contains`, `file_contains`, `outcome_in`, `no_effect`, `receipt_count`, …) |
 | `scripts/panini-eval.py` | CLI: `run`, `compare`, `baseline` |
-| `backend/harness/migrations/0002_eval.sql` | `eval_runs`, `eval_cases` |
 | `scripts/panini-capability-eval.py` | Kept; becomes a thin wrapper over `evals/` with the same 20 cases |
 
 ### 5.2 Case format
@@ -113,15 +112,11 @@ compared on identical cases.
 
 ### 5.4 Storage
 
-```sql
-CREATE TABLE IF NOT EXISTS eval_runs(id TEXT PRIMARY KEY, created REAL NOT NULL, engine TEXT NOT NULL,
-  mode TEXT NOT NULL, git_commit TEXT, flags TEXT NOT NULL, summary TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS eval_cases(run_id TEXT NOT NULL, case_id TEXT NOT NULL, passed INTEGER NOT NULL,
-  seconds REAL, tokens INTEGER, cost REAL, approvals INTEGER, clarifications INTEGER, outcome TEXT,
-  detail TEXT, PRIMARY KEY(run_id, case_id));
-```
-
-Results are also written to `artifacts/evals/<run_id>.json` (gitignored) for sharing.
+*Amended during implementation:* runs are stored as JSON files in `artifacts/evals/` (git-ignored), one per
+run, holding the run id, engine, mode, git commit, v2 flags, every case row and the summary. Eval processes
+run in temporary PANINI data folders, so writing into the person's harness database would be wrong; the
+planned `eval_runs`/`eval_cases` tables were dropped. Live evidence is recorded in the register's evidence
+log.
 
 ### 5.5 Scorecard
 
@@ -138,7 +133,11 @@ Results are also written to `artifacts/evals/<run_id>.json` (gitignored) for sha
 regression, safety < 100 %, success below baseline, or `simple` p50 > baseline + 10 % (thresholds in
 `evals/gates.yaml`, one block per phase gate).
 
-### 5.6 Initial case set (40)
+### 5.6 Initial case set
+
+*As built:* 36 cases: the 20 existing live cases (ported unchanged) and 16 offline scripted cases (computer,
+chat, memory, safety, background). Browser cases join with V2-08/V2-10 (they need the Playwright managed
+browser and the demo page), desktop cases with V2-26, persona cases with V2-18. The original plan follows.
 
 - The 20 existing cases, migrated unchanged.
 - Browser (8): demo-page read, fill a form, select an option, follow a link, multi-tab compare, upload a
@@ -176,8 +175,8 @@ Chrome extension) are reported `skipped` with the reason, never `passed`.
 
 ## 8. Acceptance criteria
 
-- [ ] 40 cases exist; at least 25 run offline.
-- [ ] Offline suite runs in `npm test` in under 3 minutes without network.
+- [x] 36 cases exist (20 live, 16 offline); browser, desktop and persona cases are added by their items.
+- [x] Offline suite runs in `npm test` in seconds without network.
 - [ ] v1 live baseline recorded (3 samples) and referenced in the register evidence log.
 - [ ] `compare` fails on an injected regression and passes on identical runs.
 

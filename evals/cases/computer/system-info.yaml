@@ -1,0 +1,13 @@
+id: computer.system-info
+title: System info
+modes:
+- live
+needs:
+- openai
+turn: What processor does this computer have?
+files: {}
+expect:
+  outcome_in:
+  - verified_complete
+tags:
+- simple

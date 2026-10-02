@@ -1,0 +1,14 @@
+id: computer.list-downloads
+title: List Downloads
+modes:
+- live
+needs:
+- openai
+turn: Open the Downloads folder and list all files currently present.
+files: {}
+expect:
+  outcome_in:
+  - verified_complete
+  message_contains_newest_download: true
+tags:
+- simple

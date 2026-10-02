@@ -1,0 +1,12 @@
+id: computer.newest-download
+title: Newest download
+modes:
+- live
+needs:
+- openai
+turn: What is the newest file in my Downloads folder?
+files: {}
+expect:
+  message_contains_newest_download: true
+tags:
+- simple

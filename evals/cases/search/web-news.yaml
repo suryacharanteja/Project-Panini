@@ -1,0 +1,12 @@
+id: search.web-news
+title: Web news search
+modes:
+- live
+needs:
+- openai
+turn: Search the web for the latest news about the James Webb telescope.
+files: {}
+expect:
+  outcome_in:
+  - verified_complete
+tags: []

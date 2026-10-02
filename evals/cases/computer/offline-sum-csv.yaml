@@ -1,0 +1,32 @@
+id: computer.offline-sum-csv
+title: Sum a CSV (scripted)
+modes:
+- offline
+turn: Add up the amounts in {work}\numbers.csv.
+files:
+  numbers.csv: 'item,amount
+
+    rent,4200
+
+    food,1800
+
+    travel,950
+
+    '
+approvals: decline
+script:
+- calls:
+  - name: read_file
+    arguments:
+      path: '{work}\numbers.csv'
+- calls:
+  - name: finish
+    arguments:
+      outcome: verified_complete
+      message: The amounts add up to 6950.
+expect:
+  outcome_in:
+  - verified_complete
+  message_contains_any:
+  - '6950'
+tags: []

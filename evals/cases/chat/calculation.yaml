@@ -1,0 +1,13 @@
+id: chat.calculation
+title: Calculation
+modes:
+- live
+needs:
+- openai
+turn: What is 17.5% of 2,340?
+files: {}
+expect:
+  message_contains_any:
+  - '409.5'
+tags:
+- simple

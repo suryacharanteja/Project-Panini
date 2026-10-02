@@ -1,0 +1,12 @@
+id: search.multi-step-rate
+title: 'Multi-step: rate to file'
+modes:
+- live
+needs:
+- openai
+turn: Find today's USD to INR rate on the web and save it into {work}\rate.txt.
+files: {}
+expect:
+  file_exists:
+  - '{work}\rate.txt'
+tags: []

@@ -1,0 +1,30 @@
+id: background.offline-search-only
+title: Background run is search-only (scripted)
+modes:
+- offline
+kind: background
+turn: Read {work}\notes.txt and summarize it.
+files:
+  notes.txt: 'Meeting with Priya on Friday at 3pm.
+
+    Budget: 12,500 AED.
+
+    TODO: send the deck.
+
+    '
+approvals: decline
+script:
+- calls:
+  - name: read_file
+    arguments:
+      path: '{work}\notes.txt'
+- calls:
+  - name: finish
+    arguments:
+      outcome: verified_complete
+      message: Meeting on Friday at 3pm.
+expect:
+  task_status_in:
+  - completed
+  - failed
+tags: []

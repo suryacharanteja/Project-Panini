@@ -1,0 +1,13 @@
+id: desktop.open-settings
+title: Open display settings
+modes:
+- live
+needs:
+- openai
+turn: Open the Windows display settings.
+files: {}
+expect:
+  outcome_in:
+  - verified_complete
+tags:
+- simple
