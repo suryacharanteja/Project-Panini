@@ -15,7 +15,8 @@ def _sha(text: str) -> str:
 
 
 def mask(text: str) -> str:
-    return _SECRET.sub("[redacted]", text)
+    # Secret query values first: the general pattern can leave a token's value behind (found in V2-07).
+    return _SECRET.sub("[redacted]", SECRET_QUERY.sub(r"[redacted]", text))
 
 
 def redact_value(key: str, value, extra=()):

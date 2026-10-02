@@ -1,0 +1,108 @@
+/* PANINI shared cards (V2-07). Obsidian/copper tokens from docs/PRODUCT-DESIGN-STANDARDS.md; plain CSS so the
+   shell (plain CSS) and Admin (Tailwind) render the same cards. */
+.pc-card {
+  --pc-surface: #17171b;
+  --pc-border: #2a2a31;
+  --pc-text: #ece9e4;
+  --pc-faint: #9a958d;
+  --pc-copper: #c98a4b;
+  --pc-ok: #6fbf8e;
+  --pc-warn: #e0b45a;
+  --pc-error: #e07a6a;
+  background: var(--pc-surface);
+  border: 1px solid var(--pc-border);
+  border-radius: 10px;
+  color: var(--pc-text);
+  padding: 10px 12px;
+  margin: 6px 0;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.pc-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pc-card p {
+  margin: 6px 0 0;
+}
+.pc-detail,
+.pc-hint {
+  color: var(--pc-faint);
+}
+.pc-card pre {
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow: auto;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+.pc-chip {
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.pc-chip-working {
+  color: var(--pc-copper);
+}
+.pc-chip-finished {
+  color: var(--pc-ok);
+}
+.pc-chip-attention {
+  color: var(--pc-warn);
+}
+.pc-chip-interrupted {
+  color: var(--pc-error);
+}
+.pc-actions,
+.pc-card form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.pc-card button {
+  border: 1px solid var(--pc-border);
+  background: transparent;
+  color: var(--pc-text);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.pc-card button.pc-primary {
+  background: var(--pc-copper);
+  border-color: var(--pc-copper);
+  color: #111;
+}
+.pc-card button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.pc-card input {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--pc-border);
+  border-radius: 6px;
+  color: var(--pc-text);
+  padding: 4px 8px;
+}
+.pc-card ol {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.pc-error {
+  color: var(--pc-error);
+}
+.pc-receipt {
+  font-size: 11px;
+  color: var(--pc-faint);
+}

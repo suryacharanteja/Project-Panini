@@ -5,6 +5,7 @@ import { Shell } from './components/Shell';
 import { ToastProvider } from './components/ui';
 import { AgentsPage, ConnectorsPage, SkillsPage } from './pages/Build';
 import { CapabilitiesPage } from './pages/Capabilities';
+import { ConversationsPage } from './pages/Conversations';
 import { PermissionsPage } from './pages/Permissions';
 import { ReceiptsPage } from './pages/Receipts';
 import {
@@ -30,6 +31,7 @@ const page = (path: string, component: () => React.ReactNode) =>
 const routeTree = root.addChildren([
   page('/', Home),
   page('/inbox', InboxPage),
+  page('/conversations', ConversationsPage),
   page('/runs', RunsPage),
   page('/receipts', ReceiptsPage),
   page('/projects', ProjectsPage),

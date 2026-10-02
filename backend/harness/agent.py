@@ -327,6 +327,18 @@ def report(outcome):
     return "\n".join(line for line in lines if line.strip())
 
 
+def _pending(call_id, name, arguments):
+    return {"call_id": call_id, "name": name, "arguments": arguments}
+
+
+def _arguments(raw):
+    try:
+        value = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 def _run_state(outcome):
     return {"verified_complete": "completed", "reply": "completed", "partial": "partial"}.get(
         outcome, "blocked" if outcome in ("blocked", "clarification") else "failed"
@@ -383,6 +395,9 @@ class Agent:
         self.run_id = None  # The coordinator task or background task this run belongs to (ledger receipts).
         # V2-06: the conversation thread, Jev's sure first tool call, and this run's record/router/meter.
         self.thread_id, self.reflex, self.brain, self.parent_run = None, None, None, None
+        # V2-07: observe(kind, **data) sees tool calls and messages (AG-UI); client tools run in the person's app
+        # through client_call(call_id, name, arguments); durable runs keep run records without the flag.
+        self.observe, self.client_tools, self.client_call, self.durable = None, [], None, False
 
     async def _select(self, goal, items):
         """One Jev call per task decides what the model needs to see: relevant skills,
@@ -517,7 +532,7 @@ class Agent:
                 for t in tools
                 if not self._hidden(t["name"])
                 and not (t["name"] == "run_subagents" and not self.capabilities)
-            ]
+            ] + self._client_model_tools()
         tools = []
         for tool in TOOLS:
             if self._hidden(tool["name"]):
@@ -545,7 +560,10 @@ class Agent:
             ):
                 continue
             tools.append(tool)
-        return tools
+        return tools + self._client_model_tools()
+
+    def _client_model_tools(self):
+        return [{k: v for k, v in t.items() if k != "client_name"} for t in getattr(self, "client_tools", [])]
 
     def instructions(self, goal):
         from .learning import persona
@@ -608,7 +626,7 @@ class Agent:
 
         started = time.monotonic()
         self.goal = goal
-        one_brain = brain.enabled() and getattr(self.h, "runs", None) is not None
+        one_brain = (brain.enabled() or self.durable) and getattr(self.h, "runs", None) is not None
         items, summary, first = [], "", 1
         if session_id:
             session = self.h.sessions.get(session_id)
@@ -642,7 +660,10 @@ class Agent:
         result = None
         step = first - 1
         try:
-            if reflex and self.evidence and await self._jev_done():
+            pending = list((resume or {}).get("pending") or [])
+            if pending:
+                result = await self._finish_pending(pending, items, summary, first)
+            if result is None and reflex and self.evidence and await self._jev_done():
                 message = report(self.outcomes[-1])[:4000] or "Done."
                 result = AgentResult("verified_complete", message)
                 items.append({"role": "assistant", "content": message})
@@ -665,6 +686,8 @@ class Agent:
                 if self.brain:
                     self.brain["meter"].add_turn(self.brain["router"].name, getattr(turn, "usage", None))
                 items.extend(turn.items)
+                if turn.text and self.observe:
+                    self.observe("message", text=turn.text)
                 if not turn.calls:
                     # A plain answer: backed by verified steps it is complete; otherwise just a reply.
                     outcome = "reply"
@@ -677,21 +700,10 @@ class Agent:
                     result = AgentResult(outcome, turn.text or "Done.")
                     break
                 verified_before = len(self.evidence)
-                for call in turn.calls:
-                    output, final = await self.call(call.name, call.arguments)
-                    items.append(
-                        {
-                            "type": "function_call_output",
-                            "call_id": call.call_id,
-                            "output": json.dumps(output, ensure_ascii=False)[:OUTPUT_CHARS],
-                        }
-                    )
-                    if self.brain:
-                        self.brain["router"].note_tool(output)
-                        if call.name == "update_plan":
-                            self.brain["router"].note_plan(len(self.plan))
-                    if final:
-                        result = final
+                calls = [_pending(c.call_id, c.name, c.arguments) for c in turn.calls]
+                final = await self._calls(calls, items, summary, step)
+                if final:
+                    result = final
                 if (
                     not result
                     and len(self.evidence) > verified_before
@@ -727,6 +739,53 @@ class Agent:
             self.h.sessions.save(session_id, items, summary=summary, title=goal[:80])
         return result
 
+    async def _calls(self, calls, items, summary, step):
+        """Run one round's tool calls in order. If one parks (an approval, or a tool in the person's app), the
+        round is checkpointed with the calls still to run, so a resume continues right there (V2-07)."""
+        result = None
+        for index, call in enumerate(calls):
+            try:
+                output, final = await self._run_call(call["call_id"], call["name"], call["arguments"])
+            except BaseException as signal:
+                if self.brain and getattr(signal, "interrupt_id", None):
+                    self._checkpoint(items, summary, step - 1, pending=calls[index:])
+                raise
+            items.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call["call_id"],
+                    "output": json.dumps(output, ensure_ascii=False)[:OUTPUT_CHARS],
+                }
+            )
+            if self.brain:
+                self.brain["router"].note_tool(output)
+                if call["name"] == "update_plan":
+                    self.brain["router"].note_plan(len(self.plan))
+            if final:
+                result = final
+        return result
+
+    async def _finish_pending(self, pending, items, summary, step):
+        self.emit("resumed", "Continuing where the task stopped.")
+        result = await self._calls(pending, items, summary, step)
+        if self.brain:
+            self._checkpoint(items, summary, step - 1)
+        return result
+
+    async def _run_call(self, call_id, name, arguments):
+        if self.observe:
+            self.observe("tool.started", call_id=call_id, name=name, args=_arguments(arguments))
+        if name.startswith("client_") and self.client_call is not None:
+            if name not in {t["name"] for t in self.client_tools}:
+                output, final = {"error": "This tool is unavailable in this task."}, None
+            else:
+                output, final = {"result": await self.client_call(call_id, name, arguments)}, None
+        else:
+            output, final = await self.call(name, arguments)
+        if self.observe:
+            self.observe("tool.finished", call_id=call_id, name=name, output=output)
+        return output, final
+
     # One brain (V2-06) -----------------------------------------------------
     def _start_run(self, resume):
         from .. import brain
@@ -753,13 +812,15 @@ class Agent:
         self.brain = {"run": run_id, "router": router, "meter": meter}
         self.emit("run", f"Using the {router.tier} model.", run_id=run_id, tier=router.tier)
 
-    def _checkpoint(self, items, summary, step):
+    def _checkpoint(self, items, summary, step, pending=None):
         b = self.brain
         try:
             self.h.runs.checkpoint(
                 b["run"],
                 {
                     "run_id": b["run"],
+                    "goal": self.goal,
+                    "pending": pending or [],
                     "items": items,
                     "summary": summary,
                     "plan": self.plan,
@@ -821,7 +882,7 @@ class Agent:
         )
         call_id = f"call_reflex_{uuid4().hex[:16]}"
         self.emit("reflex", f"Starting with {reflex['capability']}.", capability=reflex["capability"])
-        output, _ = await self.call("use_capability", arguments)
+        output, _ = await self._run_call(call_id, "use_capability", arguments)
         items.append(
             {"type": "function_call", "call_id": call_id, "name": "use_capability", "arguments": arguments}
         )

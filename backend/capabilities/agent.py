@@ -112,6 +112,10 @@ class AgentAdapter:
 
         agent.run_id = context.task.task_id
         agent.thread_id = self.sessions[session_key]
+        from .. import v2flags
+
+        if v2flags.enabled("PANINI_V2_AGUI"):
+            agent.observe = _card_events(context)  # V2-07: the shell shows each tool call as a card.
         agent.reflex = getattr(context.task, "reflex", None)
         browser = self.adapters.get("browser")
         if browser is not None and hasattr(browser, "open_in_chrome"):
@@ -176,3 +180,23 @@ class AgentAdapter:
 
     async def close(self):
         pass
+
+
+def _card_events(context):
+    """Tool calls as task events the shell renders as cards; arguments and results are redacted views."""
+    import json
+
+    from ..ledger.redact import redact_args, redact_result
+
+    def observe(event, **data):
+        if event == "tool.started":
+            tool = {"id": data["call_id"], "name": data["name"], "args": redact_args(data.get("args") or {})}
+        elif event == "tool.finished":
+            output = data.get("output")
+            text = output if isinstance(output, str) else json.dumps(output, ensure_ascii=False, default=str)
+            tool = {"id": data["call_id"], "name": data["name"], "output": redact_result(text, 1200)}
+        else:
+            return
+        context.emit("running", f"{data['name'].replace('_', ' ')}", agent_event=event, tool=tool)
+
+    return observe

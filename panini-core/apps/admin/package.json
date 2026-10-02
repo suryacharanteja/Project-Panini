@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ag-ui/core": "1.0.1",
     "@tanstack/react-router": "1.170.18",
     "lucide-react": "1.47.0",
     "react": "19.2.7",

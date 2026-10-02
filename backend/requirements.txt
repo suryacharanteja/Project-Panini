@@ -12,5 +12,4 @@ assemblyai==1.5.5
 python-multipart==0.0.32
 -e ./panini-core/voice/live-spoken-conversation
 -e ./panini-core/capabilities/cli
-
-
+ag-ui-protocol==1.0.0

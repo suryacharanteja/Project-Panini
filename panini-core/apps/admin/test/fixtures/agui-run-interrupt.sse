@@ -1,0 +1,28 @@
+data: {"type":"RUN_STARTED","threadId":"fixture-thread","runId":"run-1"}
+
+data: {"type":"CUSTOM","name":"panini.activity","value":{"kind":"run","message":"Using the agent model."}}
+
+data: {"type":"TEXT_MESSAGE_START","messageId":"8f8c13ff8dd74fdc9ff3df5eab695e63","role":"assistant"}
+
+data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"8f8c13ff8dd74fdc9ff3df5eab695e63","delta":"I'll write the note."}
+
+data: {"type":"TEXT_MESSAGE_END","messageId":"8f8c13ff8dd74fdc9ff3df5eab695e63"}
+
+data: {"type":"TOOL_CALL_START","toolCallId":"call_scripted_1_0","toolCallName":"update_plan"}
+
+data: {"type":"TOOL_CALL_ARGS","toolCallId":"call_scripted_1_0","delta":"{\"steps\": [{\"step\": \"Write the note\", \"status\": \"in_progress\"}]}"}
+
+data: {"type":"TOOL_CALL_END","toolCallId":"call_scripted_1_0"}
+
+data: {"type":"STATE_SNAPSHOT","snapshot":{"plan":[{"step":"Write the note","status":"in_progress"}],"interrupts":[]}}
+
+data: {"type":"TOOL_CALL_RESULT","messageId":"b0bc6cd1e2c94f88a0c768d126b77a9d","toolCallId":"call_scripted_1_0","content":"{\"ok\": true}"}
+
+data: {"type":"TOOL_CALL_START","toolCallId":"call_scripted_2_0","toolCallName":"run_command"}
+
+data: {"type":"TOOL_CALL_ARGS","toolCallId":"call_scripted_2_0","delta":"{\"command\": {\"preview\": \"Set-Content -Path note.txt -Value 'hello'; Get-Content note.txt\", \"chars\": 63, \"sha256\": \"2ace3057eb0acce34af096c45689cbceee1bca9bbaf3518975aff5c05fd512c5\"}, \"cwd\": \"TMP\"}"}
+
+data: {"type":"TOOL_CALL_END","toolCallId":"call_scripted_2_0"}
+
+data: {"type":"RUN_FINISHED","threadId":"fixture-thread","runId":"run-1","outcome":{"type":"interrupt","interrupts":[{"id":"0a859c3f594e4daba495a42a3b59d21a","reason":"tool_call","message":"PANINI wants to: Run: Set-Content -Path note.txt -Value 'hello'; Get-Content note.txt","responseSchema":{"type":"object","properties":{"approved":{"type":"boolean"}},"required":["approved"],"additionalProperties":false},"expiresAt":"2026-10-02T11:05:57.788518+00:00","metadata":{"kind":"approval","title":"Run: Set-Content -Path note.txt -Value 'hello'; Get-Content note.txt","preview":{"detail":"Set-Content -Path note.txt -Value 'hello'; Get-Content note.txt"},"level":"tap","nonce":"NONCE","actionDigest":"f788430423103e47280eb9d215e200f018a94a6d1faf52106a80138f33165e77"}}]}}
+

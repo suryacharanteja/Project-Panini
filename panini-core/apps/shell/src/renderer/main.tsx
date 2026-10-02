@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
 import { ExecutionPanel } from './ExecutionPanel';
+import { ToolCard, type ToolCall } from '../../../shared-ui';
+import '../../../shared-ui/tokens.css';
 import { ComputerUsePanel, PanelBoundary } from './ComputerUsePanel';
 import { Avatar, type AvatarState, levelMeter } from './avatar/Avatar';
 import { avatarStateFor } from './avatar/state';
@@ -66,6 +68,7 @@ function CredentialSetup() {
 function App() {
   const [execution, setExecution] = useState<any>(null);
   const [computerEvents, setComputerEvents] = useState<any[]>([]);
+  const [tools, setTools] = useState<ToolCall[]>([]);
   const [executionMode, setExecutionMode] = useState('compact');
   const [presence, setPresence] = useState('avatar');
   const [background, setBackground] = useState<any>(null);
@@ -290,7 +293,13 @@ function App() {
           setOutcome('');
           setSteps([]);
           setChoices([]);
+          setTools([]);
         }
+        // V2-07: each agent tool call arrives as a card (redacted arguments and result).
+        if (data.agent_event === 'tool.started' && data.tool?.id)
+          setTools((all) => [...all.filter((t) => t.id !== data.tool.id), { id: String(data.tool.id), name: String(data.tool.name || ''), args: data.tool.args }].slice(-12));
+        if (data.agent_event === 'tool.finished' && data.tool?.id)
+          setTools((all) => all.map((t) => (t.id === data.tool.id ? { ...t, output: data.tool.output ?? '' } : t)));
         if (data.execution) setExecution(data.execution);
         if (data.outcome) setOutcome(data.outcome);
         if (data.steps) setSteps(data.steps);
@@ -668,6 +677,15 @@ function App() {
                 stop={() => void call('stop')}
                 openTerminal={() => void call('execution-viewer')}
               />
+            )}
+            {tools.length > 0 && (
+              <PanelBoundary>
+                <div className="tool-cards" aria-label="Tool calls">
+                  {tools.map((call) => (
+                    <ToolCard key={call.id} call={call} />
+                  ))}
+                </div>
+              </PanelBoundary>
             )}
             <PanelBoundary>
               <ComputerUsePanel events={computerEvents} phase={phase} />

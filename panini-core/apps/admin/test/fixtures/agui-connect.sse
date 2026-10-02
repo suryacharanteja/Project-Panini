@@ -1,0 +1,4 @@
+data: {"type":"MESSAGES_SNAPSHOT","messages":[{"id":"61ccb1ae0bdd4a26afa8d310b18a5170","role":"user","content":"Save a note"},{"id":"c3c79a16b80f4bd4a125e6a653500380","role":"assistant","content":"I'll write the note."}]}
+
+data: {"type":"STATE_SNAPSHOT","snapshot":{"plan":[{"step":"Write the note","status":"in_progress"}],"interrupts":[],"running":false}}
+

@@ -51,6 +51,8 @@ const BACKEND_PREFIXES = [
   ...['GET', 'POST', 'PATCH', 'DELETE'].map((method) => [method, '/api/harness/']),
   // PANINI Admin API.
   ...['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((method) => [method, '/api/admin/v1/']),
+  // AG-UI agent runs (V2-07): server-sent event streams.
+  ['POST', '/api/agui/'],
 ];
 // Carry their own credentials (or none, for health); everything else is a console route.
 const OPEN_API = new Set([
@@ -186,7 +188,7 @@ export function createGateway({
       res,
       `${backendUrl}${req.originalUrl}`,
       null,
-      req.path === '/api/voice/events'
+      req.path === '/api/voice/events' || req.path.startsWith('/api/agui/')
         ? null
         : req.path.endsWith('run-stream')
           ? req.body?.run_policy === 'continuous'
@@ -214,7 +216,7 @@ export function createGateway({
   app.get('/', home);
   app.get('/playground/compare', (_req, res) => res.sendFile(join(publicRoot, 'index.html')));
   app.get(
-    /^\/(inbox|runs|memory|playground|audit)\/?$|^\/(build|capabilities|settings)\/[a-z-]+\/?$/,
+    /^\/(inbox|conversations|runs|receipts|projects|memory|playground|audit)\/?$|^\/(build|capabilities|settings)\/[a-z-]+\/?$/,
     home,
   );
   app.get('/browser', (_req, res) => res.sendFile(join(publicRoot, 'browser-use.html')));

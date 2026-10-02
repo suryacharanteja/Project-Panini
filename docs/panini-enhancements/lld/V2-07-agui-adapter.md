@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 1 · P1 · M (4–5 days) |
 | Depends on | V2-05 (interrupts), V2-06 (run engine events) |
 | Flag | `PANINI_V2_AGUI` (default `false`) |
-| Status | Not started |
+| Status | Done (2026-10-02) |
 
 ## 1. Outcome
 
@@ -143,6 +143,53 @@ The shell keeps its NDJSON stream and renders cards from `tool.started/finished`
 and `live.frame` events. The confirmation panel becomes `InterruptCard` (same nonce/digest flow through
 `/api/panini/interrupts/{id}/resolve`). The composer adopts send → Stop in place with the draft kept.
 
+### 5.8 As built (2026-10-02)
+
+- Backend: `backend/agui/input.py` (validation with `ag_ui.core.RunAgentInput`, last-user-message turn,
+  `system`/`developer` dropped, client state/context appended as labelled untrusted data, client tools,
+  resume coverage rule), `projection.py` (`Projector`: events per §5.3; tool arguments and results are the
+  ledger's redacted views; interrupt metadata carries `nonce` and `actionDigest`), `runner.py` (`AguiRuns`).
+  `ag-ui-protocol==1.0.0` pinned (requirements and Windows lock).
+- Routes: console `/api/agui/agents/{persona}/run|connect|stop` (behind the console sign-in) and the same
+  under `/api/panini/agui/` for the shell (controller bearer). 404 unless `PANINI_V2_AGUI` is on. The gateway
+  routes `POST /api/agui/` with no proxy timeout (SSE).
+- A conversation is a PANINI thread bound with `thread_bindings(surface="agui")`; one run per thread
+  (`THREAD_BUSY`). Each run is an agent run with `durable=True` (run record and checkpoints even without
+  `PANINI_V2_ONE_BRAIN`). Approvals from the agent, the policy hook or a v1 adapter open an approval interrupt
+  and park the run (`RUN_FINISHED{outcome: interrupt}`); the resume request resolves it through V2-05
+  (`decided_by surface=agui, method=tap`), pre-approves the action digest once, and continues **at the
+  pending tool call** — the agent loop now checkpoints the rest of a parked round (`pending`) and runs it
+  first on resume, so the model is not asked again. Declining ends the run: "Okay, I did not do that.
+  Nothing was changed." A new message instead of an answer cancels the waiting step. A wrong nonce or digest
+  is refused (`INTERRUPT_CHANGED`); answering twice is refused without repeating anything.
+- The same pending-call resume now applies to parked background runs (V2-05/V2-06): with one brain on, the
+  approved call runs directly from the checkpoint (`test_background_task_parks_resumes_and_does_not_repeat_effects`).
+- Client tools (§5.4): offered to the model as `client_<name>`; a call parks the run on a `question`
+  interrupt with `reason: client_tool` and `toolCallId`; the resume payload `{result}` becomes the tool output.
+- Console runs get the hands that do not share the avatar's screen: `PANINI_AGUI_CAPABILITIES`
+  (default `search,code`) plus the agent's own computer tools; Desktop and the person's Chrome stay with
+  the avatar until the sandbox and Playwright hands (V2-08, V2-11) arrive.
+- Event fan-out: every stream of a thread receives the run's events; `connect` sends `MESSAGES_SNAPSHOT`
+  and `STATE_SNAPSHOT{plan, interrupts, running}` and then live events of an active run.
+- UI: `panini-core/apps/shared-ui/` (`ToolCard`, `InterruptCard`, `QuestionCard`, `ChoiceCard`,
+  `TakeoverCard`, `ReceiptChip`, `CardBoundary`, string-only `text.ts`, the `applyEvent` conversation
+  reducer and plain-CSS `tokens.css`). Admin **Conversations** page (`/conversations`) on a small fetch/SSE
+  client (`src/agui.ts`) rather than `@ag-ui/client`'s `HttpAgent`: PANINI needs explicit resume entries
+  with nonce/digest and thread re-attach, and the official schemas are still enforced by the conformance test.
+  The shell renders a `ToolCard` per agent tool call (task events with `agent_event: tool.started/finished`,
+  redacted) inside `PanelBoundary`; confirmations stay on the shell's native dialog (it cannot be clicked by
+  page content), so `InterruptCard` is used in the console only.
+- Conformance: `scripts/agui-fixture.py` records real streams (tool call, approval interrupt, resume,
+  connect) into `panini-core/apps/admin/test/fixtures/`; `admin/test/agui.test.tsx` validates every event
+  with `@ag-ui/core/schemas` `EventSchemas` and renders every card with malformed props.
+- Found and fixed while testing: ledger `mask()` let a `?token=` value through in command previews (V2-04);
+  it now strips secret query values first everywhere. Newer Chromium returns a Promise from
+  `scrollIntoView`, which crashed an effect that returned it (fixed with a block body).
+- Live check (dev server with the v2 flags, signed-in console): a listing question streamed tool cards and
+  the answer; "delete <scratch file>" showed the approval card, nothing ran until Approve, then the run
+  resumed at the pending command and deleted the file; Decline left the file untouched and the card showed
+  "Interrupted".
+
 ## 6. Implementation steps
 
 1. Add `ag-ui-protocol`; `input.py` validation; `projection.py` with golden-event tests.
@@ -166,9 +213,9 @@ and `live.frame` events. The confirmation panel becomes `InterruptCard` (same no
 
 ## 8. Acceptance criteria
 
-- [ ] `@ag-ui/client` streams a PANINI run with tool calls and an approval interrupt, and resumes it.
-- [ ] Shell shows ToolCard, InterruptCard and live preview; v1 confirmation tests still pass.
-- [ ] Malformed-event test proves one bad card cannot unmount the interface.
+- [x] `@ag-ui/client` streams a PANINI run with tool calls and an approval interrupt, and resumes it.
+- [x] Shell shows ToolCard, InterruptCard and live preview; v1 confirmation tests still pass.
+- [x] Malformed-event test proves one bad card cannot unmount the interface.
 
 ## 9. Rollout and rollback
 

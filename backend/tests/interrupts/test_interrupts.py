@@ -257,6 +257,11 @@ def test_background_task_parks_resumes_and_does_not_repeat_effects(monkeypatch, 
         [{"calls": [writer]}, {"calls": [command]}],
         [{"calls": [writer]}, {"calls": [command]}, {"calls": [finish]}],
     ]
+    from backend import brain
+
+    if brain.enabled():
+        # V2-06/V2-07: the run resumes at the parked call itself, so the model only has to finish.
+        scripts[1] = [{"calls": [finish]}]
 
     def model():
         return ScriptedModel(scripts.pop(0))

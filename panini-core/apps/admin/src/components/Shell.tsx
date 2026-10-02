@@ -14,6 +14,7 @@ import {
   Inbox,
   KeyRound,
   Layers,
+  MessagesSquare,
   Mic,
   Monitor,
   Plug,
@@ -37,6 +38,12 @@ export const NAV: Section[] = [
     items: [
       { to: '/', label: 'Home', icon: <Home size={16} />, deva: 'मूल' },
       { to: '/inbox', label: 'Inbox', icon: <Inbox size={16} />, deva: 'सूचना' },
+      {
+        to: '/conversations',
+        label: 'Conversations',
+        icon: <MessagesSquare size={16} />,
+        deva: 'संवाद',
+      },
       { to: '/runs', label: 'Activity', icon: <Activity size={16} />, deva: 'क्रिया' },
       { to: '/receipts', label: 'Receipts', icon: <ShieldCheck size={16} />, deva: 'प्रमाण' },
       { to: '/projects', label: 'Projects', icon: <Boxes size={16} />, deva: 'योजना' },

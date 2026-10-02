@@ -1,0 +1,32 @@
+data: {"type":"RUN_STARTED","threadId":"fixture-thread","runId":"run-2"}
+
+data: {"type":"CUSTOM","name":"panini.activity","value":{"kind":"run","message":"Using the agent model."}}
+
+data: {"type":"CUSTOM","name":"panini.activity","value":{"kind":"resumed","message":"Continuing where the task stopped."}}
+
+data: {"type":"TOOL_CALL_START","toolCallId":"call_scripted_2_0","toolCallName":"run_command"}
+
+data: {"type":"TOOL_CALL_ARGS","toolCallId":"call_scripted_2_0","delta":"{\"command\": {\"preview\": \"Set-Content -Path note.txt -Value 'hello'; Get-Content note.txt\", \"chars\": 63, \"sha256\": \"2ace3057eb0acce34af096c45689cbceee1bca9bbaf3518975aff5c05fd512c5\"}, \"cwd\": \"TMP\"}"}
+
+data: {"type":"TOOL_CALL_END","toolCallId":"call_scripted_2_0"}
+
+data: {"type":"CUSTOM","name":"panini.activity","value":{"kind":"step","message":"Running: Set-Content -Path note.txt -Value 'hello'; Get-Content note.txt"}}
+
+data: {"type":"TOOL_CALL_RESULT","messageId":"5b232a84bfbf474891fdd6d0c917372c","toolCallId":"call_scripted_2_0","content":"{\"exit_code\": 0, \"output\": \"hello\\n\"}"}
+
+data: {"type":"TOOL_CALL_START","toolCallId":"call_scripted_3_0","toolCallName":"finish"}
+
+data: {"type":"TOOL_CALL_ARGS","toolCallId":"call_scripted_3_0","delta":"{\"outcome\": \"verified_complete\", \"message\": {\"chars\": 6, \"sha256\": \"fca046ccd586c67f7fe0b3c12c29873a8abf9376f7cd514fc6272ec03b2de0b3\"}}"}
+
+data: {"type":"TOOL_CALL_END","toolCallId":"call_scripted_3_0"}
+
+data: {"type":"TOOL_CALL_RESULT","messageId":"887a3e511d274bfb829156522b04074c","toolCallId":"call_scripted_3_0","content":"{\"ok\": true}"}
+
+data: {"type":"TEXT_MESSAGE_START","messageId":"120f9700f57b4d9bb6b3a55e50a789c8","role":"assistant"}
+
+data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"120f9700f57b4d9bb6b3a55e50a789c8","delta":"Saved."}
+
+data: {"type":"TEXT_MESSAGE_END","messageId":"120f9700f57b4d9bb6b3a55e50a789c8"}
+
+data: {"type":"RUN_FINISHED","threadId":"fixture-thread","runId":"run-2","result":{"outcome":"verified_complete","message":"Saved.","evidenceIds":["computer:run_command"]},"outcome":{"type":"success"}}
+
