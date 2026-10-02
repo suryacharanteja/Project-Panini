@@ -1,0 +1,64 @@
+{
+  "schema": "panini.capability/1",
+  "id": "skills",
+  "title": "Skills",
+  "version": "1.0.0",
+  "summary": "Reusable procedures.",
+  "entry": "backend.registry.hands:AgentMethodHand",
+  "tools": [
+    {
+      "name": "load_skill",
+      "hand": "skills",
+      "title": "Load skill",
+      "description": "Load the full instructions of a skill from the catalog.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "order": 100,
+      "group": "core",
+      "effect": "observe",
+      "background": true
+    },
+    {
+      "name": "create_skill",
+      "hand": "skills",
+      "title": "Create skill",
+      "description": "Save an approved procedure as a reusable skill.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "instructions": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "instructions"
+        ]
+      },
+      "order": 110,
+      "group": "new_skill",
+      "effect": "local_write",
+      "evidence": [
+        "skill"
+      ]
+    }
+  ]
+}

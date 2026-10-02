@@ -1,0 +1,66 @@
+{
+  "schema": "panini.capability/1",
+  "id": "chrome_direct",
+  "title": "Chrome (instant actions)",
+  "version": "1.0.0",
+  "summary": "Instant read, scroll, navigate, click and type in the attached Chrome tab.",
+  "entry": "backend.registry.hands:AgentMethodHand",
+  "tools": [
+    {
+      "name": "browser",
+      "hand": "chrome_direct",
+      "title": "Browser",
+      "description": "Act instantly in the person's Chrome tab and return what is now visible (text and controls). action: read | scroll_down | scroll_up | media_pause | media_play | skip_ad (YouTube ads) | navigate (url) | click (element) | type (element, text, submit). Use empty strings for unused fields.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "read",
+              "scroll_down",
+              "scroll_up",
+              "navigate",
+              "click",
+              "type",
+              "media_pause",
+              "media_play",
+              "skip_ad"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "element": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "submit": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action",
+          "url",
+          "element",
+          "text",
+          "submit"
+        ]
+      },
+      "order": 60,
+      "group": "core",
+      "effect": "submit",
+      "dynamic_effect": true,
+      "evidence": [
+        "page"
+      ],
+      "taints": [
+        "web"
+      ],
+      "concurrency": "browser:chrome"
+    }
+  ]
+}

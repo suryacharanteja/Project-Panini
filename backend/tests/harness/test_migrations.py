@@ -8,11 +8,11 @@ from backend.harness.store import SCHEMA, Store
 
 def test_store_applies_baseline_once(tmp_path):
     store = Store(tmp_path / "h.sqlite3")
-    assert store.migrations == ["0001_baseline"]
+    assert store.migrations[0] == "0001_baseline"
     store.close()
     again = Store(tmp_path / "h.sqlite3")
     assert again.migrations == []
-    assert [r["id"] for r in again.all("SELECT id FROM schema_migrations")] == ["0001_baseline"]
+    assert [r["id"] for r in again.all("SELECT id FROM schema_migrations ORDER BY id")] == store.migrations
     again.close()
 
 
@@ -24,7 +24,7 @@ def test_v1_database_upgrades_in_place(tmp_path):
     db.commit()
     db.close()
     store = Store(path)
-    assert store.migrations == ["0001_baseline"]
+    assert store.migrations[0] == "0001_baseline"
     assert store.one("SELECT title FROM sessions WHERE id='s'")["title"] == "old"
     store.close()
 

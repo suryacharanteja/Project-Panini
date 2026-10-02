@@ -28,6 +28,12 @@ async def list_tools(request):
                     "description": str(tool.get("description") or "")[:500],
                     "read_only": annotations.get("readOnlyHint") is True,
                     "input_schema": tool.get("inputSchema") or {"type": "object"},
+                    # Kept for the registry's effect classes (destructive vs non-destructive writes).
+                    "annotations": {
+                        key: annotations[key]
+                        for key in ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint")
+                        if isinstance(annotations.get(key), bool)
+                    },
                 }
             )
             if len(tools) > MAX_TOOLS:

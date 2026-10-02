@@ -260,6 +260,25 @@ v1 mode; with the registry on, `capability_state.enabled = 0` additionally hides
 | Duplicate tool name | Second manifest rejected |
 | Hand raises | Pipeline converts to `ToolResult(outcome="failed", content=<safe message>)`; full error logged |
 
+## 5.11 As built (2026-10-02)
+
+- Built-in manifests live in `backend/registry/manifests/` (packaged by `scripts/panini-backend.spec`);
+  capability folders may add `panini-core/capabilities/<name>/manifests/*.json`. The ten built-in manifests
+  were generated once from the v1 `TOOLS` list and are now the source of truth; a parity test proves the
+  registry offers exactly v1's tools, order and schemas.
+- Hands wrap the existing implementations for now: `AgentMethodHand` runs the v1 agent handler
+  (`Agent._call_v1`), `LegacyAdapterHand` runs a v1 adapter through the caller's delegate, and the agent's
+  loop tools (`update_plan`, `ask_user`, `finish`, `run_subagents`) are `control` tools. Later items move
+  logic into native hands.
+- v1-wrapped tools accept missing required arguments (v1 handlers default them); types and unknown fields
+  are still rejected. Native hands are strict.
+- Prompt text is unchanged in this item (manifest `principles` are empty); moving capability bullets into
+  manifests happens with the prompt assembly in V2-06. `Registry.planner_summary()` is ready for it.
+- Per-tool budgets stay enforced by the v1 `use_capability` handler (`CALL_BUDGET`); the registry enforces
+  `budget_per_run` for non-v1 tools.
+- Admin → Build → Capabilities lists manifests, tools, effect classes and readiness, with an enable switch
+  per capability (`capability_state`, migration `0002_capability_state.sql`).
+
 ## 6. Implementation steps
 
 1. `backend/core_contracts.py` with the HLD §5 types; unit tests for enums and dataclasses.

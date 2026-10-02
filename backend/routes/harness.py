@@ -488,3 +488,39 @@ def add_v2_status(r, guard):
 
 add_v2_status(console_router, lambda request: None)
 add_v2_status(shell_router, lambda request: principal(request))
+
+
+class CapabilityToggle(Strict):
+    enabled: bool
+
+
+def add_registry(r, guard):
+    @r.get("/registry")
+    async def registry_view(request: Request):
+        """Capability manifests, their tools and effect classes, readiness and load errors (V2-02)."""
+        guard(request)
+        from .. import v2flags
+
+        reg = harness(request).registry
+        return {
+            "flag": v2flags.enabled("PANINI_V2_REGISTRY"),
+            "errors": reg.errors,
+            "inventory": await reg.inventory(),
+        }
+
+    @r.patch("/registry/{capability}")
+    async def registry_toggle(capability: str, payload: CapabilityToggle, request: Request):
+        guard(request)
+        h = harness(request)
+        if capability not in {m.id for m in h.registry.manifests} or capability == "control":
+            raise HTTPException(404, "Unknown capability.")
+        h.store.execute(
+            "INSERT INTO capability_state(id, enabled, updated) VALUES (?,?,?) "
+            "ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled, updated=excluded.updated",
+            (capability, int(payload.enabled), time.time()),
+        )
+        return {"id": capability, "enabled": payload.enabled}
+
+
+add_registry(console_router, lambda request: None)
+add_registry(shell_router, lambda request: principal(request))

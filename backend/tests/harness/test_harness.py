@@ -639,5 +639,5 @@ def test_v2_status_route(tmp_path):
     with TestClient(app, base_url="http://127.0.0.1") as client:
         assert client.get("/api/harness/v2/status").status_code == 401
         body = client.get("/api/harness/v2/status", headers={"x-panini-console": "t" * 32}).json()
-        assert body["migrations"] == ["0001_baseline"]
+        assert body["migrations"][0] == "0001_baseline"
         assert body["flags"]["PANINI_BROWSER_DRIVER"] == "legacy"

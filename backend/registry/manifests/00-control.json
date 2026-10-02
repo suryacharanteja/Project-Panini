@@ -1,0 +1,155 @@
+{
+  "schema": "panini.capability/1",
+  "id": "control",
+  "title": "Agent control",
+  "version": "1.0.0",
+  "summary": "Plan, ask, delegate to sub-agents and finish.",
+  "entry": "backend.registry.hands:ControlHand",
+  "tools": [
+    {
+      "name": "update_plan",
+      "hand": "control",
+      "title": "Update plan",
+      "description": "Record or revise the step plan shown to the person.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "step": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "in_progress",
+                    "completed",
+                    "blocked"
+                  ]
+                }
+              },
+              "required": [
+                "step",
+                "status"
+              ]
+            }
+          }
+        },
+        "required": [
+          "steps"
+        ]
+      },
+      "order": 0,
+      "group": "core",
+      "effect": "observe",
+      "control": true
+    },
+    {
+      "name": "run_subagents",
+      "hand": "control",
+      "title": "Run subagents",
+      "description": "Delegate up to 4 independent tasks to sub-agents with fresh context.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "task": {
+                  "type": "string"
+                },
+                "capability": {
+                  "type": "string",
+                  "enum": [
+                    "search",
+                    "browser",
+                    "desktop",
+                    "code"
+                  ]
+                }
+              },
+              "required": [
+                "task",
+                "capability"
+              ]
+            }
+          }
+        },
+        "required": [
+          "tasks"
+        ]
+      },
+      "order": 220,
+      "group": "subagents",
+      "effect": "observe",
+      "control": true,
+      "requires": [
+        "top"
+      ]
+    },
+    {
+      "name": "ask_user",
+      "hand": "control",
+      "title": "Ask user",
+      "description": "Ask the person one concise question and stop until they answer.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ]
+      },
+      "order": 240,
+      "group": "core",
+      "effect": "observe",
+      "control": true
+    },
+    {
+      "name": "finish",
+      "hand": "control",
+      "title": "Finish",
+      "description": "End the task with an honest outcome and a brief message for the person.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "verified_complete",
+              "partial",
+              "blocked",
+              "failed"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "message"
+        ]
+      },
+      "order": 250,
+      "group": "core",
+      "effect": "observe",
+      "control": true
+    }
+  ]
+}

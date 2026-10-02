@@ -1,0 +1,98 @@
+{
+  "schema": "panini.capability/1",
+  "id": "memory",
+  "title": "Memory",
+  "version": "1.0.0",
+  "summary": "Long-term facts and preferences about the person.",
+  "entry": "backend.registry.hands:AgentMethodHand",
+  "tools": [
+    {
+      "name": "recall",
+      "hand": "memory",
+      "title": "Recall",
+      "description": "Search long-term memory for relevant facts and preferences.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "order": 70,
+      "group": "memory",
+      "effect": "observe",
+      "requires": [
+        "private"
+      ],
+      "background": true
+    },
+    {
+      "name": "remember",
+      "hand": "memory",
+      "title": "Remember",
+      "description": "Save a durable fact or preference about the person (never secrets).",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "profile",
+              "preference",
+              "episode",
+              "fact"
+            ]
+          }
+        },
+        "required": [
+          "text",
+          "kind"
+        ]
+      },
+      "order": 80,
+      "group": "memory",
+      "effect": "local_write",
+      "requires": [
+        "private"
+      ],
+      "evidence": [
+        "memory"
+      ],
+      "background": true
+    },
+    {
+      "name": "forget",
+      "hand": "memory",
+      "title": "Forget",
+      "description": "Delete a memory by id when the person asks or it is wrong.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id"
+        ]
+      },
+      "order": 90,
+      "group": "memory",
+      "effect": "local_write",
+      "requires": [
+        "private"
+      ],
+      "background": true
+    }
+  ]
+}

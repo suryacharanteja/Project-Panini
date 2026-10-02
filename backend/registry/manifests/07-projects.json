@@ -1,0 +1,226 @@
+{
+  "schema": "panini.capability/1",
+  "id": "projects",
+  "title": "Projects",
+  "version": "1.0.0",
+  "summary": "Continuing work across several tasks.",
+  "entry": "backend.registry.hands:AgentMethodHand",
+  "tools": [
+    {
+      "name": "list_projects",
+      "hand": "projects",
+      "title": "List projects",
+      "description": "List continuing projects and their IDs.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "order": 140,
+      "group": "projects",
+      "effect": "observe",
+      "requires": [
+        "private",
+        "tasks",
+        "top",
+        "foreground"
+      ]
+    },
+    {
+      "name": "create_project",
+      "hand": "projects",
+      "title": "Create project",
+      "description": "Create a durable project for work spanning several tasks.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "context": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "goal",
+          "context"
+        ]
+      },
+      "order": 150,
+      "group": "projects",
+      "effect": "local_write",
+      "requires": [
+        "private",
+        "tasks",
+        "top",
+        "foreground"
+      ]
+    },
+    {
+      "name": "add_project_task",
+      "hand": "projects",
+      "title": "Add project task",
+      "description": "Add a background task to an active project.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "delay_minutes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "goal",
+          "delay_minutes"
+        ]
+      },
+      "order": 160,
+      "group": "projects",
+      "effect": "local_write",
+      "requires": [
+        "private",
+        "tasks",
+        "top",
+        "foreground"
+      ]
+    },
+    {
+      "name": "set_project_status",
+      "hand": "projects",
+      "title": "Set project status",
+      "description": "Pause, resume or complete a project. Pausing prevents queued tasks from starting.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "completed"
+            ]
+          }
+        },
+        "required": [
+          "project_id",
+          "status"
+        ]
+      },
+      "order": 170,
+      "group": "projects",
+      "effect": "local_write",
+      "requires": [
+        "private",
+        "tasks",
+        "top",
+        "foreground"
+      ]
+    },
+    {
+      "name": "draft_project_plan",
+      "hand": "projects",
+      "title": "Draft project plan",
+      "description": "Draft read-only project steps across web research and granted app tools, with success criteria.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ]
+      },
+      "order": 180,
+      "group": "projects",
+      "effect": "local_write",
+      "requires": [
+        "private",
+        "tasks",
+        "top",
+        "foreground"
+      ]
+    },
+    {
+      "name": "approve_project_plan",
+      "hand": "projects",
+      "title": "Approve project plan",
+      "description": "Approve a reviewed project plan revision and start its first step.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "revision"
+        ]
+      },
+      "order": 190,
+      "group": "projects",
+      "effect": "local_write",
+      "requires": [
+        "private",
+        "tasks",
+        "top",
+        "foreground"
+      ]
+    },
+    {
+      "name": "cancel_project_plan",
+      "hand": "projects",
+      "title": "Cancel project plan",
+      "description": "Stop an exact project plan revision and cancel its unfinished tasks.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "revision"
+        ]
+      },
+      "order": 200,
+      "group": "projects",
+      "effect": "local_write",
+      "requires": [
+        "private",
+        "tasks",
+        "top",
+        "foreground"
+      ]
+    }
+  ]
+}

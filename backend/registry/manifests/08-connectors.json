@@ -1,0 +1,44 @@
+{
+  "schema": "panini.capability/1",
+  "id": "connectors",
+  "title": "Connectors (MCP)",
+  "version": "1.0.0",
+  "summary": "Tools from the person's MCP connectors.",
+  "entry": "backend.registry.hands:AgentMethodHand",
+  "tools": [
+    {
+      "name": "use_connector",
+      "hand": "connectors",
+      "title": "Use connector",
+      "description": "Call a tool of a configured connector (MCP server).",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "server": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "arguments": {
+            "type": "string",
+            "description": "JSON object with the tool's arguments."
+          }
+        },
+        "required": [
+          "server",
+          "tool",
+          "arguments"
+        ]
+      },
+      "order": 210,
+      "group": "core",
+      "effect": "observe",
+      "meta": true,
+      "requires": [
+        "connectors"
+      ]
+    }
+  ]
+}

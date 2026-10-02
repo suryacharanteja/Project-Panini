@@ -1,0 +1,43 @@
+{
+  "schema": "panini.capability/1",
+  "id": "agents",
+  "title": "Other agents (A2A)",
+  "version": "1.0.0",
+  "summary": "Ask another agent over A2A.",
+  "entry": "backend.registry.hands:AgentMethodHand",
+  "tools": [
+    {
+      "name": "ask_agent",
+      "hand": "agents",
+      "title": "Ask agent",
+      "description": "Send a message to another agent listed in the catalog and return its reply.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent",
+          "message"
+        ]
+      },
+      "order": 230,
+      "group": "agents",
+      "effect": "share_out",
+      "meta": true,
+      "requires": [
+        "private",
+        "remotes"
+      ],
+      "taints": [
+        "a2a"
+      ]
+    }
+  ]
+}

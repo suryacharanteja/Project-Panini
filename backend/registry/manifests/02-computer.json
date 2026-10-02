@@ -1,0 +1,125 @@
+{
+  "schema": "panini.capability/1",
+  "id": "computer",
+  "title": "Host computer",
+  "version": "1.0.0",
+  "summary": "Files, PowerShell commands and opening folders, files, apps and pages on this PC.",
+  "entry": "backend.registry.hands:AgentMethodHand",
+  "tools": [
+    {
+      "name": "list_files",
+      "hand": "computer",
+      "title": "List files",
+      "description": "List a folder (newest first). path may be absolute, ~-relative or Downloads/Documents/Desktop/...; pattern is a glob such as *.pdf.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "pattern"
+        ]
+      },
+      "order": 20,
+      "group": "core",
+      "effect": "observe",
+      "evidence": [
+        "listing"
+      ],
+      "idempotent": true,
+      "background": true
+    },
+    {
+      "name": "read_file",
+      "hand": "computer",
+      "title": "Read file",
+      "description": "Read a text file anywhere on this PC (secret-looking files are refused).",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "order": 30,
+      "group": "core",
+      "effect": "observe",
+      "dynamic_effect": true,
+      "evidence": [
+        "file"
+      ],
+      "idempotent": true,
+      "background": true
+    },
+    {
+      "name": "run_command",
+      "hand": "computer",
+      "title": "Run command",
+      "description": "Run a PowerShell command and return its output. cwd defaults to the home folder.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command",
+          "cwd",
+          "timeout_seconds"
+        ]
+      },
+      "order": 40,
+      "group": "core",
+      "effect": "local_exec",
+      "dynamic_effect": true,
+      "evidence": [
+        "exit_code"
+      ]
+    },
+    {
+      "name": "open",
+      "hand": "computer",
+      "title": "Open",
+      "description": "Open a folder, file, app (notepad, calc), ms-settings: page or web URL.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "order": 50,
+      "group": "core",
+      "effect": "local_exec",
+      "dynamic_effect": true,
+      "evidence": [
+        "opened"
+      ]
+    }
+  ]
+}

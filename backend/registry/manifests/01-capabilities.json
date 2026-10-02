@@ -1,0 +1,180 @@
+{
+  "schema": "panini.capability/1",
+  "id": "capabilities",
+  "title": "PANINI capabilities",
+  "version": "1.0.0",
+  "summary": "Search, Browser, Desktop and PANINI-CLI as coarse, self-planning steps.",
+  "entry": "backend.registry.hands:AgentMethodHand",
+  "tools": [
+    {
+      "name": "use_capability",
+      "hand": "capabilities",
+      "title": "Use capability",
+      "description": "Carry out one step with a PANINI capability and return its verified result. A search instruction is a web query of at most 300 characters.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "type": "string",
+            "enum": [
+              "search",
+              "browser",
+              "desktop",
+              "code"
+            ]
+          },
+          "instruction": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "capability",
+          "instruction"
+        ]
+      },
+      "order": 10,
+      "group": "core",
+      "effect": "observe",
+      "meta": true
+    },
+    {
+      "name": "search_run",
+      "hand": "search",
+      "title": "Web search with sources",
+      "description": "Web search with sources.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "instruction": {
+            "type": "string",
+            "maxLength": 5000
+          }
+        },
+        "required": [
+          "instruction"
+        ]
+      },
+      "order": 15,
+      "group": "core",
+      "effect": "observe",
+      "dynamic_effect": false,
+      "evidence": [
+        "sources"
+      ],
+      "taints": [
+        "web"
+      ],
+      "concurrency": null,
+      "budget_per_run": 3,
+      "offered": false,
+      "adapter": "search",
+      "background": true
+    },
+    {
+      "name": "browser_run",
+      "hand": "browser",
+      "title": "Multi-step browser work in your Chrome (or the managed browser)",
+      "description": "Multi-step browser work in your Chrome (or the managed browser).",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "instruction": {
+            "type": "string",
+            "maxLength": 5000
+          }
+        },
+        "required": [
+          "instruction"
+        ]
+      },
+      "order": 15,
+      "group": "core",
+      "effect": "submit",
+      "dynamic_effect": true,
+      "evidence": [
+        "page",
+        "evidence_quotes"
+      ],
+      "taints": [
+        "web"
+      ],
+      "concurrency": "browser:chrome",
+      "budget_per_run": 2,
+      "offered": false,
+      "adapter": "browser",
+      "background": false
+    },
+    {
+      "name": "desktop_run",
+      "hand": "desktop",
+      "title": "Clicks, typing and drawing in any Windows application",
+      "description": "Clicks, typing and drawing in any Windows application.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "instruction": {
+            "type": "string",
+            "maxLength": 5000
+          }
+        },
+        "required": [
+          "instruction"
+        ]
+      },
+      "order": 15,
+      "group": "core",
+      "effect": "submit",
+      "dynamic_effect": true,
+      "evidence": [
+        "postcondition",
+        "screenshot"
+      ],
+      "taints": [],
+      "concurrency": "desktop",
+      "budget_per_run": 3,
+      "offered": false,
+      "adapter": "desktop",
+      "background": false
+    },
+    {
+      "name": "code_run",
+      "hand": "code",
+      "title": "Commands, scripts and code in a configured workspace (PANINI-CLI)",
+      "description": "Commands, scripts and code in a configured workspace (PANINI-CLI).",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "instruction": {
+            "type": "string",
+            "maxLength": 5000
+          }
+        },
+        "required": [
+          "instruction"
+        ]
+      },
+      "order": 15,
+      "group": "core",
+      "effect": "local_exec",
+      "dynamic_effect": true,
+      "evidence": [
+        "exit_code",
+        "file_hash"
+      ],
+      "taints": [],
+      "concurrency": null,
+      "budget_per_run": 2,
+      "offered": false,
+      "adapter": "code",
+      "background": false
+    }
+  ],
+  "prompt": {
+    "principles": []
+  }
+}

@@ -371,6 +371,9 @@ class Agent:
         self.open_url = None
         # browser_action(action, url, element, text, submit) -> dict: instant Chrome actions.
         self.browser_action = None
+        # PANINI v2 capability registry (backend/registry); None keeps the v1 tool path.
+        self.registry = None
+        self._tool_context = None
 
     async def _select(self, goal, items):
         """One Jev call per task decides what the model needs to see: relevant skills,
@@ -455,7 +458,49 @@ class Agent:
         group = next((g for g, names in TOOL_GROUPS.items() if tool_name in names), None)
         return group is not None and group not in self.selection["groups"]
 
+    def tool_view(self):
+        from ..registry.context import ToolView
+
+        connectors = getattr(self.h, "connectors", None)
+        remotes = getattr(self.h, "remotes", None)
+        return ToolView(
+            capabilities=frozenset(self.capabilities),
+            surface="background" if self.background else "agent",
+            background=self.background,
+            private=self.private,
+            depth=self.depth,
+            tasks=self.h.tasks is not None and not self.background,
+            connectors=bool(connectors),
+            remotes=bool(remotes and remotes.load()),
+        )
+
+    def tool_context(self):
+        from ..core_contracts import Principal
+        from ..registry.context import ToolContext
+
+        if self._tool_context is None:
+            principal = Principal(
+                kind="owner" if self.private else "external_agent",
+                surface="background" if self.background else "agent",
+            )
+            self._tool_context = ToolContext(
+                principal=principal,
+                view=self.tool_view(),
+                agent=self,
+                delegate=self.delegate,
+                confirm=self.confirm,
+            )
+        return self._tool_context
+
     def tools(self):
+        if getattr(self, "registry", None) is not None:
+            tools = self.registry.model_tools(self.tool_view(), capabilities=self.capabilities)
+            return [
+                t
+                for t in tools
+                if not self._hidden(t["name"])
+                and not (t["name"] == "run_subagents" and not self.capabilities)
+            ]
         tools = []
         for tool in TOOLS:
             if self._hidden(tool["name"]):
@@ -552,6 +597,8 @@ class Agent:
         if connectors and connectors.servers and not self.depth:
             try:
                 await asyncio.wait_for(connectors.status(), 30)
+                if self.registry is not None:
+                    self.registry.load()  # Connector tools are known only after their servers start.
             except Exception:  # noqa: BLE001 -- A broken connector must not block the task.
                 logger.warning("Connectors could not start", exc_info=True)
         self.selection = await self._select(goal, items[:-1])
@@ -637,6 +684,15 @@ class Agent:
             return {"error": str(exc).strip("'")}, None
 
     async def _call(self, name, a):
+        registry = getattr(self, "registry", None)
+        if registry is not None and name not in registry.control:
+            ctx = self.tool_context()
+            ctx.final = None
+            result = await registry.call(ctx, name, a)
+            return result.model_output(), ctx.final
+        return await self._call_v1(name, a)
+
+    async def _call_v1(self, name, a):
         if name == "update_plan":
             self.plan = [{"step": str(s["step"])[:300], "status": s["status"]} for s in a["steps"][:12]]
             self.emit("plan", "Updated the plan.", plan=self.plan)

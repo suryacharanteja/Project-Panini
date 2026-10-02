@@ -18,6 +18,8 @@ datas += [
     (str(p), str(p.parent.relative_to(root)))
     for p in (root / "backend/harness/builtin_skills").rglob("SKILL.md")
 ]
+# Capability manifests (PANINI v2 registry) are data files read at startup.
+datas += [(str(p), "backend/registry/manifests") for p in (root / "backend/registry/manifests").glob("*.json")]
 # The phone companion's static app.
 datas += [
     (str(p), "backend/harness/mobile_app")

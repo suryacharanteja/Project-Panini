@@ -66,9 +66,10 @@ class Harness:
         self.worker = Worker(self.tasks, self.run_background, on_cycle=self.background_cycle)
         self._last_suggest = 0.0
         self.foreground = 0  # Agent runs in progress from the shell or console.
+        self._registry = None
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
-        return Agent(
+        agent = Agent(
             self,
             self.model_factory(),
             delegate=delegate,
@@ -76,6 +77,28 @@ class Harness:
             capabilities=tuple(self.adapters) if capabilities is None else capabilities,
             **options,
         )
+        from .. import v2flags
+
+        if v2flags.enabled("PANINI_V2_REGISTRY"):
+            agent.registry = self.registry
+        return agent
+
+    @property
+    def registry(self):
+        """The v2 capability registry (backend/registry), built on first use."""
+        if self._registry is None:
+            from ..registry.registry import Registry
+
+            self._registry = Registry(
+                {
+                    "adapters": self.adapters,
+                    "connectors": self.connectors,
+                    "remotes": self.remotes,
+                    "harness": self,
+                },
+                state=self.store,
+            )
+        return self._registry
 
     def status(self):
         counts = self.tasks.counts()

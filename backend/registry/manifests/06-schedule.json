@@ -1,0 +1,92 @@
+{
+  "schema": "panini.capability/1",
+  "id": "schedule",
+  "title": "Schedules and watches",
+  "version": "1.0.0",
+  "summary": "Background goals later, repeatedly, or when a condition holds.",
+  "entry": "backend.registry.hands:AgentMethodHand",
+  "tools": [
+    {
+      "name": "schedule_task",
+      "hand": "schedule",
+      "title": "Schedule task",
+      "description": "Run a goal later or repeatedly in the background.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "goal": {
+            "type": "string"
+          },
+          "delay_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "every_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "goal",
+          "delay_minutes",
+          "every_minutes"
+        ]
+      },
+      "order": 120,
+      "group": "schedule",
+      "effect": "local_write",
+      "requires": [
+        "private",
+        "tasks",
+        "top",
+        "foreground"
+      ],
+      "evidence": [
+        "task"
+      ]
+    },
+    {
+      "name": "watch",
+      "hand": "schedule",
+      "title": "Watch",
+      "description": "Check something on a schedule and notify the person only when a condition holds.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "goal": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          },
+          "every_minutes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "goal",
+          "condition",
+          "every_minutes"
+        ]
+      },
+      "order": 130,
+      "group": "schedule",
+      "effect": "local_write",
+      "requires": [
+        "private",
+        "tasks",
+        "top",
+        "foreground"
+      ],
+      "evidence": [
+        "task"
+      ]
+    }
+  ]
+}
