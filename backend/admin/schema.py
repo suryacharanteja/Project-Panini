@@ -325,8 +325,9 @@ SETTINGS += [
         "PANINI_FAST_MODEL",
         "models",
         "Fast model",
-        help="With one brain on: model for simple turns Jev marks as quick.",
-        default="gpt-4.1-mini",
+        help="With one brain on: model for simple turns Jev marks as quick (for example gpt-4.1-mini: "
+        "much cheaper, slightly slower). Empty uses the agent model.",
+        default="",
     ),
     Setting(
         "PANINI_DEEP_MODEL",

@@ -25,7 +25,9 @@ def tier_models() -> dict:
     """Model name per tier; an empty name means the model factory's own default (v1 behaviour)."""
     agent = os.getenv("PANINI_AGENT_MODEL", "").strip()
     return {
-        "fast": os.getenv("PANINI_FAST_MODEL", "gpt-4.1-mini").strip(),
+        # Opt-in: in the Phase 1 scorecard gpt-4.1-mini cut simple-turn cost ~70% but took more rounds and
+        # was slower than the agent model, so by default the fast tier uses the agent model.
+        "fast": os.getenv("PANINI_FAST_MODEL", "").strip(),
         "agent": agent,
         "deep": os.getenv("PANINI_DEEP_MODEL", "").strip(),
     }
@@ -56,7 +58,7 @@ class ModelRouter:
     def use(self, tier: str):
         if tier not in TIERS:
             raise ValueError(f"Unknown model tier {tier!r}")
-        name = tier_models()[tier] or (tier_models()["agent"] or self.base)
+        name = tier_models()[tier] or tier_models()["agent"] or self.base
         if name and hasattr(self.model, "switch_model"):
             self.model.switch_model(name)
         self.tier = tier

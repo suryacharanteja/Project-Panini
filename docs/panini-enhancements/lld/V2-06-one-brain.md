@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 1 · P0 · L (1.5–2 weeks) |
 | Depends on | V2-01 (scorecard), V2-02, V2-03, V2-04, V2-05 |
 | Flag | `PANINI_V2_ONE_BRAIN` (default `false`) |
-| Status | Not started |
+| Status | Done (2026-10-02) |
 
 ## 1. Outcome
 
@@ -228,6 +228,50 @@ enforcement is default (V2-03), then is removed. Watches and project tasks keep 
 `PANINI_V2_ONE_BRAIN`, `PANINI_FAST_MODEL`, `PANINI_AGENT_MODEL`, `PANINI_DEEP_MODEL`, `PANINI_VISION_MODEL`,
 `PANINI_RUN_MAX_STEPS`, `PANINI_RUN_MAX_SECONDS`, `PANINI_RUN_MAX_USD`, `PANINI_DAILY_MAX_USD`,
 `PANINI_AVATAR_THREAD`, `PANINI_REFLEXES` (default `true`). All in Admin (models and v2 groups).
+
+### 5.13 As built (2026-10-02)
+
+- `backend/brain/`: `models.py` (tiers `fast`/`agent`/`deep`; the fast tier is opt-in, see the scorecard note, `choose_tier`, `ModelRouter` with escalation
+  after two failed tool calls in a row or a plan of three or more steps), `budget.py` (`Budget.for_mode`,
+  `Meter`, costs from `usage_log` prices; a turn without usage counts at 30k input + 2k output tokens),
+  `runs.py` (`Runs`: records, zlib checkpoints ≤ 512 KiB with tool outputs cut to 2,000 characters,
+  `resumable`, `close_parked`, `spent_today`, `recover`), `threads.py` (`Threads.bind` over
+  `thread_bindings`; the avatar continues its latest thread within 4 hours unless
+  `PANINI_AVATAR_THREAD=new`). Migration `0006_runs.sql` (the design said 0007; V2-05 took 0005).
+- The loop stays in `harness/agent.py` (`Agent.run`) rather than moving to `brain/loop.py`: the one-brain
+  behaviour is added in place behind the flag, so the v1 loop is byte-for-byte the same when it is off.
+  Tier questions are merged into the existing Jev context-selection call (no extra Jev call).
+- Routing: under the flag `planning.route` calls `one_brain_route`: `capability_hint` first; otherwise one
+  agent step. When `jev_route` is sure of a single search or code step, it becomes the run's **reflex**:
+  the agent's first `use_capability` call, made through the registry (policy, ledger) while Jev selects
+  the context, and written into the conversation as a normal function call and output. If Jev then says
+  the goal is done, the run ends without a model turn. The LLM planner and `evaluate_plan` never run;
+  without the agent, Jev's sure route still runs directly, otherwise a plain reply explains why.
+- The coordinator keeps its step loop, which now always has exactly one agent step (or the hinted
+  capability). `_recover` therefore only applies to `capability_hint` turns. Moving `_run` itself onto a
+  `RunEngine`/`RunContext` is folded into V2-07, where the AG-UI event stream needs the same seam.
+- Background: `run_background` resumes a parked run from its last checkpoint (`resume=`), marking the old
+  run `resumed`; a declined interrupt marks it `blocked`. Interrupted runs (process died) re-run from the
+  start, as before, with ledger replay preventing repeated effects.
+- I2: `Agent._effects_verified()` uses `ledger.verified_after_last_effect(run_id)` on `finish`, on plain
+  answers after verified steps. To make this sound, `AgentMethodHand` now attaches what the v1 handler
+  verified itself (`computer:*`, `browser:*`, `memory:*`, and capability evidence ids) to the receipt; the
+  ledger hook skips capability evidence the coordinator already mirrored.
+- Budgets: per-run cost stops with "I stopped at the cost limit for this task."; the daily cap asks once in
+  the foreground (`confirm`) and stops background runs. Sub-agents record `parent_run_id`.
+- Routes: `GET /api/harness/runs` (with `spent_today_usd` and the tier models) and `/runs/{id}` (plan,
+  step, thread bindings), on the console and shell routers. Admin: fast/deep model settings and the V2-06
+  budget, thread and reflex settings.
+- Evals: `evals/engines.py:V2RunEngine` (one brain + registry + policy `enforce` + ledger + interrupts).
+  The eval approval decider now answers through `Coordinator.decide`, which also covers interrupt-backed
+  confirmations (they previously timed out in the eval with interrupts on).
+- Scorecard (Phase 1 gate, `compare --gate phase1` against `baseline-v1-live-1.json`): with
+  `PANINI_FAST_MODEL=gpt-4.1-mini` v2 was 20/20 and 29% cheaper per verified task but the simple-turn p50 rose
+  to 4.48 s (1.29×, gate fail): the mini model took more rounds. The fast tier is therefore opt-in
+  (`PANINI_FAST_MODEL` empty = agent model). Result: 20/20, simple p50 3.62 s vs 3.47 s, cost per verified
+  $0.0066 vs $0.0070, safety 100% — gate pass (`artifacts/evals/20261002T094920Z-fbe237-v2-live.json`).
+- Not done in this item: escalating when the fast model finishes `partial`/`blocked` with budget left
+  (needs a retry prompt design), provider fallbacks per tier (V2-27 adds providers), and `PANINI_VISION_MODEL`.
 
 ## 6. Implementation steps
 

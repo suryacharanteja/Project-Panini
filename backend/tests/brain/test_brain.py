@@ -67,7 +67,8 @@ def test_tier_choice_from_jev_probabilities(one_brain, monkeypatch):
     assert choose_tier({"tier_simple": 0.1, "tier_deep": 0.9}) == "deep"
 
 
-def test_router_escalates_after_two_tool_errors_and_on_a_long_plan(one_brain):
+def test_router_escalates_after_two_tool_errors_and_on_a_long_plan(one_brain, monkeypatch):
+    monkeypatch.setenv("PANINI_FAST_MODEL", "gpt-4.1-mini")
     model = Switchable([])
     router = ModelRouter(model, "fast")
     assert model.model == "gpt-4.1-mini" and router.tier == "fast"
@@ -299,6 +300,7 @@ def test_the_daily_cap_asks_in_the_foreground_and_stops_in_the_background(tmp_pa
 
 
 def test_two_failed_tool_calls_move_a_fast_run_to_the_agent_model(tmp_path, one_brain, monkeypatch):
+    monkeypatch.setenv("PANINI_FAST_MODEL", "gpt-4.1-mini")
     bad = {"calls": [{"name": "read_file", "arguments": {"path": str(tmp_path / "missing.txt")}}]}
     model = Switchable([bad, bad, {"text": "It is missing."}], usage={"input_tokens": 10, "output_tokens": 1})
     h = make_harness(tmp_path, model)
