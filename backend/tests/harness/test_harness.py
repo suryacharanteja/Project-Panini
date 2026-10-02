@@ -629,3 +629,15 @@ def test_agent_steps_need_no_coordinator_target():
 
     ctx = SimpleNamespace(session=SimpleNamespace(selected={}), task=SimpleNamespace(capability="agent"))
     assert asyncio.run(resolve_target(ctx, object(), "")) is None
+
+
+def test_v2_status_route(tmp_path):
+    from backend.app import create_app
+
+    h, _ = make_harness(tmp_path, [])
+    app = create_app(harness_factory=lambda: h, console_token="t" * 32)
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        assert client.get("/api/harness/v2/status").status_code == 401
+        body = client.get("/api/harness/v2/status", headers={"x-panini-console": "t" * 32}).json()
+        assert body["migrations"] == ["0001_baseline"]
+        assert body["flags"]["PANINI_BROWSER_DRIVER"] == "legacy"

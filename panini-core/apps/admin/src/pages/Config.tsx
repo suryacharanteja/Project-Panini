@@ -430,7 +430,7 @@ export function SystemPage() {
     <Page title="System" deva="विन्यास" eyebrow="Settings">
       <div className="grid gap-5">
         <SettingsForm
-          groups={['agent', 'network']}
+          groups={['agent', 'network', 'v2']}
           title="Runtime"
           description="Settings marked “applies after restart” take effect the next time PANINI starts (tray → Quit, then open PANINI)."
         />

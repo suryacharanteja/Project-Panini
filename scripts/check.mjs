@@ -18,6 +18,7 @@ const pythonSources = [
   'scripts',
 ];
 const checks = [
+  [process.execPath, ['scripts/check-pins.mjs']],
   [process.execPath, [process.env.npm_execpath, 'run', 'format:check']],
   [python, ['-m', 'ruff', 'check', ...pythonSources]],
   [python, ['-m', 'ruff', 'format', '--check', ...pythonSources]],

@@ -162,3 +162,22 @@ def test_application_factories_do_not_share_work_or_browser_state():
     assert first.state.comparison_work is not second.state.comparison_work
     first.state.browser_loop = object()
     assert second.state.browser_loop is None
+
+
+def test_reference_snapshots_are_never_imported():
+    """references/ holds upstream snapshots for reading only (docs/panini-enhancements/harvest-map.md)."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    pattern = re.compile(r"^\s*(from|import)\s+references\b|['\"]references[/\\]", re.M)
+    offenders = []
+    for folder in ("backend", "frontend/server", "panini-core", "scripts"):
+        for path in (root / folder).rglob("*"):
+            if path.suffix not in {".py", ".mjs", ".js", ".ts", ".tsx"} or "node_modules" in path.parts:
+                continue
+            if path.name in {"test_boundaries.py", "check-pins.mjs"}:  # Read-only pin verification.
+                continue
+            if pattern.search(path.read_text(encoding="utf-8", errors="ignore")):
+                offenders.append(str(path.relative_to(root)))
+    assert offenders == []

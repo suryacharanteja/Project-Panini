@@ -52,6 +52,9 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
+        from .migrations import migrate
+
+        self.migrations = migrate(self.db)
 
     def execute(self, sql, params=()):
         with self.lock:

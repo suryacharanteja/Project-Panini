@@ -31,3 +31,6 @@ panini-core/apps/frontend/public/admin/
 *.swp
 *.swo
 *.log
+
+# Harvested upstream snapshots: read for patterns, never imported at runtime (docs/panini-enhancements)
+references/*/

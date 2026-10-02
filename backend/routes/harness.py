@@ -470,3 +470,21 @@ def add_mobile(r, guard):
 
 add_mobile(console_router, lambda request: None)
 add_mobile(shell_router, lambda request: principal(request))
+
+
+def add_v2_status(r, guard):
+    @r.get("/v2/status")
+    async def v2_status(request: Request):
+        """Which PANINI v2 components are switched on, and which harness migrations ran."""
+        guard(request)
+        from .. import v2flags
+
+        h = request.app.state.harness
+        applied = (
+            [row["id"] for row in h.store.all("SELECT id FROM schema_migrations ORDER BY id")] if h else []
+        )
+        return {**v2flags.status(), "migrations": applied}
+
+
+add_v2_status(console_router, lambda request: None)
+add_v2_status(shell_router, lambda request: principal(request))

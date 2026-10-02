@@ -286,6 +286,39 @@ SETTINGS = [
     ),
 ]
 
+
+def _v2_settings():
+    """One advanced setting per PANINI v2 flag (backend/v2flags.py); the flags stay the single source."""
+    from ..v2flags import FLAGS
+
+    rows = []
+    for flag in FLAGS.values():
+        if flag.choices == ("true", "false"):
+            kind, options = "bool", []
+        elif flag.choices:
+            kind, options = "enum", list(flag.choices)
+        else:
+            kind, options = "text", []
+        label = (
+            f"{flag.item}: " + flag.key.removeprefix("PANINI_").removeprefix("V2_").replace("_", " ").lower()
+        )
+        rows.append(
+            Setting(
+                flag.key,
+                "v2",
+                label,
+                kind,
+                flag.help,
+                default=flag.default,
+                options=options,
+                restart=True,
+                advanced=True,
+            )
+        )
+    return rows
+
+
+SETTINGS += _v2_settings()
 BY_KEY = {s.key: s for s in SETTINGS}
 GROUPS = {
     "keys": "Keys",
@@ -296,4 +329,5 @@ GROUPS = {
     "code": "Code",
     "agent": "Agent",
     "network": "Network",
+    "v2": "PANINI v2",
 }
