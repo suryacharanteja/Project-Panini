@@ -1,6 +1,7 @@
 """The registry stage that receipts every tool call (V2-04). It runs first, so policy refusals are
 receipted too, and it refuses to replay an operation that may already have taken effect."""
 
+import json
 from dataclasses import asdict
 
 from ..core_contracts import ToolResult
@@ -88,7 +89,11 @@ class LedgerHook(Hooks):
         decision = getattr(ctx, "decision", None)
         if decision is not None:
             ledger.decision(receipt, decision.view())
+        row = ledger.store.one("SELECT evidence FROM receipts WHERE id=?", (receipt,))
+        mirrored = bool(row and json.loads(row["evidence"]))
         for item in result.evidence or []:
+            if item.get("kind") == "capability" and mirrored:
+                continue  # The capability's own evidence was already mirrored onto this receipt.
             ledger.evidence(receipt, item.get("kind", "tool"), item.get("summary", ""), item)
         ledger.end(
             receipt,

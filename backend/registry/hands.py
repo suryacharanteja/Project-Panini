@@ -26,6 +26,7 @@ class AgentMethodHand:
             return ToolResult("blocked", f"{spec.name} is only available inside the PANINI agent.")
         from ..harness.memory import MemoryError
 
+        before = len(ctx.agent.evidence)
         try:
             output, final = await ctx.agent._call_v1(spec.name, args)
         except (MemoryError, ValueError, KeyError) as exc:  # The v1 agent's call() turns these into errors.
@@ -33,7 +34,13 @@ class AgentMethodHand:
         if final is not None:
             ctx.final = final
         error = output.get("error") if isinstance(output, dict) else None
-        return ToolResult("failed" if error else "ok", str(error or ""), data=output)
+        # What the v1 handler verified itself (a command's exit and output, an opened target, a saved memory)
+        # is this receipt's evidence, so the evidence rule (I2) sees it. Capability evidence ids (no colon) are
+        # usually mirrored into the ledger by the coordinator already; the ledger hook skips them then.
+        evidence = [
+            {"id": e, "kind": "agent" if ":" in str(e) else "capability"} for e in ctx.agent.evidence[before:]
+        ]
+        return ToolResult("failed" if error else "ok", str(error or ""), data=output, evidence=evidence)
 
 
 class ControlHand(AgentMethodHand):

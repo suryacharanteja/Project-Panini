@@ -12,6 +12,7 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 
@@ -33,8 +34,8 @@ class TurnResult:
 class _Environment:
     """Per-case data folder, working folder and environment overrides, restored afterwards."""
 
-    def __init__(self, case, mode):
-        self.case, self.mode = case, mode
+    def __init__(self, case, mode, flags=None):
+        self.case, self.mode, self.flags = case, mode, dict(flags or {})
         self.root = Path(tempfile.mkdtemp(prefix="panini-eval-"))
         self.work = self.root / "work"
         self.work.mkdir()
@@ -53,7 +54,7 @@ class _Environment:
             "JEV_REV_DESKTOP_ENABLED": "0",
             "PANINI_CLI_ENABLED": "0",
             "PANINI_CAPABILITY_ROUTER_ENABLED": "0",
-        }
+        } | self.flags
         if self.mode == "offline":
             script = self.root / "script.json"
             script.write_text(json.dumps(expand(list(self.case.script), self.work)), encoding="utf-8")
@@ -78,9 +79,10 @@ class _Environment:
 
 class V1CoordinatorEngine:
     name = "v1"
+    flags: dict = {}
 
     async def run(self, case, mode, *, timeout=240.0) -> tuple[TurnResult, Path]:
-        env = _Environment(case, mode)
+        env = _Environment(case, mode, self.flags)
         with env:
             result = await self._run(case, env, timeout)
         return result, env.work
@@ -143,15 +145,17 @@ class V1CoordinatorEngine:
                 )  # As the open shell does.
                 for item in list(session.confirmations.values()):
                     future = item["future"]
-                    if future.done() or item.get("eval_seen"):
+                    if (future is not None and future.done()) or item.get("eval_seen"):
                         continue
                     item["eval_seen"] = True
                     result.approvals_requested += 1
                     result.declined.append(item["effect"][:120])
-                    if case.approvals == "approve":
-                        future.set_result(True)
-                    elif case.approvals == "decline":
-                        future.set_result(False)
+                    if case.approvals in ("approve", "decline"):
+                        # Answer the way the shell does, so durable interrupts (V2-05) are covered too.
+                        decision = SimpleNamespace(
+                            nonce=item["nonce"], digest=item["digest"], decision=case.approvals
+                        )
+                        coordinator.decide(session, item["confirmation_id"], decision)
                     # "timeout": leave it; the confirmation expires on its own.
 
         watcher = asyncio.create_task(decide())
@@ -170,4 +174,18 @@ class V1CoordinatorEngine:
             await coordinator.end(session)
 
 
-ENGINES = {"v1": V1CoordinatorEngine}
+class V2RunEngine(V1CoordinatorEngine):
+    """The same surfaces and checks with PANINI v2 Phase 1 on: one brain (V2-06) over the registry, policy,
+    ledger and interrupts. Comparing it with the v1 baseline is the Phase 1 gate (register §3)."""
+
+    name = "v2"
+    flags = {
+        "PANINI_V2_ONE_BRAIN": "true",
+        "PANINI_V2_REGISTRY": "true",
+        "PANINI_V2_POLICY": "enforce",
+        "PANINI_V2_LEDGER": "true",
+        "PANINI_V2_INTERRUPTS": "true",
+    }
+
+
+ENGINES = {"v1": V1CoordinatorEngine, "v2": V2RunEngine}

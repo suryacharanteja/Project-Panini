@@ -36,11 +36,17 @@ class AgentAdapter:
         raise Fault("CAPABILITY_UNAVAILABLE", "The agent has no targets.", 422)
 
     async def run(self, context, instruction, target):
+        from .. import brain
         from ..panini.targets import resolve_target
 
         session_key = context.session.session_id
         if session_key not in self.sessions:
-            self.sessions[session_key] = self.harness.sessions.create(instruction[:80])
+            threads = getattr(self.harness, "threads", None)
+            if brain.enabled() and threads is not None:
+                # V2-06: the avatar conversation is a durable thread binding, so a restart continues it.
+                self.sessions[session_key] = threads.bind("avatar", session_key, title=instruction[:80])
+            else:
+                self.sessions[session_key] = self.harness.sessions.create(instruction[:80])
         steps = []
         failed = []  # Delegations that were blocked or failed; they are not evidence of anything.
 
@@ -105,6 +111,8 @@ class AgentAdapter:
         )
 
         agent.run_id = context.task.task_id
+        agent.thread_id = self.sessions[session_key]
+        agent.reflex = getattr(context.task, "reflex", None)
         browser = self.adapters.get("browser")
         if browser is not None and hasattr(browser, "open_in_chrome"):
             selected = context.session.selected.get("browser")

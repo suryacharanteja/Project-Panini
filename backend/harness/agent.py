@@ -327,6 +327,12 @@ def report(outcome):
     return "\n".join(line for line in lines if line.strip())
 
 
+def _run_state(outcome):
+    return {"verified_complete": "completed", "reply": "completed", "partial": "partial"}.get(
+        outcome, "blocked" if outcome in ("blocked", "clarification") else "failed"
+    )
+
+
 @dataclass
 class AgentResult:
     outcome: str
@@ -375,6 +381,8 @@ class Agent:
         self.registry = None
         self._tool_context = None
         self.run_id = None  # The coordinator task or background task this run belongs to (ledger receipts).
+        # V2-06: the conversation thread, Jev's sure first tool call, and this run's record/router/meter.
+        self.thread_id, self.reflex, self.brain, self.parent_run = None, None, None, None
 
     async def _select(self, goal, items):
         """One Jev call per task decides what the model needs to see: relevant skills,
@@ -395,6 +403,10 @@ class Agent:
             f"group_{name}": {"type": "boolean", "instructions": text}
             for name, text in TOOL_GROUP_QUESTIONS.items()
         }
+        from .. import brain
+
+        if brain.enabled() and not self.depth:
+            questions |= {k: {"type": "boolean", "instructions": t} for k, t in brain.TIER_QUESTIONS.items()}
         if len(skills) <= MAX_SELECTABLE:
             for i, s in enumerate(skills):
                 questions[f"skill_{i}"] = {
@@ -437,6 +449,7 @@ class Agent:
             "servers": {name for i, name in enumerate(list(servers)[:MAX_SELECTABLE]) if keep(f"server_{i}")}
             | set(list(servers)[MAX_SELECTABLE:]),
             "memories": [m for i, m in enumerate(memories) if keep(f"memory_{i}")],
+            "tier": brain.choose_tier({k: v for k, v in p.items() if k.startswith("tier_")} or None),
         }
         self.emit(
             "context",
@@ -589,14 +602,23 @@ class Agent:
             )
         return blocks
 
-    async def run(self, goal, *, session_id=None):
+    async def run(self, goal, *, session_id=None, resume=None):
+        """Run the loop. `resume` is a checkpoint (V2-06) to continue a parked or interrupted run from."""
+        from .. import brain
+
         started = time.monotonic()
         self.goal = goal
-        items, summary = [], ""
+        one_brain = brain.enabled() and getattr(self.h, "runs", None) is not None
+        items, summary, first = [], "", 1
         if session_id:
             session = self.h.sessions.get(session_id)
             items, summary = session["items"], session["summary"]
-        items.append({"role": "user", "content": goal})
+        if resume:
+            items, summary = list(resume.get("items") or []), resume.get("summary", "")
+            self.plan, self.outcomes = resume.get("plan", []), resume.get("outcomes", [])
+            self.evidence, first = resume.get("evidence", []), int(resume.get("step", 0)) + 1
+        else:
+            items.append({"role": "user", "content": goal})
         connectors = getattr(self.h, "connectors", None)
         if connectors and connectors.servers and not self.depth:
             try:
@@ -605,60 +627,221 @@ class Agent:
                     self.registry.load()  # Connector tools are known only after their servers start.
             except Exception:  # noqa: BLE001 -- A broken connector must not block the task.
                 logger.warning("Connectors could not start", exc_info=True)
-        self.selection = await self._select(goal, items[:-1])
+        reflex = self._usable_reflex() if one_brain and not resume else None
+        if reflex:
+            # Jev's one sure first tool call runs (policed and receipted) while Jev selects the context.
+            self.selection, _ = await asyncio.gather(
+                self._select(goal, items[:-1]), self._reflex(reflex, items)
+            )
+        else:
+            self.selection = await self._select(goal, items if resume else items[:-1])
+        self.brain = None
+        if one_brain:
+            self._start_run(resume)
         instructions = self.instructions(goal)
         result = None
-        for step in range(1, self.max_steps + 1):
-            if time.monotonic() - started > self.deadline:
-                result = AgentResult("partial", "The task reached its time limit before finishing.")
-                break
-            if self.h.sessions.needs_compaction(items):
-                items, summary = await self.compact(items, summary)
-            prompt = instructions + (
-                f"\n\nEarlier in this conversation (summary):\n{summary}" if summary else ""
-            )
-            turn = await self.model.respond(prompt, items, self.tools(), cache_key="panini-agent")
-            record_usage(self.model, getattr(turn, "usage", None))
-            items.extend(turn.items)
-            if not turn.calls:
-                # A plain answer is a reply, not a verified effect.
-                # A plain answer: backed by verified steps it is complete; otherwise just a reply.
-                outcome = "reply"
-                if self.evidence:
-                    outcome = "verified_complete" if await self._jev_confirms(turn.text or "") else "partial"
-                result = AgentResult(outcome, turn.text or "Done.")
-                break
-            verified_before = len(self.evidence)
-            for call in turn.calls:
-                output, final = await self.call(call.name, call.arguments)
-                items.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": call.call_id,
-                        "output": json.dumps(output, ensure_ascii=False)[:OUTPUT_CHARS],
-                    }
-                )
-                if final:
-                    result = final
-            if (
-                not result
-                and len(self.evidence) > verified_before
-                and all(c.name in ("use_capability", "update_plan") for c in turn.calls)
-                and await self._jev_done()
-            ):
-                # Jev judged the goal achieved: report the verified result without another
-                # full model turn just to call finish.
-                message = "\n".join(report(o) for o in self.outcomes[-3:]) or "Done."
-                result = AgentResult("verified_complete", message[:4000])
+        step = first - 1
+        try:
+            if reflex and self.evidence and await self._jev_done():
+                message = report(self.outcomes[-1])[:4000] or "Done."
+                result = AgentResult("verified_complete", message)
+                items.append({"role": "assistant", "content": message})
                 self.emit("finished", "The results show the goal is achieved.")
-            if result:
-                break
-        else:
-            result = AgentResult("partial", "The task used its step budget before finishing.")
+            for step in range(first, self.max_steps + 1) if result is None else ():
+                if time.monotonic() - started > self.deadline:
+                    result = AgentResult("partial", "The task reached its time limit before finishing.")
+                    break
+                stopped = await self._over_budget() if self.brain else None
+                if stopped:
+                    result = AgentResult("partial", stopped)
+                    break
+                if self.h.sessions.needs_compaction(items):
+                    items, summary = await self.compact(items, summary)
+                prompt = instructions + (
+                    f"\n\nEarlier in this conversation (summary):\n{summary}" if summary else ""
+                )
+                turn = await self.model.respond(prompt, items, self.tools(), cache_key="panini-agent")
+                record_usage(self.model, getattr(turn, "usage", None))
+                if self.brain:
+                    self.brain["meter"].add_turn(self.brain["router"].name, getattr(turn, "usage", None))
+                items.extend(turn.items)
+                if not turn.calls:
+                    # A plain answer: backed by verified steps it is complete; otherwise just a reply.
+                    outcome = "reply"
+                    if self.evidence:
+                        outcome = (
+                            "verified_complete"
+                            if self._effects_verified() and await self._jev_confirms(turn.text or "")
+                            else "partial"
+                        )
+                    result = AgentResult(outcome, turn.text or "Done.")
+                    break
+                verified_before = len(self.evidence)
+                for call in turn.calls:
+                    output, final = await self.call(call.name, call.arguments)
+                    items.append(
+                        {
+                            "type": "function_call_output",
+                            "call_id": call.call_id,
+                            "output": json.dumps(output, ensure_ascii=False)[:OUTPUT_CHARS],
+                        }
+                    )
+                    if self.brain:
+                        self.brain["router"].note_tool(output)
+                        if call.name == "update_plan":
+                            self.brain["router"].note_plan(len(self.plan))
+                    if final:
+                        result = final
+                if (
+                    not result
+                    and len(self.evidence) > verified_before
+                    and all(c.name in ("use_capability", "update_plan") for c in turn.calls)
+                    and await self._jev_done()
+                ):
+                    # Jev judged the goal achieved: report the verified result without another
+                    # full model turn just to call finish.
+                    message = "\n".join(report(o) for o in self.outcomes[-3:]) or "Done."
+                    result = AgentResult("verified_complete", message[:4000])
+                    self.emit("finished", "The results show the goal is achieved.")
+                if self.brain:
+                    self._checkpoint(items, summary, step)
+                if result:
+                    break
+            else:
+                if result is None:
+                    result = AgentResult("partial", "The task used its step budget before finishing.")
+        except BaseException as signal:
+            if self.brain:
+                if getattr(signal, "interrupt_id", None):
+                    state = "parked"
+                else:
+                    state = "failed" if isinstance(signal, Exception) else "interrupted"
+                self._finish_run(state, {"error": str(signal)[:300]})
+            raise
         result.plan, result.evidence, result.steps = self.plan, self.evidence[-50:], step
+        if self.brain:
+            self._finish_run(
+                _run_state(result.outcome), {"outcome": result.outcome, "message": result.message[:2000]}
+            )
         if session_id:
             self.h.sessions.save(session_id, items, summary=summary, title=goal[:80])
         return result
+
+    # One brain (V2-06) -----------------------------------------------------
+    def _start_run(self, resume):
+        from .. import brain
+
+        budget = brain.Budget.for_mode(self.background)
+        self.max_steps = min(self.max_steps, budget.max_steps)
+        self.deadline = min(self.deadline, budget.max_seconds)
+        runs = self.h.runs
+        tier = (self.selection or {}).get("tier") or (resume or {}).get("tier") or "agent"
+        router = brain.ModelRouter(self.model, tier, emit=self.emit)
+        meter = brain.Meter(budget, spent_today=runs.spent_today)
+        run_id = runs.start(
+            mode="background" if self.background else ("subagent" if self.depth else "foreground"),
+            principal={
+                "kind": "owner" if self.private else "external_agent",
+                "surface": "background" if self.background else "agent",
+            },
+            thread_id=self.thread_id,
+            task_id=self.run_id,
+            parent_run_id=(resume or {}).get("run_id") or self.parent_run,
+            tier=router.tier,
+            budget=budget.view(),
+        )
+        self.brain = {"run": run_id, "router": router, "meter": meter}
+        self.emit("run", f"Using the {router.tier} model.", run_id=run_id, tier=router.tier)
+
+    def _checkpoint(self, items, summary, step):
+        b = self.brain
+        try:
+            self.h.runs.checkpoint(
+                b["run"],
+                {
+                    "run_id": b["run"],
+                    "items": items,
+                    "summary": summary,
+                    "plan": self.plan,
+                    "outcomes": self.outcomes[-20:],
+                    "evidence": self.evidence[-50:],
+                    "step": step,
+                    "tier": b["router"].tier,
+                },
+            )
+            self.h.runs.update(b["run"], tier=b["router"].tier, usage=b["meter"].view())
+        except Exception:  # noqa: BLE001 -- Checkpoints are an optimisation; the run continues.
+            logger.warning("Run checkpoint failed", exc_info=True)
+
+    def _finish_run(self, state, result):
+        b = self.brain
+        try:
+            self.h.runs.finish(
+                b["run"],
+                state,
+                {**result, "tier": b["router"].tier, "escalations": b["router"].escalations},
+                usage=b["meter"].view(),
+            )
+        except Exception:  # noqa: BLE001 -- Recording the run must never change its outcome.
+            logger.warning("Run record failed", exc_info=True)
+
+    async def _over_budget(self):
+        """A plain stop message when a run or daily budget is reached, else None."""
+        from ..brain import STOP_MESSAGES
+
+        meter = self.brain["meter"]
+        crossed = meter.exceeded()
+        if crossed:
+            return STOP_MESSAGES[crossed]
+        if meter.over_daily():
+            spent = meter.spent_today() + meter.usd
+            if self.background or self.confirm is None:
+                return STOP_MESSAGES["daily"]
+            if not await self.confirm(
+                f"Today's PANINI spend reached USD {spent:.2f}. Continue this task?",
+                f"Daily limit: USD {meter.budget.daily_usd:.2f} (PANINI_DAILY_MAX_USD).",
+            ):
+                return STOP_MESSAGES["daily"]
+            meter.daily_approved = True
+        return None
+
+    def _usable_reflex(self):
+        reflex = self.reflex
+        if not reflex or reflex.get("capability") not in self.capabilities:
+            return None
+        if "use_capability" not in {t["name"] for t in self.tools()}:
+            return None
+        return reflex
+
+    async def _reflex(self, reflex, items):
+        """V2-06 reflex: the first tool call Jev is sure of, made inside the run instead of a separate path."""
+        arguments = json.dumps(
+            {"capability": reflex["capability"], "instruction": str(reflex["instruction"])[:5000]},
+            ensure_ascii=False,
+        )
+        call_id = f"call_reflex_{uuid4().hex[:16]}"
+        self.emit("reflex", f"Starting with {reflex['capability']}.", capability=reflex["capability"])
+        output, _ = await self.call("use_capability", arguments)
+        items.append(
+            {"type": "function_call", "call_id": call_id, "name": "use_capability", "arguments": arguments}
+        )
+        items.append(
+            {
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": json.dumps(output, ensure_ascii=False)[:OUTPUT_CHARS],
+            }
+        )
+        return output
+
+    def _effects_verified(self):
+        """Invariant I2 (V2-06): with the ledger on, every effect in the run is followed by evidence."""
+        from .. import brain, ledger
+
+        book = ledger.active()
+        if not (brain.enabled() and book and self.run_id):
+            return True
+        return book.verified_after_last_effect(self.run_id)
 
     async def compact(self, items, summary):
         old, recent = self.h.sessions.split(items)
@@ -837,6 +1020,8 @@ class Agent:
             outcome = a["outcome"]
             if outcome == "verified_complete" and not self.evidence:
                 outcome = "partial"  # Success needs verification evidence from a delegated step.
+            if outcome == "verified_complete" and not self._effects_verified():
+                outcome = "partial"  # An effect was never checked afterwards (I2).
             if outcome == "verified_complete" and not await self._jev_confirms(a["message"]):
                 outcome = "partial"  # The model claims success; Jev decides whether the results show it.
             return {"ok": True}, AgentResult(outcome, a["message"][:4000])
@@ -1062,6 +1247,7 @@ class Agent:
                 confirm=self.confirm,
                 depth=self.depth + 1,
             )
+            child.run_id, child.parent_run = self.run_id, (self.brain or {}).get("run")
             self.emit("subagent", f"Sub-agent {index + 1}: {t['task'][:200]}")
             result = await child.run(t["task"][:4000])
             self.evidence.extend(e for e in result.evidence if not str(e).startswith("memory:"))

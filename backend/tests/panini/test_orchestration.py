@@ -16,6 +16,12 @@ def anyio_backend():
     return "asyncio"
 
 
+@pytest.fixture(autouse=True)
+def v1_planner(monkeypatch):
+    """These tests pin the v1 planner path; the one-brain route (V2-06) has its own tests."""
+    monkeypatch.delenv("PANINI_V2_ONE_BRAIN", raising=False)
+
+
 class Adapter(UnavailableAdapter):
     def __init__(self, name, labels=(), outcome="verified_complete", hold=False):
         super().__init__(name, "")

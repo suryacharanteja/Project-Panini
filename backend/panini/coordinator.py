@@ -59,6 +59,7 @@ class Task:
     steps: list = field(default_factory=list)
     choices: list = field(default_factory=list)
     error_code: str | None = None
+    reflex: dict | None = None  # V2-06: Jev's sure first tool call for the agent.
 
     def view(self):
         value = {
@@ -768,6 +769,7 @@ class Coordinator:
                     ctx.check()
                 plan = await self.route(s, payload)
                 ctx.check()
+                task.reflex = plan.get("reflex")  # V2-06: Jev's sure first tool call for the agent.
                 if plan.get("route_evaluation") or plan.get("decided_by"):
                     task.trace.append(
                         {

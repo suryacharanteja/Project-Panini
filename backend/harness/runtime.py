@@ -81,6 +81,10 @@ class Harness:
 
         self.interrupts = interrupts.install(interrupts.Interrupts(self.store))
         self.interrupts.listeners.append(self._on_interrupt)
+        from ..brain import Runs, Threads
+
+        self.runs = Runs(self.store)  # V2-06 run records and checkpoints.
+        self.threads = Threads(self.store, self.sessions)
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
         agent = Agent(
@@ -167,6 +171,7 @@ class Harness:
             if approved:
                 self.tasks.resume(task_id, view.get("action_digest"))
             else:
+                self.runs.close_parked(task_id, "blocked")
                 reason = {"expired": "The approval request expired."}.get(
                     view["status"], "You declined this step."
                 )
@@ -252,6 +257,7 @@ class Harness:
         import asyncio
 
         self.interrupts.cancel_foreground_after_restart()
+        self.runs.recover()
         self.recover_ledger()
         self.worker.start()
         self._mobile_start = asyncio.get_running_loop().create_task(self.mobile.start_if_enabled())
@@ -333,8 +339,17 @@ class Harness:
             background=True,
         )
         agent.run_id = task["id"]
+        from .. import brain
+
+        # V2-06: a run parked on an approval continues from its last checkpoint; the ledger replays any
+        # step that already happened, and the approved action passes once.
+        parked_run = self.runs.resumable(task["id"]) if brain.enabled() else None
+        checkpoint = self.runs.load_checkpoint(parked_run["id"]) if parked_run else None
+        if parked_run:
+            self.runs.close_parked(task["id"], "resumed")
+            self.store.event(task["id"], "resumed", "Continuing from where the task stopped.")
         try:
-            result = await agent.run(goal)
+            result = await agent.run(goal, resume=checkpoint)
         except Parked as parked:
             return (
                 "waiting_input",

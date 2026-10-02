@@ -666,8 +666,39 @@ def add_ledger(r, guard):
         )
 
 
+def add_runs(r, guard):
+    @r.get("/runs")
+    async def runs(request: Request, thread_id: str = "", task_id: str = "", limit: int = 50):
+        """Agent runs, newest first: mode, tier, state, usage and result (V2-06)."""
+        guard(request)
+        h = harness(request)
+        from ..brain import tier_models
+
+        return {
+            "runs": h.runs.list(limit=limit, thread_id=thread_id or None, task_id=task_id or None),
+            "spent_today_usd": round(h.runs.spent_today(), 4),
+            "tiers": tier_models(),
+        }
+
+    @r.get("/runs/{run_id}")
+    async def run(run_id: str, request: Request):
+        guard(request)
+        h = harness(request)
+        found = h.runs.get(run_id)
+        if found is None:
+            raise HTTPException(404, "Unknown run.")
+        checkpoint = h.runs.load_checkpoint(run_id) or {}
+        found["plan"] = checkpoint.get("plan", [])
+        found["step"] = checkpoint.get("step")
+        if found.get("thread_id"):
+            found["bindings"] = h.threads.bindings(found["thread_id"])
+        return found
+
+
 add_ledger(console_router, lambda request: None)
+add_runs(console_router, lambda request: None)
 add_ledger(shell_router, lambda request: principal(request))
+add_runs(shell_router, lambda request: principal(request))
 
 
 class InterruptDecision(Strict):

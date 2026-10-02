@@ -38,6 +38,7 @@ def test_admin_lists_every_flag_in_the_v2_group():
             assert setting.options == list(flag.choices)
 
 
-def test_status_reports_items():
+def test_status_reports_items(monkeypatch):
+    monkeypatch.delenv("PANINI_V2_ONE_BRAIN", raising=False)
     status = v2flags.status()
     assert status["items"]["V2-06"] == {"flag": "PANINI_V2_ONE_BRAIN", "enabled": False}

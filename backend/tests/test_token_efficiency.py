@@ -18,6 +18,12 @@ def fresh_usage():
     usage_log.reset()
 
 
+@pytest.fixture(autouse=True)
+def v1_planner(monkeypatch):
+    """These tests pin the v1 planner path; the one-brain route (V2-06) has its own tests."""
+    monkeypatch.delenv("PANINI_V2_ONE_BRAIN", raising=False)
+
+
 def jev(probabilities, tokens=100):
     return {
         "answers": {key: {"probability": value} for key, value in probabilities.items()},

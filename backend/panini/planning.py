@@ -195,12 +195,39 @@ async def evaluate_plan(session, turn, plan: Plan):
     return {"accepted": accepted, "method": "jev", "probabilities": p}
 
 
+def one_brain_route(session, turn, decided):
+    """V2-06: every turn runs in the agent; Jev's sure single route becomes the run's first tool call
+    (a reflex) instead of a separate execution path, and the LLM planner never runs."""
+    if (session.inventory.get("agent") or {}).get("state") == "ready":
+        plan = {
+            "steps": [Step(capability="agent", instruction=turn.text).model_dump()],
+            "decided_by": "agent",
+        }
+        if decided and os.getenv("PANINI_REFLEXES", "true").lower() not in {"0", "false", "no", "off"}:
+            step = decided["steps"][0]
+            plan["reflex"] = {"capability": step["capability"], "instruction": step["instruction"]}
+            plan["decided_by"] = "agent+jev_reflex"
+        return plan
+    if decided:
+        return decided  # Without the agent, Jev's sure single-capability route still runs directly.
+    reason = (session.inventory.get("agent") or {}).get("reason") or "The PANINI agent is unavailable."
+    return {
+        "steps": [],
+        "reply": f"{reason} Until then I can only run simple single-step requests.",
+        "clarification": False,
+    }
+
+
 async def route(session, turn):
     from .targets import grounded_query
 
     if turn.capability_hint:
         return {"steps": [Step(capability=str(turn.capability_hint), instruction=turn.text).model_dump()]}
     decided = await jev_route(session, turn)
+    from .. import v2flags
+
+    if v2flags.enabled("PANINI_V2_ONE_BRAIN"):
+        return one_brain_route(session, turn, decided)
     if decided:
         return decided
     if (session.inventory.get("agent") or {}).get("state") == "ready" and os.getenv(

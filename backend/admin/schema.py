@@ -319,6 +319,80 @@ def _v2_settings():
 
 
 SETTINGS += _v2_settings()
+# V2-06 one brain: model tiers and budgets (docs/panini-enhancements/lld/V2-06-one-brain.md §5.4, §5.7).
+SETTINGS += [
+    Setting(
+        "PANINI_FAST_MODEL",
+        "models",
+        "Fast model",
+        help="With one brain on: model for simple turns Jev marks as quick.",
+        default="gpt-4.1-mini",
+    ),
+    Setting(
+        "PANINI_DEEP_MODEL",
+        "models",
+        "Deep model",
+        help="With one brain on: optional model for long, careful tasks. Empty disables the deep tier.",
+        default="",
+    ),
+    Setting(
+        "PANINI_RUN_MAX_STEPS",
+        "v2",
+        "V2-06: steps per run",
+        "int",
+        "Model rounds per run.",
+        default="24",
+        minimum=1,
+        maximum=100,
+        advanced=True,
+    ),
+    Setting(
+        "PANINI_RUN_MAX_SECONDS",
+        "v2",
+        "V2-06: seconds per run",
+        "int",
+        "Wall time per run.",
+        default="900",
+        minimum=30,
+        maximum=7200,
+        advanced=True,
+    ),
+    Setting(
+        "PANINI_RUN_MAX_USD",
+        "v2",
+        "V2-06: USD per run",
+        help="Model cost limit for one foreground run (background: 0.20).",
+        default="0.50",
+        advanced=True,
+    ),
+    Setting(
+        "PANINI_DAILY_MAX_USD",
+        "v2",
+        "V2-06: USD per day",
+        help="Daily model spend; foreground runs ask before going past it.",
+        default="5.00",
+        advanced=True,
+    ),
+    Setting(
+        "PANINI_AVATAR_THREAD",
+        "v2",
+        "V2-06: avatar thread",
+        "enum",
+        "continue resumes the last conversation within 4 hours after a restart.",
+        default="continue",
+        options=["continue", "new"],
+        advanced=True,
+    ),
+    Setting(
+        "PANINI_REFLEXES",
+        "v2",
+        "V2-06: reflexes",
+        "bool",
+        "Jev's sure first tool call runs before the model.",
+        default="true",
+        advanced=True,
+    ),
+]
 BY_KEY = {s.key: s for s in SETTINGS}
 GROUPS = {
     "keys": "Keys",
