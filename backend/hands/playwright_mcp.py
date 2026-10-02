@@ -157,6 +157,31 @@ def isolated_preset(run_id: str, artifacts: Path, *, browser="msedge") -> Preset
     return Preset(f"isolated:{run_id}", flags, EFFECT_TOOLS)
 
 
+def chrome_preset(relay, artifacts: Path, *, caps="pdf,devtools,testing") -> Preset:
+    """Your Chrome through JevRev Claw (V2-09): Playwright connects to PANINI's scoped CDP relay."""
+    out = artifacts / "playwright" / "chrome"
+    out.mkdir(parents=True, exist_ok=True)
+    flags = [
+        "--cdp-endpoint",
+        relay.endpoint,
+        "--cdp-header",
+        relay.header,
+        "--cdp-timeout",
+        "15000",
+        "--caps",
+        caps,
+        "--output-dir",
+        str(out),
+        "--image-responses",
+        "omit",
+        "--codegen",
+        "none",
+        "--timeout-action",
+        "8000",
+    ]
+    return Preset(f"chrome:{relay.token[:12]}", flags, EFFECT_TOOLS)
+
+
 # Playwright tools that can change something; a crash during one of them is an unknown effect.
 EFFECT_TOOLS = frozenset(
     {
@@ -300,9 +325,11 @@ class PlaywrightPool:
             current = self.sessions[preset.key] = self.factory(preset, **options)
         return current
 
-    async def close_idle(self, idle_s: float = 600):
+    async def close_idle(self, idle_s: float = 600, chrome_idle_s: float = 120):
         for key, session in list(self.sessions.items()):
-            if session.healthy and self.clock() - session.last_used > idle_s and not session.lock.locked():
+            # Your Chrome detaches sooner, so its "debugging this browser" bar does not linger (V2-09).
+            limit = chrome_idle_s if key.startswith("chrome:") else idle_s
+            if session.healthy and self.clock() - session.last_used > limit and not session.lock.locked():
                 await session.close()
             if key.startswith("isolated:") and not session.healthy:
                 self.sessions.pop(key, None)

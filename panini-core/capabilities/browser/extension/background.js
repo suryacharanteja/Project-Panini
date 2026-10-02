@@ -1,3 +1,4 @@
+import { createCdp } from './cdp.mjs';
 import { TabWorkspace, website } from './workspace.mjs';
 /* Local relay for commands against the tab explicitly attached in the popup.
  *
@@ -55,6 +56,8 @@ function sameProof(a, b) {
 }
 const operations = new Map();
 let queue = Promise.resolve();
+// Full control (V2-09) needs the debugger permission; without it PANINI keeps the basic controls.
+const cdp = chrome.debugger ? createCdp({ chrome, send, target, website }) : null;
 let workspaceScope = '';
 const workspace = new TabWorkspace(chrome, async (value) => {
   const nextScope = value ? `${value.id}:${value.revision}` : '';
@@ -69,6 +72,8 @@ const workspace = new TabWorkspace(chrome, async (value) => {
 });
 function abortOperations() {
   for (const operation of operations.values()) operation.abort();
+  // Any change of scope or connection also ends full control of the tab.
+  cdp?.detachAll().catch(() => {});
 }
 function scope() {
   return workspace.value
@@ -158,6 +163,7 @@ async function tabScope() {
       source: 'jev-rev-browxtension',
       version: VERSION,
       protocol: PROTOCOL,
+      capabilities: cdp ? ['cdp-v1'] : [],
       tab: tab ? id : null,
       attachment_id: grant,
       tab_title: tab?.title || '',
@@ -240,6 +246,28 @@ function connect() {
     }
     const { id, action } = msg;
     if (!id || !action || operations.has(id)) return;
+    if (action.kind === 'cdp') {
+      // Not queued: Playwright sends many small commands. Each one still passes the tab-grant check and
+      // the method policy inside cdp.handle.
+      if (!cdp) {
+        send({
+          type: 'result',
+          id,
+          ok: false,
+          error: 'Update JevRev Claw to v4 for full control.',
+        });
+        return;
+      }
+      cdp.handle(action).then(
+        (result) => {
+          if (ws === socket && state.connected) send({ type: 'result', id, ok: true, result });
+        },
+        (e) => {
+          if (ws === socket) send({ type: 'result', id, ok: false, error: String(e.message || e) });
+        },
+      );
+      return;
+    }
     const controller = new AbortController();
     operations.set(id, controller);
     const check = () => {
@@ -443,6 +471,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         paired: Boolean(pairing),
         workspace: workspace.publicState(),
         workspaces: await workspace.existing(),
+        fullControl: Boolean(cdp),
         tab: attachedTab,
         tabTitle: tab?.title || null,
         tabUrl: tab?.url || '',

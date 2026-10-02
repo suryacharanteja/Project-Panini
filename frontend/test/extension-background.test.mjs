@@ -120,7 +120,7 @@ test('popup waits for worker restoration and reconnects the retained group after
     readFileSync(
       new URL('../../panini-core/capabilities/browser/extension/background.js', import.meta.url),
       'utf8',
-    ).replace(/^import .*;\r?\n/, ''),
+    ).replace(/^import .*;\r?\n/gm, ''),
     context,
   );
   const call = (msg) => new Promise((resolve) => handler(msg, {}, resolve));
@@ -259,7 +259,7 @@ test('attachment is session scoped, announced immediately, and relay destination
     readFileSync(
       new URL('../../panini-core/capabilities/browser/extension/background.js', import.meta.url),
       'utf8',
-    ).replace(/^import .*;\r?\n/, ''),
+    ).replace(/^import .*;\r?\n/gm, ''),
     context,
   );
   await new Promise((resolve) => setImmediate(resolve));
@@ -433,7 +433,7 @@ test('the extension obeys only a server that proves the pairing, and only its ow
     readFileSync(
       new URL('../../panini-core/capabilities/browser/extension/background.js', import.meta.url),
       'utf8',
-    ).replace(/^import .*;\r?\n/, ''),
+    ).replace(/^import .*;\r?\n/gm, ''),
     context,
   );
   await new Promise((resolve) => setImmediate(resolve));

@@ -48,6 +48,11 @@ class ExtensionBridge:
         self.workspace = None
         self.device_id = ""
         self._bound_target = ContextVar("extension_target", default=None)
+        # V2-09 full control: what this extension can do, and who wants its CDP frames and scope changes.
+        self.capabilities: set = set()
+        self.cdp_listeners: list = []  # callables(message) for cdp_event / cdp_detached / cdp_tab
+        self.scope_listeners: list = []  # callables(reason) when the attached tab, workspace or socket changes
+        self.connection = 0  # Increments per adopted socket (part of a relay's binding).
 
     @property
     def connected(self) -> bool:
@@ -62,6 +67,56 @@ class ExtensionBridge:
         except ValueError:
             return False
 
+    @property
+    def cdp_supported(self) -> bool:
+        """JevRev Claw v4 with the debugger permission (`cdp-v1`)."""
+        return self.connected and self.compatible and "cdp-v1" in self.capabilities
+
+    def binding(self) -> Dict[str, Any]:
+        """The current grant, as a full-control relay is bound to it."""
+        if self.workspace:
+            return {
+                "connection": self.connection,
+                "expected_tab": self.attached_tab,
+                "expected_attachment": self.attachment_id,
+                "expected_workspace": self.workspace["id"],
+                "expected_revision": self.workspace["revision"],
+            }
+        return {
+            "connection": self.connection,
+            "expected_tab": self.attached_tab,
+            "expected_attachment": self.attachment_id,
+        }
+
+    def _scope_changed(self, reason: str) -> None:
+        for listener in list(self.scope_listeners):
+            with contextlib.suppress(Exception):
+                listener(reason)
+
+    async def cdp(self, op: str, binding: Dict[str, Any], **args: Any) -> Any:
+        """One full-control frame. Unlike call(), frames run concurrently (Playwright sends many small
+        commands); each carries the grant it was issued under and is refused once the scope moved on."""
+        socket = self._socket
+        if socket is None:
+            raise ExtensionUnavailable("No browser extension is connected.")
+        if binding != self.binding():
+            raise ExtensionUnavailable("The attached tab changed. Attach it again to continue.")
+        request_id = uuid.uuid4().hex
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
+        self._pending[request_id] = future
+        expected = {k: v for k, v in binding.items() if k != "connection"}
+        try:
+            await socket.send_json(
+                {"id": request_id, "action": {"kind": "cdp", "op": op, **expected, **args}}
+            )
+            return await asyncio.wait_for(future, timeout=CALL_TIMEOUT)
+        except asyncio.TimeoutError as exc:
+            raise ExtensionUnavailable(f"Extension did not answer '{op}' within {CALL_TIMEOUT:.0f}s") from exc
+        finally:
+            self._pending.pop(request_id, None)
+            if not future.done():
+                future.cancel()
+
     # ---- socket lifecycle ---------------------------------------------
 
     async def attach(self, socket, device_id: str = "") -> None:
@@ -70,6 +125,7 @@ class ExtensionBridge:
         await self.detach(reason="another extension connected")
         self._socket = socket
         self.device_id = device_id
+        self.connection += 1
         if old is not None:
             with contextlib.suppress(Exception):
                 await old.close(code=1000)
@@ -84,6 +140,8 @@ class ExtensionBridge:
         self.tab_title = self.tab_url = self.attachment_id = ""
         self.protocol = 0
         self.workspace = None
+        self.capabilities = set()
+        self._scope_changed(reason)
         # Nothing will answer these now; fail them rather than let callers hang.
         for future in list(self._pending.values()):
             if not future.done():
@@ -119,6 +177,7 @@ class ExtensionBridge:
                             ExtensionUnavailable("Attached tab changed. Review the target and run again.")
                         )
                 self._pending.clear()
+                self._scope_changed("scope_changed")
             self.workspace = workspace
             self.attached_tab = tab
             self.attachment_id = attachment
@@ -126,7 +185,14 @@ class ExtensionBridge:
             self.tab_title = str(message.get("tab_title", ""))[:300]
             self.tab_url = str(message.get("tab_url", ""))[:2048]
             self.version = str(message.get("version", ""))
+            caps = message.get("capabilities")
+            self.capabilities = {c for c in caps if isinstance(c, str)} if isinstance(caps, list) else set()
             logger.info("Extension connected (tab=%s)", self.attached_tab)
+            return
+        if message.get("type") in ("cdp_event", "cdp_detached", "cdp_tab"):
+            for listener in list(self.cdp_listeners):
+                with contextlib.suppress(Exception):
+                    listener(message)
             return
         if message.get("type") != "result":
             return
@@ -309,4 +375,5 @@ class ExtensionBridge:
             "tab_url": self.tab_url,
             "workspace": self.workspace,
             "paired": bool(self.device_id),
+            "full_control": self.cdp_supported,
         }

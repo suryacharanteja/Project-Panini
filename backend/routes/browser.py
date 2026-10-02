@@ -136,7 +136,7 @@ async def extension_socket(websocket: WebSocket):
         await bridge.attach(websocket, device_id)
         bridge.on_message(hello, websocket)
         await websocket.send_json(
-            {"type": "connected", "protocol": PROTOCOL, "capabilities": ["workspace-v1"]}
+            {"type": "connected", "protocol": PROTOCOL, "capabilities": ["workspace-v1", "cdp-v1"]}
         )
         while True:
             message = await websocket.receive_json()

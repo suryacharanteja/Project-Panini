@@ -51,6 +51,13 @@ TOOLS = {
     "managed_verify_text": "browser_verify_text_visible",
 }
 REF_TOOLS = {"managed_click", "managed_type", "managed_select"}
+# V2-09: the same vocabulary in your Chrome (through JevRev Claw and the CDP relay).
+CHROME_TOOLS = {name.replace("managed_", "chrome_", 1): tool for name, tool in TOOLS.items()}
+
+
+def canonical(name: str) -> str:
+    """managed_click / chrome_click → managed_click: one implementation for both hands."""
+    return "managed_" + name.split("_", 1)[1]
 
 
 def browser_name() -> str:
@@ -135,6 +142,14 @@ class ManagedBrowserHand:
 
         return data_directory() / "artifacts" / "playwright"
 
+    def enabled(self) -> bool:
+        return driver_selected()
+
+    disabled_message = "The managed browser needs PANINI_BROWSER_DRIVER=playwright."
+
+    async def ensure_session(self):
+        return self.session()
+
     async def readiness(self, capability=None):
         if not driver_selected():
             return Readiness("unavailable", "Set the browser engine to Playwright (PANINI_BROWSER_DRIVER).")
@@ -152,9 +167,9 @@ class ManagedBrowserHand:
         from ..capabilities.browser import web_url
         from ..panini.contracts import Fault
 
-        if not driver_selected():
-            return ToolResult("blocked", "The managed browser needs PANINI_BROWSER_DRIVER=playwright.")
-        name = spec.name
+        if not self.enabled():
+            return ToolResult("blocked", self.disabled_message)
+        name = canonical(spec.name)
         try:
             payload = self._arguments(name, args)
         except Fault as exc:
@@ -170,7 +185,8 @@ class ManagedBrowserHand:
                 return ToolResult("blocked", exc.message)
         started = time.monotonic()
         try:
-            result = await self.session().call(TOOLS[name], payload, timeout_s=spec.timeout_ms / 1000)
+            session = await self.ensure_session()
+            result = await session.call(TOOLS[name], payload, timeout_s=spec.timeout_ms / 1000)
         except SessionCrashed as exc:
             return ToolResult(
                 "unknown_effect",
@@ -178,7 +194,7 @@ class ManagedBrowserHand:
                 dispatched=True,
             )
         except BrowserDriverError as exc:
-            return ToolResult("failed", str(exc)[:500])
+            return self.driver_failure(exc)
         text = inline_snapshot(text_of(result), self.output_root())
         if (result or {}).get("isError"):
             return ToolResult("failed", text[:2000] or "The browser action failed.")
@@ -198,6 +214,9 @@ class ManagedBrowserHand:
                 }
             )
         return ToolResult("ok", text[:OUTPUT_CHARS], data=data, evidence=evidence)
+
+    def driver_failure(self, exc) -> ToolResult:
+        return ToolResult("failed", str(exc)[:500])
 
     def _arguments(self, name, args):
         if name in REF_TOOLS:
@@ -246,3 +265,102 @@ class ManagedBrowserHand:
         if name == "managed_verify_text":
             return {"text": str(args.get("text", ""))}
         return {}
+
+
+class ChromeBrowserHand(ManagedBrowserHand):
+    """Your Chrome (V2-09): the tabs you attached in JevRev Claw, driven by Playwright through PANINI's scoped
+    CDP relay. Real (trusted) input; only the attached tab; re-checked on every command; Chrome shows its
+    debugging bar while PANINI is in control and Cancel there stops it."""
+
+    IDLE_S = 120
+
+    def __init__(self, manifest, runtime):
+        super().__init__(manifest, runtime)
+        self.relay = None
+        self.leg = None
+        self.preset = None
+        self.bound = None
+
+    def enabled(self) -> bool:
+        from .. import v2flags
+
+        return v2flags.enabled("PANINI_CLAW_CDP")
+
+    disabled_message = "Full control of your Chrome is off (PANINI_CLAW_CDP)."
+
+    def bridge(self):
+        from ..routes.browser import get_bridge
+
+        adapter = (self.runtime.get("adapters") or {}).get("browser")
+        request = getattr(adapter, "request", None)
+        return get_bridge(request) if request is not None else None
+
+    async def readiness(self, capability=None):
+        if not self.enabled():
+            return Readiness("unavailable", self.disabled_message)
+        bridge = self.bridge()
+        if bridge is None or not bridge.connected:
+            return Readiness("needs_setup", "Connect JevRev Claw and attach a tab.")
+        if not bridge.cdp_supported:
+            return Readiness("needs_setup", "Update JevRev Claw to v4 for full control.")
+        if bridge.attached_tab is None:
+            return Readiness("needs_setup", "Attach the tab PANINI should use in JevRev Claw.")
+        return Readiness("ready")
+
+    async def ensure_session(self):
+        from ..extension_pairing import data_directory
+        from .cdp_policy import origin_of
+        from .cdp_relay import CdpRelay
+        from .claw_leg import ClawLeg
+        from .playwright_mcp import chrome_preset
+
+        bridge = self.bridge()
+        if bridge is None or not bridge.connected:
+            raise BrowserDriverError("Your Chrome is not connected. Attach a tab in JevRev Claw.")
+        if not bridge.cdp_supported:
+            raise BrowserDriverError(
+                "Update JevRev Claw to v4 for full control, or use the basic browser tool."
+            )
+        if bridge.attached_tab is None:
+            raise BrowserDriverError("No tab is attached. Attach the tab PANINI should use in JevRev Claw.")
+        binding = bridge.binding()
+        idle = self.relay is not None and time.monotonic() - self.relay.last_command > self.IDLE_S
+        if self.relay is None or self.relay.closed_reason or self.bound != binding or idle:
+            await self.release()
+            self.leg = ClawLeg(bridge, binding)
+            scope = {
+                "tabs": [bridge.attached_tab],
+                "origin": origin_of(bridge.tab_url),
+                "allow_new_tabs": False,
+            }
+            self.relay = await CdpRelay(self.leg, scope).start()
+            self.leg.listen(self.relay)
+            self.bound = binding
+            data = data_directory()
+            self.preset = chrome_preset(self.relay, data / "artifacts")
+            self.names.clear()
+        return self.pool.session(self.preset)
+
+    async def release(self):
+        """End full control: close Playwright's connection, the relay and the debugger attachment."""
+        if self.preset is not None:
+            session = self.pool.sessions.pop(self.preset.key, None)
+            if session is not None:
+                await session.close()
+        if self.relay is not None:
+            await self.relay.close("released")
+        if self.leg is not None:
+            self.leg.close()
+        self.relay = self.leg = self.preset = self.bound = None
+
+    def driver_failure(self, exc) -> ToolResult:
+        relay = self.relay
+        if relay is not None and relay.closed_reason:
+            reason = relay.closed_reason
+            if reason.startswith("detached"):
+                return ToolResult(
+                    "blocked", "You stopped browser control in Chrome. Nothing more was done there."
+                )
+            if reason == "scope_changed":
+                return ToolResult("blocked", "The attached tab changed. Attach it again to continue.")
+        return ToolResult("failed", str(exc)[:500])

@@ -505,6 +505,7 @@ class Agent:
             remotes=bool(remotes and remotes.load()),
             ledger=v2flags.enabled("PANINI_V2_LEDGER"),
             managed_browser=v2flags.value("PANINI_BROWSER_DRIVER") == "playwright" and not self.background,
+            claw_cdp=v2flags.enabled("PANINI_CLAW_CDP") and not self.background,
         )
 
     def tool_context(self):

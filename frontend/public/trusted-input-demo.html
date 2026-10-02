@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trusted input demo</title>
+    <style>
+      body {
+        font:
+          16px/1.5 system-ui,
+          sans-serif;
+        max-width: 40rem;
+        margin: 3rem auto;
+        padding: 0 1rem;
+        background: #111;
+        color: #eee;
+      }
+      button,
+      input {
+        font: inherit;
+        padding: 0.4rem 0.8rem;
+        margin: 0.3rem 0;
+      }
+      output {
+        display: block;
+        margin-top: 0.4rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Trusted input demo</h1>
+    <p>
+      Sites can tell real input from script-generated events (<code>event.isTrusted</code>).
+      PANINI's full control in your Chrome sends real input.
+    </p>
+    <button id="press">Press me</button>
+    <output id="click-result">click trusted: not yet</output>
+    <label>Type here <input id="field" autocomplete="off" /></label>
+    <output id="key-result">key trusted: not yet</output>
+    <script>
+      document.getElementById('press').addEventListener('click', (event) => {
+        document.getElementById('click-result').textContent =
+          'click trusted: ' + (event.isTrusted ? 'yes' : 'no');
+      });
+      document.getElementById('field').addEventListener('keydown', (event) => {
+        document.getElementById('key-result').textContent =
+          'key trusted: ' + (event.isTrusted ? 'yes' : 'no');
+      });
+    </script>
+  </body>
+</html>

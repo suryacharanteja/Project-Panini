@@ -183,7 +183,10 @@ async function refresh() {
       : 'New Tab and Chrome settings pages cannot be attached. Choose an open website below, or open the demo.';
     $('tab').textContent =
       s.tab != null
-        ? `Attached: ${s.tabTitle || 'tab ' + s.tab}\n${s.tabUrl}`
+        ? `Attached: ${s.tabTitle || 'tab ' + s.tab}\n${s.tabUrl}` +
+          (s.fullControl
+            ? '\nFull control on: while PANINI works here, Chrome shows a "debugging this browser" bar. Press Cancel on it to stop PANINI at once.'
+            : '')
         : 'No tab attached yet.';
     $('attach').textContent =
       attachedTab == null ? 'Attach selected tab' : 'Switch to selected tab';

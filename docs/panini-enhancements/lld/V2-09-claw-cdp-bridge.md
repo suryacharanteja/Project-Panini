@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 2 · P0 · L (1.5 weeks) |
 | Depends on | V2-08 |
 | Flag | `PANINI_CLAW_CDP` (default `false`) |
-| Status | Not started |
+| Status | Done (2026-10-02) |
 | Decision | Register D3 (Claw requires the `debugger` permission) |
 
 ## 1. Outcome
@@ -198,6 +198,59 @@ for this browser instance" (`chrome://inspect/#remote-debugging`); Playwright at
 `attach --cdp=chrome`. That gives every tab, every cookie and every extension to the client, which breaks
 I9. PANINI does not offer it in v2.
 
+### 5.10 As built (2026-10-02)
+
+- **Spike:** `scripts/cdp-spike.py` runs the real Playwright MCP 1.63 server against the relay (policy switched
+  to record-all) on a throwaway headless Edge profile and exercises snapshot, navigate, type, press, wait,
+  verify, screenshot, tabs list/new/close, back and PDF (all 12 steps pass). It records 29 methods in
+  `panini-core/capabilities/browser/playwright/cdp-methods-1.63.0.json`; the contract test requires each to
+  be allowed by the policy or handled by the relay.
+- **Policy (I9):** `backend/hands/cdp_policy.py` and `extension/cdp-policy.mjs` hold the same table (a test
+  compares them through Node); unknown methods are denied; `Page.navigate` http(s)/about:blank only;
+  `Network.getCookies` only for the attached tab's origin; cookie dumps/setters, `Storage.*`, `Browser.*`,
+  context and debugger domains denied; `Fetch.*` only with network tools. `Network.setUserAgentOverride` was
+  added to the allow list (tab-scoped emulation).
+- **Relay:** `backend/hands/cdp_relay.py` (port of Playwright's relay/BrowserModel with an Apache-2.0
+  attribution header): loopback, `/cdp/<token>` plus bearer header, one client, scoped model (granted tabs only;
+  child sessions; browser-level commands policy-filtered and never broadcast to other tabs;
+  `Target.setDiscoverTargets` answered by the relay; PANINI never closes the person's tab; new tabs only in a
+  workspace that allows them). Findings from real runs: (1) events and replies must leave in one ordered queue —
+  Playwright needs `Target.attachedToTarget` before the `Target.createTarget` reply, as Chrome sends them;
+  (2) after `Target.closeTarget` the relay emits `Target.detachedFromTarget` itself, or Playwright waits
+  forever; (3) a background tab gets no animation frames, so Playwright's "stable element" wait never ends —
+  the relay brings the controlled tab to the front on attach (`Page.bringToFront`), as v1 tab selection does.
+- **Claw v4** (`manifest.json` 4.0.0, `debugger` permission): `cdp.mjs` attaches only the granted tab
+  (website pages only; "DEVTOOLS_OPEN" when DevTools holds the tab), re-checks the grant (`target()`) and the
+  method policy on every frame, forwards events only for attached tabs, reports Chrome's Cancel button as
+  `cdp_detached`, and detaches on any scope or connection change (`abortOperations`). CDP frames bypass the
+  one-at-a-time action queue (Playwright sends many small commands). Tab creation stays with the workspace
+  controls in this version. The popup explains full control and the Cancel button; `PRIVACY.md` documents the
+  permission.
+- **Protocol:** kept at 4 with a negotiated capability instead of a protocol bump (a bump would break
+  workspace support on older backends): Claw's hello advertises `capabilities: ["cdp-v1"]`, PANINI's
+  `connected` frame lists `cdp-v1`. `ExtensionBridge.cdp()` sends frames concurrently with the grant they were
+  issued under (`binding()`), refuses stale bindings, routes `cdp_event`/`cdp_detached`/`cdp_tab` to
+  listeners and notifies scope listeners on any scope change or disconnect.
+- **Chrome hand:** `ChromeBrowserHand` + `panini-core/capabilities/browser/manifests/21-chrome-browser.json`
+  (the 11 tools as `chrome_*`, offered with `PANINI_CLAW_CDP` in the foreground, ordered before the managed
+  browser). It builds a relay per binding through `ClawLeg`, starts Playwright MCP with the `chrome` preset,
+  re-binds when the scope changes, and turns relay closures into plain messages ("You stopped browser
+  control in Chrome…", "The attached tab changed. Attach it again to continue."). Chrome sessions close after
+  120 s idle (the debugging bar goes away); the next call re-attaches.
+- **Tests:** 26 in `backend/tests/hands/test_cdp.py` (policy rows, parity, spike contract, scoped model,
+  relay authentication, bridge frames and binding, hand readiness, and real Playwright → relay → headless Edge
+  runs: trusted click and keys, Playwright's cookie listing refused without the method reaching the browser,
+  and a detach stopping a running wait within seconds), 3 in `frontend/test/extension-cdp.test.mjs`
+  (extension policy and `cdp.mjs` with a fake `chrome.debugger`). Note: `browser_type` without `slowly` fills
+  with `Input.insertText`, which fires no keydown; key presses are real key events.
+- **Live, end to end** (`scripts/verify-claw-cdp.py`): an isolated PANINI app, a disposable copy of Claw v4 in a
+  throwaway headless Edge profile, real pairing code, attach, then PANINI's chrome hand: the page saw
+  `isTrusted=true` for the click and the key press; the extension refused `Network.getAllCookies`; detaching in
+  Claw stopped PANINI with "The attached tab changed…" — 4/4. (Playwright's Chromium build crashed in this
+  environment; Edge still accepts `--load-extension`.)
+- Still for the person: load Claw v4 in their own Chrome (Chrome asks to re-approve the extension once for the
+  debugger permission) and try a task on a logged-in site.
+
 ## 6. Implementation steps
 
 1. **Spike (½ day):** run Playwright MCP against a stock Chrome with a logging CDP proxy; exercise the core
@@ -225,9 +278,9 @@ I9. PANINI does not offer it in v2.
 
 ## 8. Acceptance criteria
 
-- [ ] Trusted-input demo reports `isTrusted=true` for clicks and key presses in an attached tab.
-- [ ] I9 test green; the policy tables match; unknown methods are denied in both places.
-- [ ] Detaching the tab, pressing Cancel on Chrome's bar, or switching tabs outside the workspace stops the
+- [x] Trusted-input demo reports `isTrusted=true` for clicks and key presses in an attached tab.
+- [x] I9 test green; the policy tables match; unknown methods are denied in both places.
+- [x] Detaching the tab, pressing Cancel on Chrome's bar, or switching tabs outside the workspace stops the
       run with a clear message.
 - [ ] Browser golden tasks in your Chrome: success ≥ v1 extension baseline with fewer model calls per action
       (no propose-6/Jev-select round trip).
