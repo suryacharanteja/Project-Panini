@@ -524,3 +524,79 @@ def add_registry(r, guard):
 
 add_registry(console_router, lambda request: None)
 add_registry(shell_router, lambda request: principal(request))
+
+
+class NewGrant(Strict):
+    subject: str = Field(default="owner", min_length=1, max_length=120)
+    capability: str = Field(default="*", max_length=64)
+    tools: list[str] = Field(default_factory=lambda: ["*"], max_length=50)
+    levels: dict[str, str] = Field(default_factory=dict)
+    expires_minutes: int | None = Field(default=None, ge=1, le=60 * 24 * 365)
+    note: str = Field(default="", max_length=300)
+
+
+class PauseRequest(Strict):
+    paused: bool
+
+
+def add_policy(r, guard):
+    from ..core_contracts import ApprovalLevel, EffectClass
+
+    @r.get("/policy")
+    async def policy_view(request: Request):
+        """Profile, the effect x surface matrix, grants, pause state and shadow-mode disagreements (V2-03)."""
+        guard(request)
+        from .. import v2flags
+        from ..policy.engine import PROFILES, TIERS, profile_name
+
+        policy = harness(request).policy
+        name = profile_name()
+        return {
+            "mode": v2flags.value("PANINI_V2_POLICY"),
+            "profile": name,
+            "tiers": list(TIERS),
+            "matrix": {e.value: [lv.value for lv in row] for e, row in PROFILES[name].items()},
+            "grants": [
+                {**g.__dict__, "tools": list(g.tools), "groups": list(g.groups)} for g in policy.grants()
+            ],
+            "paused": policy.paused(),
+            "epoch": policy.epoch(),
+            "shadow": policy.shadow_stats(),
+        }
+
+    @r.post("/policy/grants")
+    async def policy_grant(payload: NewGrant, request: Request):
+        guard(request)
+        from ..policy import new_grant
+
+        try:
+            levels = {EffectClass(k).value: ApprovalLevel(v).value for k, v in payload.levels.items()}
+        except ValueError:
+            raise HTTPException(422, "Unknown effect class or approval level.") from None
+        expires = time.time() + payload.expires_minutes * 60 if payload.expires_minutes else None
+        grant = new_grant(
+            subject=payload.subject,
+            capability=payload.capability,
+            tools=tuple(payload.tools),
+            levels=levels,
+            expires_at=expires,
+            note=payload.note,
+        )
+        harness(request).policy.put_grant(grant)
+        return {"id": grant.id}
+
+    @r.delete("/policy/grants/{grant_id}")
+    async def policy_revoke(grant_id: str, request: Request):
+        guard(request)
+        return {"revoked": harness(request).policy.revoke(grant_id)}
+
+    @r.post("/policy/pause")
+    async def policy_pause(payload: PauseRequest, request: Request):
+        """Pause every agent action at once (also from the tray and, later, the phone)."""
+        guard(request)
+        harness(request).policy.pause(payload.paused)
+        return {"paused": payload.paused}
+
+
+add_policy(console_router, lambda request: None)
+add_policy(shell_router, lambda request: principal(request))

@@ -232,6 +232,26 @@ Every change is written to the Admin audit log (`backend/admin/service.py` alrea
 | Grant store unreadable | Fall back to the profile matrix with hard ceilings; log once |
 | Epoch read fails | Cancel the run (fail closed) |
 
+### 5.12 As built (2026-10-02)
+
+- `backend/policy/`: `effects.py` (v1 patterns moved verbatim; category classes), `engine.py` (profiles,
+  tiers, grants, ceilings, taint, epochs, pause, shadow), `hook.py` (registry stage), `__init__.py`
+  (process-wide policy and call-scoped context variables). Grants live in SQLite (`0003_policy.sql`).
+- **One prompt per action:** in `enforce` mode the policy asks once; nested v1 confirmations inside the same
+  tool call (`TaskContext.confirm`) are pre-approved through a call-scoped context variable.
+- **Taint refinement (found by the live scorecard):** only *earlier* reads escalate, and `web` taint does not
+  escalate at all in the policy engine. Gating every host action after any web search made common tasks
+  ("find today's rate and save it to a file") ask for approval; judging whether an action was *induced* by web
+  content is the guardian's job (V2-13). Direct-message taints (email, channel, call, mcp, a2a, shared,
+  client_context) still escalate every effect ≥ submit. Risky actions keep asking through the word and
+  command rules regardless of taint.
+- Commands are judged by command patterns only (words such as "buy" inside a harmless command do not ask),
+  matching v1.
+- Coarse capability tools (`*_run`) are allowed at the coarse level because their adapters ask per action
+  (v1 behaviour); their per-action prompts are compared in shadow mode through `approvals.py`.
+- `park` is refused with a clear message until V2-05 adds durable interrupts.
+- Admin → Build → Permissions shows the profile matrix, grants (add/remove) and a Pause switch.
+
 ## 6. Implementation steps
 
 1. `effects.py`: move word and command regexes; mapping to classes; unit tests on the v1 corpus.

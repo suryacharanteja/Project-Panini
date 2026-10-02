@@ -40,6 +40,10 @@ class Hooks:
     async def after(self, ctx, spec, args, result):
         return None
 
+    async def around(self, ctx, spec, args, call):
+        """Wrap the hand call (policy uses this to cancel in-flight work when permissions change)."""
+        return await call()
+
 
 class Registry:
     def __init__(self, runtime=None, *, sources=None, state=None):
@@ -214,9 +218,16 @@ class Registry:
                 return stopped
         ctx.check()
         started = time.monotonic()
-        try:
+
+        async def run():
             async with self.slot(target.concurrency if name not in self.control else None):
-                result = await self.hands[name].call(ctx, spec, args)
+                return await self.hands[name].call(ctx, spec, args)
+
+        call = run
+        for hook in reversed(self.hooks):
+            call = _wrap(hook, ctx, target, args, call)
+        try:
+            result = await call()
         except Exception as exc:
             if isinstance(exc, asyncio.CancelledError):
                 raise
@@ -230,6 +241,13 @@ class Registry:
             await hook.after(ctx, target, args, result)
         logger.debug("tool %s → %s in %d ms", name, result.outcome, result_ms)
         return result
+
+
+def _wrap(hook, ctx, spec, args, inner):
+    async def wrapped():
+        return await hook.around(ctx, spec, args, inner)
+
+    return wrapped
 
 
 def _v1_budgeted(spec):

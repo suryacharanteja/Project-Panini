@@ -5,6 +5,7 @@ import { Shell } from './components/Shell';
 import { ToastProvider } from './components/ui';
 import { AgentsPage, ConnectorsPage, SkillsPage } from './pages/Build';
 import { CapabilitiesPage } from './pages/Capabilities';
+import { PermissionsPage } from './pages/Permissions';
 import {
   AuditPage,
   CapabilityPage,
@@ -35,6 +36,7 @@ const routeTree = root.addChildren([
   page('/build/automations', AutomationsPage),
   page('/build/agents', AgentsPage),
   page('/build/capabilities', CapabilitiesPage),
+  page('/build/permissions', PermissionsPage),
   page('/memory', MemoryPage),
   page('/capabilities/$name', CapabilityPage),
   page('/playground', PlaygroundPage),

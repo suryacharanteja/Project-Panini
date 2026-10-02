@@ -8,23 +8,35 @@ The check is deterministic (no model call), so it adds no latency.
 """
 
 import os
-import re
 
-RISKY_WORDS = re.compile(
-    r"\b(pay(ment)?|purchase|buy|checkout|check out|place (the )?order|order now|subscribe|donate|"
-    r"transfer|send|post|publish|tweet|reply|comment|share|apply|easy apply|delete|remove|erase|"
-    r"unsubscribe|cancel (my )?(subscription|order|account)|sign ?in|log ?in|sign ?up|register|"
-    r"password|passcode|credit card|card number|cvv|confirm|accept|agree|authori[sz]e|install|"
-    r"download|upload|book|reserve|invite|connect|message|follow|save|submit application)\b",
-    re.I,
-)
-RISKY_COMMAND = re.compile(
-    r"(\brm\b|\bdel\b|\brmdir\b|\brd\b|remove-item|\bformat(\.com)?\s+[a-z]:|git\s+(push|reset\s+--hard|clean)|"
-    r"\bcurl\b|\bwget\b|invoke-webrequest|invoke-restmethod|\biwr\b|\birm\b|pip\s+install|"
-    r"npm\s+(install|i|publish)|pnpm\s+add|yarn\s+add|winget|choco|shutdown|restart-computer|"
-    r"\breg\b|\bsudo\b|set-executionpolicy|\bssh\b|\bscp\b|mklink|takeown|icacls)",
-    re.I,
-)
+# The patterns live in the v2 policy engine; v1 callers keep these names (V2-03).
+from ..policy.effects import RISKY_COMMAND, RISKY_WORDS  # noqa: E402,F401
+
+
+def _shadow(name, effect, dynamic, args, v1_ask):
+    """V2-03 shadow mode: decide the same action with the policy engine and record disagreements."""
+    from .. import v2flags
+
+    if v2flags.value("PANINI_V2_POLICY") != "shadow":
+        return v1_ask
+    try:
+        from ..core_contracts import Principal, ToolSpec
+        from ..policy import current
+
+        spec = ToolSpec(
+            name,
+            "v1",
+            "v1",
+            name,
+            name,
+            {"type": "object", "additionalProperties": False},
+            effect,
+            dynamic_effect=dynamic,
+        )
+        current().record_shadow(name, current().decide(Principal(), spec, args), v1_ask)
+    except Exception:  # noqa: BLE001 -- Shadow mode only observes; it never changes v1 behaviour.
+        pass
+    return v1_ask
 
 
 def ask_every_time():
@@ -32,6 +44,17 @@ def ask_every_time():
 
 
 def browser_action_needs_approval(action):
+    return _shadow("browser_action", "submit", True, _browser_args(action), _browser_v1(action))
+
+
+def _browser_args(action):
+    args = {k: str(action.get(k) or "") for k in ("label", "text", "value", "href") if action.get(k)}
+    if action.get("kind") in {"wait", "scroll", "select_tab", "navigate", "open_tab"}:
+        args["action"] = "navigate"
+    return args
+
+
+def _browser_v1(action):
     if ask_every_time():
         return action.get("kind", "click") not in {"wait", "scroll", "select_tab"}
     if action.get("kind") in {"wait", "scroll", "select_tab", "navigate", "open_tab"}:
@@ -51,12 +74,18 @@ def managed_browser_needs_approval(name, params, label):
 
 
 def desktop_action_needs_approval(kind, element_name, text=""):
-    if ask_every_time():
-        return True
-    return bool(RISKY_WORDS.search(f"{element_name} {text}"))
+    v1 = ask_every_time() or bool(RISKY_WORDS.search(f"{element_name} {text}"))
+    return _shadow("desktop_action", "submit", True, {"label": element_name, "text": text}, v1)
 
 
 def code_action_needs_approval(item):
+    v1 = _code_v1(item)
+    if item.get("type") == "commandExecution":
+        return _shadow("run_command", "local_exec", True, {"command": str(item.get("command", ""))}, v1)
+    return v1
+
+
+def _code_v1(item):
     if ask_every_time():
         return True
     if item.get("type") == "commandExecution":

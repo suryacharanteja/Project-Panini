@@ -67,6 +67,9 @@ class Harness:
         self._last_suggest = 0.0
         self.foreground = 0  # Agent runs in progress from the shell or console.
         self._registry = None
+        from .. import policy
+
+        self.policy = policy.install(policy.Policy(self.store))
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
         agent = Agent(
@@ -98,6 +101,9 @@ class Harness:
                 },
                 state=self.store,
             )
+            from ..policy.hook import PolicyHook
+
+            self._registry.hooks.append(PolicyHook())
         return self._registry
 
     def status(self):

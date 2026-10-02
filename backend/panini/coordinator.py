@@ -218,8 +218,14 @@ class TaskContext:
 
     async def confirm(self, action, application, effect, data):
         self.check()
-        confirmation_id, nonce = identifier(), secrets.token_urlsafe(32)
+        from ..policy import note_v1_confirmation, preapproved
+
+        note_v1_confirmation()
         fingerprint = digest(action)
+        if preapproved.get():
+            # The person already approved this exact tool call through the v2 policy (asked once).
+            return fingerprint
+        confirmation_id, nonce = identifier(), secrets.token_urlsafe(32)
         future = asyncio.get_running_loop().create_future()
         self.session.confirmations[confirmation_id] = {
             "confirmation_id": confirmation_id,

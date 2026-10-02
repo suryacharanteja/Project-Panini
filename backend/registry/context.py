@@ -41,6 +41,16 @@ class ToolContext:
     calls: Counter = field(default_factory=Counter)
     taint: set = field(default_factory=set)
     final: object | None = None  # a control tool's terminal AgentResult
+    decision: object | None = None  # the policy decision for the current call
+    preapproved: bool = False
+    v1_asked: bool = False
 
     def check(self):
-        """Raise to stop before an effect (V2-03 adds grant epochs here)."""
+        """Stop before an effect when PANINI is paused (V2-03 grant epochs)."""
+        import asyncio
+
+        from .. import v2flags
+        from ..policy import current
+
+        if v2flags.value("PANINI_V2_POLICY") == "enforce" and current().paused():
+            raise asyncio.CancelledError()

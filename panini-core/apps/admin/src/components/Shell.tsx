@@ -20,6 +20,7 @@ import {
   Radar,
   Search,
   Settings2,
+  ShieldCheck,
   Smartphone,
   Sparkles,
   Timer,
