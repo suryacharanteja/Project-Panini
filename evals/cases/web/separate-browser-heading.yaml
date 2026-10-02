@@ -1,0 +1,15 @@
+id: web.separate-browser-heading
+title: Read a page in a separate browser
+modes:
+- live
+needs:
+- openai
+turn: Use a separate browser to open https://example.com and tell me the page's main heading.
+files: {}
+expect:
+  outcome_in:
+  - verified_complete
+  message_contains_any:
+  - Example Domain
+tags:
+- browser

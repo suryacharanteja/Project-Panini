@@ -22,10 +22,12 @@ OUTPUT_CHARS = 8000
 
 def capability_sources():
     """Built-in manifests, then capability-owned manifests, then the person's declarative manifests."""
+    # Packaged, capability manifests ship in the runtime folder (PANINI_RUNTIME_ROOT).
+    from ..config import ROOT as runtime_root
     from ..extension_pairing import data_directory
 
     sources = [(BUILTIN, False)]
-    sources += [(p, False) for p in sorted((ROOT / "panini-core/capabilities").glob("*/manifests"))]
+    sources += [(p, False) for p in sorted((runtime_root / "panini-core/capabilities").glob("*/manifests"))]
     sources.append((data_directory() / "capabilities", True))
     return sources
 

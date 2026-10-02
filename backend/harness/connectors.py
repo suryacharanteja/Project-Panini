@@ -16,61 +16,41 @@ import asyncio
 import json
 import logging
 import os
-import subprocess
 
 from ..extension_pairing import data_directory
+from .mcp_stdio import PROTOCOL, McpStdio
 from .mcp_tools import list_tools, tool_result
 
 logger = logging.getLogger(__name__)
-PROTOCOL = "2025-06-18"
+__all__ = ["PROTOCOL", "ConnectorError", "Connectors", "Server"]
 
 
 class ConnectorError(RuntimeError):
     pass
 
 
-class Server:
+class Server(McpStdio):
     def __init__(self, name, spec):
+        super().__init__(f"Connector {name}", ConnectorError)
         self.name, self.spec = name, spec
-        self.process = None
-        self.pending = {}
-        self.sequence = 0
         self.tools = []
-        self.reader = None
         self.lock = asyncio.Lock()
         self.error = ""
 
     async def start(self):
-        if self.process and self.process.returncode is None:
+        if self.alive:
             return
         env = {**os.environ, **{k: str(v) for k, v in (self.spec.get("env") or {}).items()}}
         try:
-            self.process = await asyncio.create_subprocess_exec(
-                self.spec["command"],
-                *[str(a) for a in self.spec.get("args", [])],
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
-                env=env,
-                cwd=self.spec.get("cwd") or None,
-                limit=8 * 1024 * 1024,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            await self.spawn(
+                self.spec["command"], self.spec.get("args", []), env=env, cwd=self.spec.get("cwd")
             )
         except (OSError, KeyError) as exc:
             self.error = f"Could not start: {exc}"
             raise ConnectorError(f"Connector {self.name} could not start.") from None
-        self.reader = asyncio.create_task(self._read())
         self.tools = []
         try:
-            await self.request(
-                "initialize",
-                {
-                    "protocolVersion": PROTOCOL,
-                    "capabilities": {},
-                    "clientInfo": {"name": "PANINI", "version": "1.0.0"},
-                },
-            )
-            self.notify("notifications/initialized", {})
+            await self.initialize()
             self.tools = await list_tools(self.request)
         except asyncio.CancelledError:
             await self.close()
@@ -81,51 +61,6 @@ class Server:
             raise ConnectorError(self.error) from None
         self.error = ""
 
-    async def _read(self):
-        try:
-            while line := await self.process.stdout.readline():
-                try:
-                    message = json.loads(line)
-                except ValueError:
-                    continue
-                future = self.pending.pop(message.get("id"), None)
-                if future and not future.done():
-                    if "error" in message:
-                        future.set_exception(
-                            ConnectorError(str(message["error"].get("message", "error"))[:500])
-                        )
-                    else:
-                        future.set_result(message.get("result"))
-        finally:
-            for future in self.pending.values():
-                if not future.done():
-                    future.set_exception(ConnectorError(f"Connector {self.name} stopped."))
-            self.pending.clear()
-
-    def _send(self, message):
-        self.process.stdin.write((json.dumps(message) + "\n").encode())
-
-    def notify(self, method, params):
-        self._send({"jsonrpc": "2.0", "method": method, "params": params})
-
-    async def request(self, method, params, timeout=60):
-        self.sequence += 1
-        identifier = self.sequence
-        future = asyncio.get_running_loop().create_future()
-        self.pending[identifier] = future
-        try:
-            self._send({"jsonrpc": "2.0", "id": identifier, "method": method, "params": params})
-            await self.process.stdin.drain()
-            return await asyncio.wait_for(future, timeout)
-        except TimeoutError:
-            raise ConnectorError(f"Connector {self.name} did not answer in time.") from None
-        except (OSError, ConnectionError):
-            raise ConnectorError(f"Connector {self.name} disconnected.") from None
-        finally:
-            self.pending.pop(identifier, None)
-            if not future.done():
-                future.cancel()
-
     async def call(self, tool, arguments):
         async with self.lock:
             await self.start()
@@ -134,18 +69,6 @@ class Server:
             return tool_result(result)
         except ValueError as exc:
             raise ConnectorError(str(exc)) from None
-
-    async def close(self):
-        if self.process and self.process.returncode is None:
-            self.process.stdin.close()
-            try:
-                await asyncio.wait_for(self.process.wait(), 3)
-            except TimeoutError:
-                self.process.kill()
-                await self.process.wait()
-        if self.reader:
-            self.reader.cancel()
-            await asyncio.gather(self.reader, return_exceptions=True)
 
 
 class Connectors:

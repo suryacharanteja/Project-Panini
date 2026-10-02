@@ -27,6 +27,12 @@ def web_url(value):
         raise Fault("UNSUPPORTED_URL", "Only HTTP and HTTPS website addresses are supported.")
 
 
+def _playwright_driver() -> bool:
+    from .. import v2flags
+
+    return v2flags.value("PANINI_BROWSER_DRIVER") == "playwright"
+
+
 class BrowserAdapter(UnavailableAdapter):
     def __init__(self, app):
         super().__init__("browser", "Configure OpenAI and AI Gateway credentials for Browser.")
@@ -54,6 +60,66 @@ class BrowserAdapter(UnavailableAdapter):
                 "label": bridge.tab_title or "Attached Chrome tab",
             }
         return [{"choice_id": key, "label": value["label"]} for key, value in self.choices.items()]
+
+    async def _managed(self, context, instruction):
+        """V2-08: the separate browser is PANINI's own Playwright-driven profile; a focused agent works it
+        with the managed_* tools, so every step is policed and receipted like any other tool call."""
+        from .. import v2flags
+        from ..hands.browser import TOOLS
+
+        harness = getattr(self.app.state, "harness", None)
+        if harness is None or not v2flags.enabled("PANINI_V2_REGISTRY"):
+            raise Fault(
+                "CAPABILITY_UNAVAILABLE",
+                "PANINI's Playwright browser needs the capability registry (PANINI_V2_REGISTRY).",
+                503,
+            )
+        if self.fallback_reason:
+            context.emit(
+                "running",
+                "Your Chrome isn't available, so PANINI is using its own browser. " + self.fallback_reason,
+            )
+            self.fallback_reason = ""
+
+        async def confirm(summary, detail):
+            try:
+                await context.confirm(
+                    {"summary": summary, "detail": detail}, "PANINI browser", summary, detail
+                )
+            except Fault:
+                return False
+            return True
+
+        agent = harness.agent(
+            delegate=None,
+            emit=lambda kind, message, **detail: context.emit("running", message),
+            capabilities=(),
+            confirm=confirm,
+            deadline_seconds=280,
+            max_steps=16,
+        )
+        agent.only_tools = set(TOOLS) | {"update_plan", "finish"}
+        agent.run_id = context.task.task_id
+        result = await agent.run(
+            "Use PANINI's own browser (the managed_* tools) for this; it is separate from the person's "
+            f"Chrome.\n{instruction}"
+        )
+        evidence = []
+        verified = result.outcome == "verified_complete" or (result.outcome == "reply" and agent.evidence)
+        if verified:
+            evidence.append(
+                context.record_evidence(
+                    "browser_managed",
+                    "PANINI's browser completed the step with verified page state.",
+                    {"steps": result.steps, "checks": [e for e in agent.evidence if ":" in str(e)][-10:]},
+                )
+            )
+        outcome = (
+            "verified_complete"
+            if verified
+            else {"reply": "partial", "clarification": "blocked"}.get(result.outcome, result.outcome)
+        )
+        return Outcome(outcome, result.message, [], evidence)
 
     async def open_in_chrome(self, url, selected=None):
         """Open a web page in the person's own Chrome through JevRev Claw: a new workspace tab
@@ -179,6 +245,9 @@ class BrowserAdapter(UnavailableAdapter):
     async def run(self, context, instruction, target):
         from ..extension_loop import describe
         from ..voice_service import VoiceBrowser
+
+        if target["mode"] != "extension" and _playwright_driver():
+            return await self._managed(context, instruction)
 
         if target["mode"] != "extension" and self.fallback_reason:
             context.emit(

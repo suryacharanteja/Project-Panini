@@ -1,5 +1,6 @@
 """Composition of the harness: one store, memory, skills, sessions, tasks and the worker."""
 
+import asyncio
 import logging
 import os
 import time
@@ -84,6 +85,9 @@ class Harness:
         from ..brain import Runs, Threads
 
         self.runs = Runs(self.store)  # V2-06 run records and checkpoints.
+        from ..hands.playwright_mcp import PlaywrightPool
+
+        self.browsers = PlaywrightPool()  # V2-08 Playwright browser sessions, started on first use.
         self.threads = Threads(self.store, self.sessions)
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
@@ -213,6 +217,12 @@ class Harness:
     def background_cycle(self):
         if getattr(self, "interrupts", None):
             self.interrupts.expire_overdue()
+        browsers = getattr(self, "browsers", None)
+        if browsers is not None and browsers.sessions:
+            try:
+                asyncio.get_running_loop().create_task(browsers.close_idle())
+            except RuntimeError:
+                pass  # No loop (a synchronous test): idle browsers close with the harness.
         self.project_planner.reconcile()
         self.suggest()
         try:
@@ -275,6 +285,7 @@ class Harness:
         await self.mobile.disable(save=False)
         await self.worker.close()
         await self.connectors.close()
+        await self.browsers.close_all()
         self.store.close()
 
     async def run_background(self, task, tasks):

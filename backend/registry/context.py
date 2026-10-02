@@ -18,6 +18,7 @@ class ToolView:
     connectors: bool = False
     remotes: bool = False
     ledger: bool = False
+    managed_browser: bool = False  # V2-08: PANINI_BROWSER_DRIVER=playwright
 
     def satisfies(self, requires) -> bool:
         checks = {
@@ -28,6 +29,7 @@ class ToolView:
             "connectors": self.connectors,
             "remotes": self.remotes,
             "ledger": self.ledger,
+            "managed_browser": self.managed_browser,
         }
         return all(checks[r] for r in requires)
 

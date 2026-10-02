@@ -18,8 +18,19 @@ else {
     failures.push('playwright-core no longer ships lib/entry/mcp.js (the Playwright MCP server).');
 }
 
+// V2-08: the browser driver sidecar pins the same playwright-core, and its tool catalogue is checked in
+// (backend/tests/hands compares it with the installed Playwright MCP server).
+const sidecar = join(root, 'panini-core/capabilities/browser/playwright/package.json');
+const sidecarPin = existsSync(sidecar)
+  ? JSON.parse(readFileSync(sidecar, 'utf8')).dependencies?.['playwright-core']
+  : null;
+if (sidecarPin !== PLAYWRIGHT)
+  failures.push(
+    `The browser driver sidecar pins playwright-core ${sidecarPin}; expected ${PLAYWRIGHT}.`,
+  );
 const catalogue = join(root, 'panini-core/capabilities/browser/playwright/tools-1.63.0.json');
-if (existsSync(catalogue)) {
+if (!existsSync(catalogue)) failures.push('The pinned Playwright tool catalogue is missing.');
+else {
   const names = JSON.parse(readFileSync(catalogue, 'utf8')).tools.map((t) => t.name);
   if (names.length !== new Set(names).size)
     failures.push('Duplicate names in the pinned Playwright tool catalogue.');

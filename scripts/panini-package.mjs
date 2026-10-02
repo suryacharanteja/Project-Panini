@@ -256,8 +256,41 @@ await cp(
     recursive: true,
   },
 );
+// V2-08: the Playwright browser driver (the MCP server inside playwright-core). It drives the installed
+// Edge or Chrome, so no browser download is bundled. Capability manifests ship beside it.
+const driver = join(runtime, 'panini-core/capabilities/browser/playwright');
+const playwrightCore = join(driver, 'node_modules/playwright-core');
+await mkdir(playwrightCore, { recursive: true });
+for (const name of ['package.json', 'init-overlay.js', 'tools-1.63.0.json'])
+  await copyFile(
+    join(root, 'panini-core/capabilities/browser/playwright', name),
+    join(driver, name),
+  );
+for (const name of [
+  'package.json',
+  'browsers.json',
+  'index.js',
+  'LICENSE',
+  'NOTICE',
+  'ThirdPartyNotices.txt',
+])
+  await copyFile(join(root, 'node_modules/playwright-core', name), join(playwrightCore, name));
+await cp(join(root, 'node_modules/playwright-core/lib'), join(playwrightCore, 'lib'), {
+  recursive: true,
+});
+await cp(
+  join(root, 'panini-core/capabilities/browser/manifests'),
+  join(runtime, 'panini-core/capabilities/browser/manifests'),
+  { recursive: true },
+);
 const licenses = join(runtime, 'licenses');
 await mkdir(licenses, { recursive: true });
+await mkdir(join(licenses, 'npm'), { recursive: true });
+for (const [source, name] of [
+  ['node_modules/playwright-core/LICENSE', 'playwright-core-LICENSE.txt'],
+  ['node_modules/playwright-core/NOTICE', 'playwright-core-NOTICE.txt'],
+])
+  await copyFile(join(root, source), join(licenses, 'npm', name));
 for (const [source, name] of [
   ['node_modules/electron/LICENSE', 'electron.txt'],
   ['node_modules/electron/dist/LICENSES.chromium.html', 'chromium.html'],

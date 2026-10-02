@@ -398,6 +398,7 @@ class Agent:
         # V2-07: observe(kind, **data) sees tool calls and messages (AG-UI); client tools run in the person's app
         # through client_call(call_id, name, arguments); durable runs keep run records without the flag.
         self.observe, self.client_tools, self.client_call, self.durable = None, [], None, False
+        self.only_tools = None  # V2-08: a focused agent sees only these tool names (for example managed_*).
 
     async def _select(self, goal, items):
         """One Jev call per task decides what the model needs to see: relevant skills,
@@ -503,6 +504,7 @@ class Agent:
             connectors=bool(connectors),
             remotes=bool(remotes and remotes.load()),
             ledger=v2flags.enabled("PANINI_V2_LEDGER"),
+            managed_browser=v2flags.value("PANINI_BROWSER_DRIVER") == "playwright" and not self.background,
         )
 
     def tool_context(self):
@@ -525,6 +527,11 @@ class Agent:
         return self._tool_context
 
     def tools(self):
+        offered = self._offered_tools()
+        only = getattr(self, "only_tools", None)
+        return offered if only is None else [t for t in offered if t["name"] in only]
+
+    def _offered_tools(self):
         if getattr(self, "registry", None) is not None:
             tools = self.registry.model_tools(self.tool_view(), capabilities=self.capabilities)
             return [
@@ -936,7 +943,19 @@ class Agent:
         if registry is not None and name not in registry.control:
             ctx = self.tool_context()
             ctx.final = None
+            evidence_before, outcomes_before = len(self.evidence), len(self.outcomes)
             result = await registry.call(ctx, name, a)
+            if result.outcome == "ok" and result.evidence and len(self.evidence) == evidence_before:
+                # A native hand (not a v1 handler) verified its own result: it counts for the evidence rule.
+                self.evidence.extend(f"{name}:{e.get('kind', 'tool')}" for e in result.evidence[:5])
+            if len(self.outcomes) == outcomes_before and name not in ("update_plan",):
+                self.outcomes.append(
+                    {
+                        "capability": name,
+                        "outcome": "verified_complete" if result.outcome == "ok" else result.outcome,
+                        "message": str(result.content)[:600],
+                    }
+                )
             return result.model_output(), ctx.final
         return await self._call_v1(name, a)
 

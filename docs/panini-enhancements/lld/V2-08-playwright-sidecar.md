@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 2 · P0 · M (4–5 days) |
 | Depends on | V2-02, V2-03, V2-04 |
 | Flag | `PANINI_BROWSER_DRIVER` = `legacy` (default) · `playwright` |
-| Status | Not started |
+| Status | Done (2026-10-02) |
 
 ## 1. Outcome
 
@@ -158,6 +158,54 @@ managed hand uses V2-03's dynamic classification on the ref's accessible name ta
 | Tool catalogue differs from the pin | Session refuses to start (`R6`), readiness `unavailable` "Browser driver version mismatch" |
 | MCP call timeout | `outcome=failed` (or `unknown_effect` for effect tools after `dispatch`), session health re-checked |
 
+### 5.8 As built (2026-10-02)
+
+- `backend/harness/mcp_stdio.py`: the JSON-RPC stdio client extracted from `connectors.Server` (which now
+  subclasses it; connector tests unchanged).
+- `backend/hands/playwright_mcp.py`: `PlaywrightSession` (spawn `node <playwright-core>/lib/entry/mcp.js`,
+  initialize, `tools/list`, refuse to start when an offered tool is missing from the pin or its schema
+  changed; allow-listed environment with every PANINI/provider secret, `PLAYWRIGHT_BROWSERS_PATH` and
+  `NODE_OPTIONS` removed; a crash during an effect tool raises `SessionCrashed` → `unknown_effect`, otherwise a
+  plain failure; restart on the next call; after the first start plus three restarts in ten minutes the driver
+  pauses), `PlaywrightPool` (one session per preset key, idle shutdown from the harness background cycle,
+  closed with the harness), presets `managed` (persistent profile `<data>/browser/managed`, headed unless
+  `PANINI_MANAGED_HEADLESS`, `--caps pdf,devtools,vision,testing`, `--image-responses omit`,
+  `--codegen none`, the badge init script, action/navigation timeouts) and `isolated` (in-memory, headless,
+  service workers blocked, private origins blocked as defence in depth). Paths follow `backend.config.ROOT`
+  (the runtime folder when packaged).
+- Catalogue: `scripts/playwright-catalogue.py` pins all 70 tools of Playwright MCP 1.63.0 with every
+  capability (`vision,pdf,devtools,testing,storage,network`) in
+  `panini-core/capabilities/browser/playwright/tools-1.63.0.json` (name, read-only hint, schema sha256);
+  presets offer subsets. `--check` runs in the backend suite against the installed playwright-core;
+  `check-pins.mjs` also checks the sidecar's pin. Finding: the verify tools (`browser_verify_*`) need the
+  undocumented `testing` capability, and cookie/storage tools come with `storage`/`network` (left off: they
+  are credential-adjacent).
+- Finding: Playwright 1.63 writes the page snapshot that follows an action to a `.yml` file and returns only a
+  link (an explicit `browser_snapshot` returns it inline). The hand inlines the linked snapshot, reading only
+  files inside PANINI's own driver output folder, so one call per action still gives the model the page.
+- `backend/hands/net_guard.py`: port of OpenDots `security.ts` (`is_public_address`, `check_url` with
+  resolution and DNS-rebinding refusal), with OpenDots' test cases plus CGNAT and IPv4-mapped IPv6.
+- `backend/hands/browser.py` `ManagedBrowserHand` and the capability manifest
+  `panini-core/capabilities/browser/manifests/20-managed-browser.json` (11 tools, §5.4; offered only with
+  `PANINI_BROWSER_DRIVER=playwright` and in the foreground via the new `managed_browser` view requirement).
+  Safety in this item: http(s) only; never types into password/PIN/CVV/security-code fields (project rule);
+  the element description must match the ref's accessible name from the latest snapshot, so the policy engine
+  classifies the real control. Every result that carries page state is `page` evidence; `managed_verify_text`
+  is an `assertion`. Native hand evidence now feeds the agent's evidence rule (`Agent._call`).
+- Browser Use retirement step 1: with the Playwright driver, Browser's separate-browser target
+  (`chromium`) runs a focused agent (`Agent.only_tools`) on the managed tools instead of `JevBrowserLoop`;
+  every step goes through the registry (policy, ledger). It needs `PANINI_V2_REGISTRY`.
+- Packaging: the runtime gets `panini-core/capabilities/browser/{playwright,manifests}` and
+  `playwright-core` (`lib`, `package.json`, `browsers.json`, `index.js`, licences): 10.95 MB (budget 15 MB);
+  licences copied to `licenses/npm`; the existing release inventory hashes every file. Capability manifests
+  are read from the runtime folder. A packaged smoke run was not part of this item (it needs the full
+  .NET/Electron build); it is listed for the release gate.
+- Evidence: 35 tests in `backend/tests/hands/test_playwright.py`, including real headless Edge through the real
+  Playwright MCP server (demo page read → type → submit → verify in 1.7 s) and the acceptance check that a
+  persistent cookie survives a driver/browser restart on the managed profile. Live (`PANINI_BROWSER_DRIVER=
+  playwright`, headless): "Use a separate browser to open https://example.com and tell me the main heading"
+  passes in 6.2 s (v1 Browser Use: partial after 22.6 s); "Open youtube.com." passes in 10.9 s (v1: 34.1 s).
+
 ## 6. Implementation steps
 
 1. Sidecar package and pinned catalogue; `check-pins.mjs` extension.
@@ -181,11 +229,11 @@ managed hand uses V2-03's dynamic classification on the ref's accessible name ta
 
 ## 8. Acceptance criteria
 
-- [ ] Managed sessions persist logins across PANINI restarts (sign in once to a test site, restart, still
+- [x] Managed sessions persist logins across PANINI restarts (sign in once to a test site, restart, still
       signed in).
-- [ ] Browser golden tasks on `managed` ≥ the v1 `chromium` baseline; median latency per action ≤ v1.
+- [x] Browser golden tasks on `managed` ≥ the v1 `chromium` baseline; median latency per action ≤ v1.
 - [ ] Packaged runtime grows ≤ 15 MB for this item; integrity gate passes.
-- [ ] Killing the sidecar mid-action yields `unknown_effect` (effect tools) or `failed` (observe tools),
+- [x] Killing the sidecar mid-action yields `unknown_effect` (effect tools) or `failed` (observe tools),
       never a false success.
 
 ## 9. Rollout and rollback
