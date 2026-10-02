@@ -196,6 +196,26 @@ previous day and appends the line to `%LOCALAPPDATA%\PANINI\ledger-roots.txt`. A
 | Chain verification fails | Admin banner; `scripts/panini-ledger-verify.py` names the first bad `seq`; PANINI keeps running (evidence of tampering is surfaced, not hidden) |
 | Artifact write fails | Receipt records `artifact_error`; the tool result is still returned |
 
+### 5.12 As built (2026-10-02)
+
+- `backend/ledger/`: `chain.py`, `receipts.py` (`Ledger`), `redact.py`, `artifacts.py`, `hook.py`
+  (`LedgerHook`, the first registry stage, so policy refusals are receipted), `hand.py` (`activity_search`),
+  migration `0004_ledger.sql`. The registry now calls `after` on hooks that already began when a later hook
+  refuses a call.
+- Receipts need the registry (`PANINI_V2_REGISTRY`) for tool calls; with only the ledger on, coordinator
+  evidence is mirrored into a run-level receipt (`tool="run"`). The coordinator keeps validating evidence
+  against its in-memory records (unchanged v1 behaviour) while the ledger keeps the durable copy; switching
+  validation to the ledger happens with the run engine (V2-06).
+- Hands are marked dispatched conservatively when an effect-class tool starts (every class except observe and
+  navigate) and again when a v1 adapter calls `ctx.dispatch()`.
+- PANINI-CLI receipts are bridged through the existing `coding_execution_receipt` evidence (with its SHA-256).
+- Startup recovery turns dispatched-but-unfinished receipts into "Check: … may have taken effect" notices;
+  durable review interrupts replace these in V2-05.
+- `activity_search` is offered only when the ledger is on (`requires: ["ledger"]`), keeping v1 tool parity.
+- Admin → Receipts lists receipts with decisions, evidence and entry hashes, and shows chain verification.
+- Bug found by tests and fixed: the generic secret mask hid `token=` before the query-string rule could redact
+  the value after it.
+
 ## 6. Implementation steps
 
 1. `chain.py` + migration `0005_ledger.sql`; append and verify; tests including concurrent appends.

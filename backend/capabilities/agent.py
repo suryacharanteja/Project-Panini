@@ -104,6 +104,7 @@ class AgentAdapter:
             confirm=confirm,
         )
 
+        agent.run_id = context.task.task_id
         browser = self.adapters.get("browser")
         if browser is not None and hasattr(browser, "open_in_chrome"):
             selected = context.session.selected.get("browser")

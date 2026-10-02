@@ -1,0 +1,39 @@
+{
+  "schema": "panini.capability/1",
+  "id": "activity",
+  "title": "Activity",
+  "version": "1.0.0",
+  "summary": "PANINI's own receipts: what it did, when, and with what outcome.",
+  "entry": "backend.ledger.hand:ActivityHand",
+  "tools": [
+    {
+      "name": "activity_search",
+      "hand": "activity",
+      "title": "Search PANINI's activity",
+      "description": "Find what PANINI did (from its own receipts). query filters by tool, target or result text; since_hours limits the window (default 24).",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "since_hours": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query",
+          "since_hours"
+        ]
+      },
+      "effect": "observe",
+      "order": 245,
+      "requires": [
+        "ledger"
+      ],
+      "background": true,
+      "idempotent": true
+    }
+  ]
+}

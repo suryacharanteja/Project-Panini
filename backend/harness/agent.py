@@ -374,6 +374,7 @@ class Agent:
         # PANINI v2 capability registry (backend/registry); None keeps the v1 tool path.
         self.registry = None
         self._tool_context = None
+        self.run_id = None  # The coordinator task or background task this run belongs to (ledger receipts).
 
     async def _select(self, goal, items):
         """One Jev call per task decides what the model needs to see: relevant skills,
@@ -459,6 +460,7 @@ class Agent:
         return group is not None and group not in self.selection["groups"]
 
     def tool_view(self):
+        from .. import v2flags
         from ..registry.context import ToolView
 
         connectors = getattr(self.h, "connectors", None)
@@ -472,6 +474,7 @@ class Agent:
             tasks=self.h.tasks is not None and not self.background,
             connectors=bool(connectors),
             remotes=bool(remotes and remotes.load()),
+            ledger=v2flags.enabled("PANINI_V2_LEDGER"),
         )
 
     def tool_context(self):
@@ -486,6 +489,7 @@ class Agent:
             self._tool_context = ToolContext(
                 principal=principal,
                 view=self.tool_view(),
+                run_id=self.run_id,
                 agent=self,
                 delegate=self.delegate,
                 confirm=self.confirm,

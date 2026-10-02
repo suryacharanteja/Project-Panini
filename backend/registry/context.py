@@ -17,6 +17,7 @@ class ToolView:
     tasks: bool = True
     connectors: bool = False
     remotes: bool = False
+    ledger: bool = False
 
     def satisfies(self, requires) -> bool:
         checks = {
@@ -26,6 +27,7 @@ class ToolView:
             "tasks": self.tasks,
             "connectors": self.connectors,
             "remotes": self.remotes,
+            "ledger": self.ledger,
         }
         return all(checks[r] for r in requires)
 

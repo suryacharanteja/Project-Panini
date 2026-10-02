@@ -212,9 +212,13 @@ class Registry:
             return _refused(
                 f"{target.name} was already used {target.budget_per_run} times. Answer now with what you have."
             )
+        ran = []
         for hook in self.hooks:
             stopped = await hook.before(ctx, target, args)
+            ran.append(hook)
             if stopped is not None:
+                for done in ran:  # Hooks that already began (the ledger) see the refusal too.
+                    await done.after(ctx, target, args, stopped)
                 return stopped
         ctx.check()
         started = time.monotonic()

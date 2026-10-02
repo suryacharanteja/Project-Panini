@@ -70,6 +70,13 @@ class Harness:
         from .. import policy
 
         self.policy = policy.install(policy.Policy(self.store))
+        from .. import ledger
+        from ..extension_pairing import data_directory
+
+        self.artifacts = ledger.Artifacts(self.store, data_directory() / "artifacts")
+        self.ledger = ledger.install(
+            ledger.Ledger(self.store, roots_file=data_directory() / "ledger-roots.txt"), self.artifacts
+        )
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
         agent = Agent(
@@ -101,9 +108,11 @@ class Harness:
                 },
                 state=self.store,
             )
+            from ..ledger.hook import LedgerHook
             from ..policy.hook import PolicyHook
 
-            self._registry.hooks.append(PolicyHook())
+            # The ledger runs first so policy refusals are receipted too.
+            self._registry.hooks += [LedgerHook(), PolicyHook()]
         return self._registry
 
     def status(self):
@@ -136,6 +145,10 @@ class Harness:
     def background_cycle(self):
         self.project_planner.reconcile()
         self.suggest()
+        try:
+            self.artifacts.enforce_retention()
+        except Exception:  # noqa: BLE001 -- Retention never stops background work.
+            logger.warning("Artifact retention failed", exc_info=True)
 
     def accept(self, notice_id):
         """Carry out a suggestion's action; only ever creates tasks, never effects."""
@@ -154,9 +167,26 @@ class Harness:
             )
         return result
 
+    def recover_ledger(self):
+        """Receipts left pending by a previous run: unknown effects become notices for the person (V2-04)."""
+        from .. import v2flags
+
+        if not v2flags.enabled("PANINI_V2_LEDGER"):
+            return []
+        unknown = self.ledger.recover()
+        for row in unknown:
+            self.notices.add(
+                "review",
+                f"Check: {row['tool']} may have taken effect",
+                "PANINI stopped while this step was running. It was not repeated; check whether it happened.",
+                dedupe=f"ledger:{row['id']}",
+            )
+        return unknown
+
     def start(self):
         import asyncio
 
+        self.recover_ledger()
         self.worker.start()
         self._mobile_start = asyncio.get_running_loop().create_task(self.mobile.start_if_enabled())
 
@@ -224,6 +254,7 @@ class Harness:
             private=not external,
             background=True,
         )
+        agent.run_id = task["id"]
         result = await agent.run(goal)
         outcome = result.outcome if result.outcome != "reply" else "verified_complete"
         if watch:
@@ -265,6 +296,9 @@ class BackgroundContext:
     def dispatch(self):
         self.check()
         self.tasks.checkpoint(self.record["id"], self.record["lease_id"], dispatched=True)
+        from ..ledger import mark_dispatched
+
+        mark_dispatched()
 
     def code_activity(self, activity):
         self.check()
@@ -273,6 +307,9 @@ class BackgroundContext:
         self.check()
         evidence_id = uuid4().hex
         self.evidence[evidence_id] = {"kind": kind, "summary": summary[:1000], "at": time.time()}
+        from ..ledger import mirror_evidence
+
+        mirror_evidence(self.record["id"], "background", kind, summary, details)
         self.tasks.store.event(self.record["id"], "evidence", summary[:1000])
         return evidence_id
 

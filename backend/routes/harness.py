@@ -600,3 +600,71 @@ def add_policy(r, guard):
 
 add_policy(console_router, lambda request: None)
 add_policy(shell_router, lambda request: principal(request))
+
+
+def add_ledger(r, guard):
+    @r.get("/receipts")
+    async def receipts(
+        request: Request,
+        run_id: str = "",
+        tool: str = "",
+        effect: str = "",
+        q: str = "",
+        since: float | None = None,
+        until: float | None = None,
+        limit: int = 100,
+    ):
+        """Every tool call PANINI made, newest first, with redacted arguments (V2-04)."""
+        guard(request)
+        h = harness(request)
+        return {
+            "receipts": h.ledger.query(
+                run_id=run_id or None,
+                tool=tool or None,
+                effect=effect or None,
+                text=q or None,
+                since=since,
+                until=until,
+                limit=limit,
+            )
+        }
+
+    @r.get("/receipts/{receipt_id}")
+    async def receipt(receipt_id: str, request: Request):
+        guard(request)
+        found = harness(request).ledger.receipt(receipt_id)
+        if found is None:
+            raise HTTPException(404, "Unknown receipt.")
+        return found
+
+    @r.get("/ledger/verify")
+    async def ledger_verify(request: Request):
+        guard(request)
+        from ..ledger.chain import verify
+
+        h = harness(request)
+        roots = h.store.all("SELECT day, last_seq, root_hash FROM ledger_roots ORDER BY day DESC LIMIT 7")
+        return {**verify(h.store), "roots": roots}
+
+    @r.get("/artifacts/{artifact_id}")
+    async def artifact(artifact_id: str, request: Request):
+        guard(request)
+        from fastapi.responses import Response
+
+        found = harness(request).artifacts.get(artifact_id)
+        if found is None:
+            raise HTTPException(404, "Unknown artifact.")
+        row, data = found
+        return Response(
+            data,
+            media_type=row["mime"],
+            headers={
+                "Content-Disposition": "inline",
+                "X-Content-Type-Options": "nosniff",
+                "Cache-Control": "private",
+            },
+        )
+
+
+add_ledger(console_router, lambda request: None)
+add_ledger(shell_router, lambda request: principal(request))

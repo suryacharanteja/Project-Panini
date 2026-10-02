@@ -158,6 +158,9 @@ class TaskContext:
     def dispatch(self):
         self.check()
         self.task.dispatched += 1
+        from ..ledger import mark_dispatched
+
+        mark_dispatched()
 
     def code_activity(self, activity):
         self.check()
@@ -209,6 +212,9 @@ class TaskContext:
             raise Fault("EVIDENCE_TOO_LARGE", "Verification detail exceeded its allowed size.")
         record["digest"] = digest(details)
         self.session.evidence[record["evidence_id"]] = record
+        from ..ledger import mirror_evidence
+
+        mirror_evidence(self.task.task_id, self.task.capability, kind, summary, details)
         while (
             len(self.session.evidence) > 100 or len(json.dumps(self.session.evidence).encode()) > 1024 * 1024
         ):

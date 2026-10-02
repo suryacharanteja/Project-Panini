@@ -13,7 +13,7 @@ from ..core_contracts import EffectClass, ToolSpec
 BUILTIN = Path(__file__).parent / "manifests"
 ID = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 TOOL = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
-REQUIREMENTS = {"private", "foreground", "top", "tasks", "connectors", "remotes"}
+REQUIREMENTS = {"private", "foreground", "top", "tasks", "connectors", "remotes", "ledger"}
 
 
 class ManifestError(ValueError):
