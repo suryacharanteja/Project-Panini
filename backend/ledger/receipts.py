@@ -27,6 +27,7 @@ class Ledger:
     def begin(
         self,
         *,
+        occurrence: int | None = None,
         run_id,
         tool,
         capability,
@@ -40,10 +41,11 @@ class Ledger:
         redactions=(),
     ) -> dict:
         args_digest = chain.digest(args or {})
-        occurrence = self.store.one(
-            "SELECT COUNT(*) AS n FROM receipts WHERE run_id=? AND tool=? AND args_digest=?",
-            (run_id, tool, args_digest),
-        )["n"]
+        if occurrence is None:  # Without an attempt-local count, count this run's earlier identical calls.
+            occurrence = self.store.one(
+                "SELECT COUNT(*) AS n FROM receipts WHERE run_id=? AND tool=? AND args_digest=?",
+                (run_id, tool, args_digest),
+            )["n"]
         key = operation_key(run_id, tool, args_digest, occurrence)
         receipt_id = new_id()
         args_view = redact_args(args or {}, redactions)
@@ -98,6 +100,11 @@ class Ledger:
         if row and not row["dispatched"]:
             self.store.execute("UPDATE receipts SET dispatched=1 WHERE id=?", (receipt_id,))
             chain.append(self.store, receipt_id, "dispatch", {}, clock=self.clock)
+
+    def undispatch(self, receipt_id, reason: str):
+        """The hand stopped before acting (it parked on an approval): nothing left the process."""
+        self.store.execute("UPDATE receipts SET dispatched=0 WHERE id=?", (receipt_id,))
+        chain.append(self.store, receipt_id, "undispatch", {"reason": reason[:200]}, clock=self.clock)
 
     def evidence(self, receipt_id, kind, summary, details) -> str:
         evidence_id = new_id()

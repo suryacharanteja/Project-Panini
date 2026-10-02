@@ -209,6 +209,36 @@ def build_app(harness, devices):
             raise HTTPException(409, str(exc).strip("'")) from None
         return {"task": {"id": task["id"], "status": task["status"]}}
 
+    class Resolve(Strict):
+        nonce: str = Field(min_length=20, max_length=200)
+        action_digest: str | None = Field(default=None, min_length=64, max_length=64)
+        approved: bool
+
+    @app.get("/api/interrupts")
+    async def interrupts(request: Request):
+        """Open requests this phone may answer (tap level; passkeys arrive with the phone app v2)."""
+        device(request)
+        return {"interrupts": harness.interrupts.list(levels={"tap"})}
+
+    @app.post("/api/interrupts/{interrupt_id}")
+    async def resolve(interrupt_id: str, payload: Resolve, request: Request):
+        found = device(request)
+        from ..interrupts import decided_by
+        from ..panini.contracts import Fault
+
+        try:
+            view = harness.interrupts.resolve(
+                interrupt_id,
+                nonce=payload.nonce,
+                action_digest=payload.action_digest,
+                status="resolved",
+                payload={"approved": payload.approved},
+                decided_by=decided_by("phone_app", "tap", device_id=found["id"]),
+            )
+        except Fault as exc:
+            raise HTTPException(exc.status, exc.message) from None
+        return {"interrupt": {"id": view["id"], "status": view["status"]}}
+
     @app.post("/api/notices/{notice_id}")
     async def dismiss(notice_id: str, request: Request):
         device(request)

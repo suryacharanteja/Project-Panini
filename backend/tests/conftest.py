@@ -17,3 +17,14 @@ def isolated_runtime_data(tmp_path, monkeypatch):
     monkeypatch.setenv("PANINI_JEV_GATES", "false")
     # Confirmation mechanics are tested in strict mode; the risky default has its own tests.
     monkeypatch.setenv("PANINI_APPROVALS", "all")
+
+
+@pytest.fixture(autouse=True)
+def reset_v2_services():
+    """Process-wide v2 services (policy, ledger, interrupts) are installed by a Harness; never leak them."""
+    yield
+    from backend import interrupts, ledger, policy
+
+    policy._policy = None
+    ledger._ledger = ledger._artifacts = None
+    interrupts._service = None

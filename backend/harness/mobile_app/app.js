@@ -69,9 +69,34 @@ async function load() {
   const s = data.status;
   $('state').textContent = s.running ? 'Working' : 'Idle';
   $('state').className = `pill ${s.running ? 'busy' : ''}`;
+  // Durable approvals from PANINI v2 (interrupts): the decision echoes the nonce and the exact action digest.
+  const pending = await api('/api/interrupts').catch(() => ({ interrupts: [] }));
+  const approvals = pending.interrupts.map((i) =>
+    el(
+      'li',
+      'card attention',
+      el('strong', '', i.title || 'Approve this step?'),
+      el('p', '', i.message),
+      i.preview && i.preview.detail ? el('p', 'hint', i.preview.detail) : null,
+      el(
+        'div',
+        'row',
+        button('Approve', () =>
+          api(`/api/interrupts/${i.id}`, { nonce: i.nonce, action_digest: i.action_digest, approved: true }),
+        ),
+        button(
+          'Decline',
+          () => api(`/api/interrupts/${i.id}`, { nonce: i.nonce, action_digest: i.action_digest, approved: false }),
+          'quiet',
+        ),
+      ),
+    ),
+  );
   fill(
     $('reviews'),
-    data.reviews.map((r) => {
+    [
+      ...approvals,
+      ...data.reviews.map((r) => {
       const answer = el('input');
       answer.placeholder = r.kind === 'approval' ? 'Optional note' : 'Your answer';
       return el(
@@ -89,7 +114,8 @@ async function load() {
           button('Decline', () => api(`/api/reviews/${r.id}`, { decision: 'dismiss' }), 'quiet'),
         ),
       );
-    }),
+      }),
+    ],
     'Nothing is waiting for you.',
   );
   fill(

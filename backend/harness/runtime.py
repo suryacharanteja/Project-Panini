@@ -77,6 +77,10 @@ class Harness:
         self.ledger = ledger.install(
             ledger.Ledger(self.store, roots_file=data_directory() / "ledger-roots.txt"), self.artifacts
         )
+        from .. import interrupts
+
+        self.interrupts = interrupts.install(interrupts.Interrupts(self.store))
+        self.interrupts.listeners.append(self._on_interrupt)
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
         agent = Agent(
@@ -142,7 +146,68 @@ class Harness:
         self._last_suggest = time.time()
         return proactive.suggest(self.store, self.notices)
 
+    def _on_interrupt(self, event, view):
+        """Background interrupts reach the inbox; a decision resumes or ends the parked task (V2-05)."""
+        task_id = view.get("task_id")
+        if not task_id:
+            return
+        if event == "interrupt.opened":
+            self.notices.add(
+                "approval",
+                f"Approve? {view['title']}"[:120],
+                view["message"],
+                task_id=task_id,
+                dedupe=f"interrupt:{view['id']}",
+            )
+            return
+        try:
+            approved = view["status"] == "resolved" and (view.get("decision") or {}).get("payload", {}).get(
+                "approved"
+            )
+            if approved:
+                self.tasks.resume(task_id, view.get("action_digest"))
+            else:
+                reason = {"expired": "The approval request expired."}.get(
+                    view["status"], "You declined this step."
+                )
+                self.tasks.decline(task_id, reason)
+        except KeyError:
+            pass
+
+    def _background_confirm(self, task):
+        """A background run asking the person: approved actions pass once; otherwise the run parks (V2-05)."""
+        from ..interrupts import InterruptSpec, Parked, active, digest
+
+        async def confirm(summary, detail):
+            action = {"summary": str(summary)[:500], "detail": str(detail)[:3000]}
+            key = digest(action)
+            if self.tasks.consume_preapproval(task["id"], key):
+                return True
+            service = active()
+            if service is None:
+                return False
+            view = service.open(
+                InterruptSpec(
+                    "approval",
+                    "tool_call",
+                    str(summary)[:200],
+                    f"A background task wants to: {summary}",
+                    preview={"task": task.get("title", ""), "detail": str(detail)[:3000]},
+                    action=action,
+                    level="tap",
+                    ttl_s=24 * 3600,
+                ),
+                run_id=task["id"],
+                task_id=task["id"],
+                owner_principal={"surface": "background"},
+            )
+            raise Parked(view["id"], str(summary)[:200])
+
+        return confirm
+
     def background_cycle(self):
+        if getattr(self, "interrupts", None):
+            self.interrupts.expire_overdue()
         self.project_planner.reconcile()
         self.suggest()
         try:
@@ -186,11 +251,21 @@ class Harness:
     def start(self):
         import asyncio
 
+        self.interrupts.cancel_foreground_after_restart()
         self.recover_ledger()
         self.worker.start()
         self._mobile_start = asyncio.get_running_loop().create_task(self.mobile.start_if_enabled())
 
     async def close(self):
+        from .. import interrupts, ledger, policy
+
+        # Uninstall the process-wide v2 services this harness installed.
+        if interrupts._service is self.interrupts:
+            interrupts._service = None
+        if ledger._ledger is self.ledger:
+            ledger._ledger = ledger._artifacts = None
+        if policy._policy is self.policy:
+            policy._policy = None
         await self.mobile.disable(save=False)
         await self.worker.close()
         await self.connectors.close()
@@ -245,17 +320,27 @@ class Harness:
                 "back to that agent: do not include personal information about the person.\n"
                 f"Request: {task['goal']}"
             )
-        # confirm=None: nobody is watching, so data-changing connector tools are refused.
+        # confirm=None: nobody is watching, so data-changing connector tools are refused. With interrupts on
+        # (V2-05) the run parks and waits for the person instead.
+        from ..interrupts import Parked, active
+
         agent = self.agent(
             delegate=delegate,
             emit=emit,
             capabilities=available,
-            confirm=None,
+            confirm=self._background_confirm(task) if active() else None,
             private=not external,
             background=True,
         )
         agent.run_id = task["id"]
-        result = await agent.run(goal)
+        try:
+            result = await agent.run(goal)
+        except Parked as parked:
+            return (
+                "waiting_input",
+                f"Waiting for your approval: {parked.title}",
+                [f"interrupt:{parked.interrupt_id}"],
+            )
         outcome = result.outcome if result.outcome != "reply" else "verified_complete"
         if watch:
             if outcome in ("verified_complete", "partial"):

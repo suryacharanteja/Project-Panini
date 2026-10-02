@@ -231,6 +231,12 @@ class TaskContext:
         if preapproved.get():
             # The person already approved this exact tool call through the v2 policy (asked once).
             return fingerprint
+        from .. import interrupts
+
+        if interrupts.active():
+            return await self._confirm_interrupt(
+                interrupts.active(), action, application, effect, data, fingerprint
+            )
         confirmation_id, nonce = identifier(), secrets.token_urlsafe(32)
         future = asyncio.get_running_loop().create_future()
         self.session.confirmations[confirmation_id] = {
@@ -262,6 +268,61 @@ class TaskContext:
             raise Fault("CONFIRMATION_EXPIRED", "The confirmation expired. No new action was sent.") from None
         finally:
             self.session.confirmations.pop(confirmation_id, None)
+
+    async def _confirm_interrupt(self, service, action, application, effect, data, fingerprint):
+        """V2-05: the same confirmation as a durable interrupt; the shell's dialog and routes are unchanged."""
+        from ..interrupts import InterruptSpec
+
+        view = service.open(
+            InterruptSpec(
+                "approval",
+                "tool_call",
+                application[:160],
+                effect[:1000],
+                preview={"application": application[:160], "effect": effect[:1000], "data": data[:4000]},
+                action=action,
+                level="tap",
+                ttl_s=60,
+            ),
+            run_id=self.task.task_id,
+            owner_principal={"surface": "avatar"},
+        )
+        cid = view["id"]
+        self.session.confirmations[cid] = {
+            "confirmation_id": cid,
+            "nonce": view["nonce"],
+            "digest": view["action_digest"],
+            "application": application[:160],
+            "effect": effect[:1000],
+            "data": data[:4000],
+            "task_id": self.task.task_id,
+            "lease_epoch": self.task.lease_epoch,
+            "expires": self.owner.clock() + 60,
+            "future": None,
+            "interrupt": True,
+        }
+        self.emit(
+            "awaiting_confirmation", f"Confirm the proposed action in {application}.", confirmation_id=cid
+        )
+        try:
+            result = await service.wait(cid, 60)
+            self.check()
+            decision = (result.get("decision") or {}) if result["status"] == "resolved" else {}
+            if not (decision.get("payload") or {}).get("approved"):
+                self.task.cancelled.set()
+                raise Fault("CONFIRMATION_REJECTED", "The proposed action was not approved.")
+            return fingerprint
+        except Fault as exc:
+            if exc.code == "INTERRUPT_EXPIRED":
+                self.task.cancelled.set()
+                raise Fault(
+                    "CONFIRMATION_EXPIRED", "The confirmation expired. No new action was sent."
+                ) from None
+            raise
+        finally:
+            self.session.confirmations.pop(cid, None)
+            if service.get(cid)["status"] == "open":
+                service.cancel(cid, "The task ended.")
 
 
 class Coordinator:
@@ -1029,6 +1090,27 @@ class Coordinator:
 
     def decide(self, s, confirmation_id, payload):
         item = self.confirmation(s, confirmation_id)
+        if item.get("interrupt"):
+            from .. import interrupts
+
+            if item["lease_epoch"] != s.lease_epoch or interrupts.active() is None:
+                raise Fault("CONFIRMATION_CHANGED", "The proposed action changed or was already decided.")
+            try:
+                interrupts.active().resolve(
+                    confirmation_id,
+                    nonce=payload.nonce,
+                    action_digest=payload.digest,
+                    status="resolved",
+                    payload={"approved": payload.decision == "approve"},
+                    decided_by=interrupts.decided_by("avatar", "local"),
+                )
+            except Fault as exc:
+                if exc.code in {"INTERRUPT_CHANGED", "DECISION_ALREADY_MADE"}:
+                    raise Fault(
+                        "CONFIRMATION_CHANGED", "The proposed action changed or was already decided."
+                    ) from None
+                raise
+            return {"status": "decided"}
         if (
             not secrets.compare_digest(item["nonce"], payload.nonce)
             or item["digest"] != payload.digest

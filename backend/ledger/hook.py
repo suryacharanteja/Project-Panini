@@ -16,7 +16,16 @@ class LedgerHook(Hooks):
         ctx.receipt = None
         if ledger is None:
             return None
+        # Occurrence counts identical calls within this attempt, so a resumed attempt reaches the same
+        # operation keys for the same steps and replays them instead of repeating their effects.
+        from .chain import digest
+
+        seen = ctx.__dict__.setdefault("occurrences", {})
+        key = (spec.name, digest(args or {}))
+        occurrence = seen.get(key, 0)
+        seen[key] = occurrence + 1
         receipt = ledger.begin(
+            occurrence=occurrence,
             run_id=ctx.run_id or "adhoc",
             tool=spec.name,
             capability=spec.capability,
@@ -61,6 +70,16 @@ class LedgerHook(Hooks):
             return await call()
         finally:
             current_receipt.reset(token)
+
+    async def parked(self, ctx, spec, args):
+        """The run parked on an interrupt inside the hand, before its effect (V2-05)."""
+        ledger, receipt = active(), getattr(ctx, "receipt", None)
+        if ledger and receipt:
+            ledger.undispatch(receipt, "waiting for the person's approval")
+            ledger.end(
+                receipt, outcome="cancelled", content="Waiting for the person's approval before acting."
+            )
+            ctx.receipt = None
 
     async def after(self, ctx, spec, args, result):
         ledger, receipt = active(), getattr(ctx, "receipt", None)

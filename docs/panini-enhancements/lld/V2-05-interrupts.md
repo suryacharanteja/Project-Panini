@@ -186,6 +186,26 @@ Events: `interrupt.opened` (interrupt view without nonce for observers), `interr
 | Two surfaces approve and decline at once | One wins (rule 8); the other gets `DECISION_ALREADY_MADE` and refreshes |
 | Clock skew on phone | Expiry is checked on the PC only |
 
+### 5.10 As built (2026-10-02)
+
+- `backend/interrupts/` (`Interrupts` service, `InterruptSpec`, `decided_by`, `Parked`), migration
+  `0005_interrupts.sql`. Process-wide install by the harness, uninstalled on close (tests reset it).
+- Foreground: `TaskContext.confirm` opens an approval interrupt; the shell's native dialog and the v1
+  `/sessions/{id}/confirmations/{cid}` routes are unchanged and resolve the interrupt (`method: local`).
+- Background: the agent's confirm callable parks the run (`Parked`, a control-flow signal like
+  `CancelledError`). The task becomes `waiting_input`; approving resumes it with the action's digest
+  pre-approved for exactly one use; declining or expiry cancels it. The ledger closes a parked step as
+  not dispatched (`undispatch` entry), and per-attempt occurrence counting makes the resumed attempt replay
+  completed steps from their receipts instead of repeating them (proven by test).
+- Policy `park` decisions use the same path when interrupts are on.
+- Routes: shell `/api/panini/harness/interrupts`, console `/api/harness/interrupts` (both on this PC, so
+  `method: local`), and the LAN phone app `/api/interrupts` (tap level only). The phone app lists open
+  approvals with Approve/Decline, echoing nonce and action digest. Background interrupts also create inbox
+  notices.
+- Deferred to V2-07 (they need the shared cards): foreground `ask_user` waiting on a question interrupt,
+  `choose`, `request_review` and `request_takeover`. Existing harness reviews (unknown outcomes, A2A holds)
+  stay as they are and are shown next to interrupts.
+
 ## 6. Implementation steps
 
 1. Store + service + migration; resolution rules with tests (rules 1–9).

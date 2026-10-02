@@ -173,6 +173,45 @@ class Tasks:
             ).rowcount
         )
 
+    def resume(self, task_id, approved_digest=None):
+        """Requeue a parked task; the approved action may run once without asking again (V2-05)."""
+        task = self.get(task_id)
+        if task["status"] != "waiting_input":
+            return task
+        if approved_digest:
+            task.setdefault("pre_approved", []).append(approved_digest)
+        task["waiting_on"] = None
+        self._write(task_id, _data(task), "queued", self.clock())
+        self.store.event(task_id, "resumed", "Approved; continuing.")
+        return self.get(task_id)
+
+    def decline(self, task_id, message):
+        task = self.get(task_id)
+        if task["status"] != "waiting_input":
+            return task
+        task["waiting_on"] = None
+        task["result"] = {
+            "outcome": "cancelled",
+            "message": message[:1000],
+            "evidence": [],
+            "at": self.clock(),
+        }
+        self._write(task_id, _data(task), "cancelled", None)
+        self.store.event(task_id, "cancelled", message[:1000])
+        return self.get(task_id)
+
+    def consume_preapproval(self, task_id, approved_digest) -> bool:
+        task = self.get(task_id)
+        approved = task.get("pre_approved") or []
+        if approved_digest not in approved:
+            return False
+        approved.remove(approved_digest)
+        task["pre_approved"] = approved
+        self.store.execute(
+            "UPDATE tasks SET data=? WHERE id=?", (json.dumps(_data(task), ensure_ascii=False), task_id)
+        )
+        return True
+
     def checkpoint(self, task_id, lease_id, checkpoint=None, *, dispatched=False):
         """Record progress; dispatched marks that an effect may have left the process."""
         if not self.owns(task_id, lease_id):
@@ -195,6 +234,14 @@ class Tasks:
             "at": self.clock(),
         }
         task["dispatched"], task["checkpoint"] = 0, None
+        if outcome == "waiting_input":
+            # V2-05: the run parked on an interrupt; it resumes when the person decides.
+            task["waiting_on"] = next(
+                (str(e).split(":", 1)[1] for e in (evidence or []) if str(e).startswith("interrupt:")), None
+            )
+            self._write(task_id, _data(task), "waiting_input", None)
+            self.store.event(task_id, "waiting_input", message[:1000])
+            return
         if task["every_minutes"] and outcome != "cancelled":
             status, next_run, task["attempts"] = "queued", self.clock() + task["every_minutes"] * 60, 0
         else:

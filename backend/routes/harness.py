@@ -668,3 +668,43 @@ def add_ledger(r, guard):
 
 add_ledger(console_router, lambda request: None)
 add_ledger(shell_router, lambda request: principal(request))
+
+
+class InterruptDecision(Strict):
+    nonce: str = Field(min_length=20, max_length=200)
+    action_digest: str | None = Field(default=None, min_length=64, max_length=64)
+    status: str = Field(pattern="^(resolved|cancelled)$")
+    payload: dict = Field(default_factory=dict)
+
+
+def add_interrupts(r, guard, surface):
+    """Durable approvals and questions (V2-05). Console and shell are on this PC, so they resolve every level."""
+
+    @r.get("/interrupts")
+    async def interrupts_list(request: Request, status: str = "open"):
+        guard(request)
+        service = harness(request).interrupts
+        return {"interrupts": service.list(status=status if status != "all" else None)}
+
+    @r.get("/interrupts/{interrupt_id}")
+    async def interrupts_get(interrupt_id: str, request: Request):
+        guard(request)
+        return harness(request).interrupts.get(interrupt_id, include_secret=True)
+
+    @r.post("/interrupts/{interrupt_id}")
+    async def interrupts_resolve(interrupt_id: str, payload: InterruptDecision, request: Request):
+        guard(request)
+        from ..interrupts import decided_by
+
+        return harness(request).interrupts.resolve(
+            interrupt_id,
+            nonce=payload.nonce,
+            action_digest=payload.action_digest,
+            status=payload.status,
+            payload=payload.payload,
+            decided_by=decided_by(surface, "local"),
+        )
+
+
+add_interrupts(console_router, lambda request: None, "console")
+add_interrupts(shell_router, lambda request: principal(request), "avatar")

@@ -45,9 +45,11 @@ class PolicyHook(Hooks):
                 or f"{decision.effect.value.replace('_', ' ')} is not allowed here"
             )
             return refuse(f"Not allowed: {why}. The person can do this themselves.")
-        if decision.action == "park":
+        from .. import interrupts
+
+        if decision.action == "park" and not (interrupts.active() and ctx.confirm is not None):
             return refuse("This step needs the person's approval; it cannot run in the background yet.")
-        if decision.action == "ask":
+        if decision.action in {"ask", "park"}:
             if ctx.confirm is None:
                 return refuse("This step needs the person's approval, and nobody can be asked here.")
             detail = json.dumps(

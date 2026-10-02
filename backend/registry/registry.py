@@ -214,7 +214,15 @@ class Registry:
             )
         ran = []
         for hook in self.hooks:
-            stopped = await hook.before(ctx, target, args)
+            try:
+                stopped = await hook.before(ctx, target, args)
+            except BaseException as signal:
+                # A background run parking on an interrupt (V2-05): close what earlier hooks began, then stop.
+                if getattr(signal, "interrupt_id", None):
+                    waiting = _refused("Waiting for the person's approval.")
+                    for done in ran:
+                        await done.after(ctx, target, args, waiting)
+                raise
             ran.append(hook)
             if stopped is not None:
                 for done in ran:  # Hooks that already began (the ledger) see the refusal too.
@@ -233,11 +241,15 @@ class Registry:
         try:
             result = await call()
         except Exception as exc:
-            if isinstance(exc, asyncio.CancelledError):
-                raise
             logger.exception("Tool %s failed", name)
             message = str(getattr(exc, "message", "")) or "The tool failed."
             result = _refused(message[:300], outcome="failed")
+        except BaseException as signal:  # CancelledError, or a background run parking on an approval.
+            if getattr(signal, "interrupt_id", None):
+                for hook in ran:  # Parked before acting: close what the hooks began, then stop the run.
+                    if hasattr(hook, "parked"):
+                        await hook.parked(ctx, target, args)
+            raise
         result_ms = int((time.monotonic() - started) * 1000)
         for tool_taint in target.taints:
             ctx.taint.add(tool_taint)
