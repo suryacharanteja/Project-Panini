@@ -754,6 +754,28 @@ def add_computers(r, guard):
             book.end(receipt, outcome="ok", content=action)
         return result
 
+    @r.get("/safety")
+    async def safety(request: Request):
+        """Admin, Safety (V2-13): the red-team gate, surfaces it holds off, policy disagreements, tainted memories."""
+        guard(request)
+        from .. import policy, v2flags
+
+        h = harness(request)
+        tainted = [
+            {k: m[k] for k in ("id", "kind", "text", "created")}
+            for m in h.memory.list()
+            if m["source"] == "agent:tainted"
+        ]
+        return {
+            "guardian": v2flags.enabled("PANINI_GUARDIAN"),
+            "gate": v2flags.redteam_gate(),
+            "blocked": {
+                k: v2flags.blocked_by_gate(k) for k in sorted(v2flags.GATED) if v2flags.blocked_by_gate(k)
+            },
+            "shadow": policy.current().shadow_stats(),
+            "taintedMemories": tainted[:50],
+        }
+
     @r.get("/computers")
     async def computers(request: Request):
         guard(request)

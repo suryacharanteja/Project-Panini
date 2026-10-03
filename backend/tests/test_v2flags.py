@@ -13,6 +13,9 @@ def test_every_flag_defaults_off_except_policy_shadow(monkeypatch):
 
 
 def test_choices_reject_unknown_values_and_free_text_lists(monkeypatch):
+    monkeypatch.setattr(
+        v2flags, "redteam_gate", lambda path=None: {"passed": True, "reason": ""}
+    )  # Parsing only.
     monkeypatch.setenv("PANINI_REMOTE_MODE", "everywhere")
     assert v2flags.value("PANINI_REMOTE_MODE") == "off"
     monkeypatch.setenv("PANINI_REMOTE_MODE", "Relay ")

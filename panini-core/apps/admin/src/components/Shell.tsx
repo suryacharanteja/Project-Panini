@@ -66,6 +66,7 @@ export const NAV: Section[] = [
       },
       { to: '/build/computers', label: 'Computers', icon: <Box size={16} />, deva: 'यन्त्र' },
       { to: '/build/live', label: 'Live', icon: <Eye size={16} />, deva: 'दृश्य' },
+      { to: '/build/safety', label: 'Safety', icon: <ShieldCheck size={16} />, deva: 'रक्षा' },
       { to: '/memory', label: 'Memory', icon: <Brain size={16} />, deva: 'स्मृति' },
     ],
   },

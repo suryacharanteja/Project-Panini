@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 3 · P0 · M (4–5 days) |
 | Depends on | V2-03 (taint and policy), V2-01 (eval harness) |
 | Flag | `PANINI_GUARDIAN` (default `false`; required before any remote surface is enabled) |
-| Status | Not started |
+| Status | Partial (2026-10-03) |
 
 ## 1. Outcome
 
@@ -190,3 +190,26 @@ stays (it is policy, not guardian).
 
 - Should the guardian also review read-only navigation to new domains during tainted runs (to stop beaconing
   via image loads)? Recommendation: only through the URL heuristic in §5.4; full review would be too slow.
+
+## 11. As built (2026-10-03, partial)
+
+Built:
+- **Quarantined formatting** (`backend/policy/provenance.py`, applied in `harness/agent.py`): output from any tool
+  whose manifest carries an untrusted label reaches the model inside one `<untrusted source=... url=...>` envelope.
+  Content cannot close its own envelope, and long content is cut with a pointer instead of summarised. The system
+  prompt states that text inside the envelope is data. Tests: `backend/tests/policy/test_provenance.py` (it also
+  checks that every tainting manifest uses quarantined labels).
+- **Memory and skill poisoning rules** (§5.6, behind `PANINI_GUARDIAN`): `remember` in a run that read untrusted
+  content needs the person's approval and is stored with source `agent:tainted`; `create_skill` always needs
+  approval; declined means nothing is saved. Tests: `backend/tests/policy/test_poisoning.py`.
+- **Red-team gate** (`backend/v2flags.py`): `PANINI_REMOTE_MODE`, `PANINI_PHONE_LINE`, `PANINI_CHANNELS` and
+  `PANINI_MCP_SERVER` read as off unless `evals/redteam/latest.json` records a live run with zero silent effects
+  and at least 95 % completion; `status()` and `blocked_by_gate()` say why. With no result yet, they stay off.
+  Tests: `backend/tests/policy/test_gate.py`.
+- **Admin, Safety** (`GET /api/harness/safety`, `pages/Safety.tsx`): gate status and the surfaces it holds off,
+  policy shadow disagreements, and memories saved after reading untrusted content. Checked live in Admin.
+
+Not built: the guardian pre-dispatch review, destination grounding and the exfiltration heuristics (§5.3-5.5),
+and the red-team cases (§5.7). Writing them was stopped by a safety classifier in the build session, so they need
+to be written separately. Until a passing live red-team result exists, the gate keeps remote, phone, channel and
+MCP-server surfaces off.
