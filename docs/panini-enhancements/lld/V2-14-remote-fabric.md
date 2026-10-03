@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 3 · P0 · L (1.5–2 weeks) |
 | Depends on | V2-05 (interrupts); V2-13 red-team gate before enabling |
 | Flag | `PANINI_REMOTE_MODE` = `off` (default) · `lan` · `tailscale` · `relay` |
-| Status | Not started |
+| Status | Built, held off by the V2-13 gate (2026-10-03) |
 | Decisions | Register D1 (transport), D10 (relay hosting) |
 
 ## 1. Outcome
@@ -263,3 +263,38 @@ Rollback: `off` closes listeners and the relay socket; devices stay registered.
 
 - Queue device requests at the relay while the PC sleeps? Recommendation: no (fail fast with "Your PC is
   offline"); pushes still work because the PC sends them when awake.
+
+## 11. As built (2026-10-03)
+
+Remote access is built and tested, and stays off: `PANINI_REMOTE_MODE` reads as `off` until the V2-13 red-team
+gate passes (Admin → Remote access says so).
+
+| Part | Where | Notes |
+| --- | --- | --- |
+| Primitives | `backend/fabric/crypto.py` | P-256 in WebCrypto formats (raw public points, r‖s signatures), HKDF, AES-GCM. |
+| Devices and pairing | `backend/fabric/devices.py`, migration `0008_fabric.sql` | PC signing and agreement keys in DPAPI; `pc_id`; QR URL with keys in the fragment; one-time codes (single use, 5 min, 5 attempts a minute); SAS; pending until confirmed on the PC; immediate revocation. |
+| Envelopes | `backend/fabric/envelope.py`, `panini-core/apps/phone/lib/envelope.mjs` | Mutual hello/welcome, ephemeral+static ECDH, HKDF session key, AES-256-GCM with AAD, per-direction sequence numbers (replays and reordering refused), 12-hour expiry. The WebCrypto module is the phone app's (V2-15) side; `test_interop.py` runs it against the Python PC. |
+| Server and remote API | `backend/fabric/server.py`, `backend/fabric/router.py` | One server behind every transport: sessions per connection, revocation checked per request, 30 writes and 120 reads a minute per device, requests replayed in-process to `/api/remote/...` with a per-process secret. Routes: status, interrupts (decisions signed by the device and stored in `decided_by`), pause (I10), notices, push subscribe, devices/self. The V2-12 live remote router is switched on by the same server (grants apply). |
+| Transports | `backend/fabric/transports/listener.py`, `tailscale.py`, `backend/fabric/relay_client.py`, `panini-core/relay/node/server.mjs` | Fabric listener on port 3211 (the v1 phone listener on 3210 is unchanged): `lan` binds 0.0.0.0 for private clients; `tailscale` binds loopback behind `tailscale serve` and requires the owner's `Tailscale-User-Login`. The Node reference relay is blind (channels, PC HMAC challenge, device sockets, hook forwarding, static app, limits); the PC's relay client reconnects and keeps each connection's frames in order. |
+| Ingress | `backend/fabric/ingress.py` | Standard Webhooks (OpenAI), WhatsApp (challenge + X-Hub-Signature-256), generic HMAC hooks; 5-minute window, dedupe in `ingress_seen`, bare 401 otherwise. Reached through the relay or the Funnel route on the listener. |
+| Push | `backend/fabric/push.py` | RFC 8291 (aes128gcm) and VAPID on `cryptography` alone (no pywebpush); minimal payloads; gone subscriptions removed; new interrupts are pushed to paired phones. |
+| Signed app assets | `backend/fabric/app_signing.py` | Manifest of asset hashes signed by the PC; `verify()` is what the service worker (V2-15) checks. |
+| Runtime and Admin | `backend/fabric/runtime.py`, `/api/harness/fabric*`, Admin `pages/Remote.tsx` | Created on first use; started at launch when a mode is set; gate-aware state; pairing code and QR URL, SAS confirmation, revoke, test push, relay address. |
+
+Verification (all in `npm test`): `backend/tests/fabric/` has 28 tests, including:
+- pairing and SAS;
+- envelopes: replays, tampering, forged and revoked devices, expiry;
+- WebCrypto↔Python interop;
+- signed decisions, pause, rate limits and revocation through the server;
+- an end-to-end run through the real Node relay (pair, status, signed decision, live frame, Chrome refused by V2-12 grants), with I6: the relay log holds no plaintext paths, bodies, interrupt text or frame bytes;
+- ingress: valid, bad signature, stale, duplicate, WhatsApp challenge;
+- push: decryptable by the subscriber, VAPID, minimal payload, gone cleanup, push on interrupt open;
+- app signing;
+- transports: gate blocks start, LAN pairing and session over a real listener, the Tailscale header rule, the Tailscale driver with a fake CLI.
+
+Admin → Remote access was checked live: it shows remote access held off by the gate.
+
+Not done:
+- the Cloudflare Worker relay: it needs `wrangler` and a Cloudflare account (register decision D10); the Node relay is the tested reference;
+- live checks on a real phone over mobile data, Tailscale and push on Android/iOS: they need the phone app (V2-15) and a passing red-team gate;
+- Tailscale is not installed on this PC, so its driver is tested with a fake CLI only.

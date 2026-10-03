@@ -15,6 +15,7 @@ from . import comparison as comparison_service
 from . import config, jev_client, stt_service
 from .console import ConsoleBoundary
 from .extension_pairing import PairingStore
+from .fabric import router as fabric_router
 from .http import ApiBoundary
 from .panini.contracts import Fault
 from .panini.settings import Settings
@@ -30,6 +31,12 @@ async def lifespan(app: FastAPI):
         app.state.panini.start()
     if app.state.harness:
         app.state.harness.start()
+        from . import v2flags
+
+        if v2flags.value("PANINI_REMOTE_MODE") != "off":  # Off until the V2-13 red-team gate passes.
+            from .fabric.runtime import runtime
+
+            await runtime(app).start()
     warmup = asyncio.create_task(asyncio.to_thread(jev_client.warm))
     try:
         yield
@@ -37,6 +44,8 @@ async def lifespan(app: FastAPI):
         try:
             if app.state.panini:
                 await app.state.panini.close()
+            if getattr(app.state, "fabric_runtime", None):
+                await app.state.fabric_runtime.stop()
             if app.state.harness:
                 await app.state.harness.close()
             if app.state.voice_session:
@@ -145,6 +154,7 @@ def create_app(
     app.include_router(live_routes.shell_router)
     app.include_router(live_routes.ingest_router)
     app.include_router(live_routes.remote_router)
+    app.include_router(fabric_router.router)
 
     @app.exception_handler(Fault)
     async def panini_error(request: Request, error: Fault):

@@ -469,6 +469,65 @@ def add_mobile(r, guard):
         return {"revoked": harness(request).mobile.devices.revoke(device_id)}
 
 
+def add_fabric(r, guard):
+    """Remote access (V2-14): owner controls in Admin. Console only: pairing and revocation happen on the PC."""
+
+    def fabric(request):
+        harness(request)
+        from ..fabric.runtime import runtime
+
+        return runtime(request.app)
+
+    @r.get("/fabric")
+    async def fabric_status(request: Request):
+        guard(request)
+        return fabric(request).status()
+
+    @r.post("/fabric/start")
+    async def fabric_start(request: Request):
+        guard(request)
+        return await fabric(request).start()
+
+    @r.post("/fabric/code")
+    async def fabric_code(request: Request):
+        guard(request)
+        f = fabric(request)
+        if f.state.get("state") != "ready":
+            raise HTTPException(409, f.state.get("reason") or "Start remote access first.")
+        code = f.devices.new_code()
+        return {**code, "url": f.devices.qr_url(f.state["origin"], code)}
+
+    @r.post("/fabric/devices/{device_id}/confirm")
+    async def fabric_confirm(device_id: str, request: Request):
+        guard(request)
+        try:
+            return fabric(request).devices.confirm(device_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+
+    @r.delete("/fabric/devices/{device_id}")
+    async def fabric_revoke(device_id: str, request: Request):
+        guard(request)
+        fabric(request).server.revoke(device_id)
+        return {"revoked": True}
+
+    @r.post("/fabric/push-test")
+    async def fabric_push_test(request: Request):
+        guard(request)
+        return await fabric(request).push.send(
+            {"type": "notice", "id": "test", "title": "PANINI test notification"}
+        )
+
+    @r.patch("/fabric/settings")
+    async def fabric_settings(request: Request):
+        guard(request)
+        try:
+            return fabric(request).save_settings(await request.json())
+        except (ValueError, AttributeError) as exc:
+            raise HTTPException(422, str(exc)) from None
+
+
+add_fabric(console_router, lambda request: None)
 add_mobile(console_router, lambda request: None)
 add_mobile(shell_router, lambda request: principal(request))
 

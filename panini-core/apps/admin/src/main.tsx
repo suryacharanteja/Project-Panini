@@ -8,6 +8,7 @@ import { CapabilitiesPage } from './pages/Capabilities';
 import { ComputersPage } from './pages/Computers';
 import { LivePage } from './pages/Live';
 import { SafetyPage } from './pages/Safety';
+import { RemotePage } from './pages/Remote';
 import { ConversationsPage } from './pages/Conversations';
 import { PermissionsPage } from './pages/Permissions';
 import { ReceiptsPage } from './pages/Receipts';
@@ -46,6 +47,7 @@ const routeTree = root.addChildren([
   page('/build/computers', ComputersPage),
   page('/build/live', LivePage),
   page('/build/safety', SafetyPage),
+  page('/build/remote', RemotePage),
   page('/build/permissions', PermissionsPage),
   page('/memory', MemoryPage),
   page('/capabilities/$name', CapabilityPage),
