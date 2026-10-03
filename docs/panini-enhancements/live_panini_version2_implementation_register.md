@@ -95,7 +95,7 @@ Sizes: **S** ≤ 2 days · **M** 3–5 days · **L** 1–2 weeks.
 | V2-11 | Sandbox computers (OpenBot on Docker) | 2 | P1 | L | V2-02 – V2-04 | `PANINI_SANDBOX` | [LLD](lld/V2-11-sandbox-computers.md) | Per-persona computers; isolation checks (second computer cannot see first's files); persistence across stop/start; revocation cancels | Done |
 | V2-12 | Live view and human takeover | 2 | P1 | M | V2-07, V2-08, V2-11 | `PANINI_LIVE_VIEW` | [LLD](lld/V2-12-live-view-takeover.md) | Frames from Chrome, managed, sandbox and desktop in one panel; take/release with resume-snapshot rule | Done |
 | V2-13 | Injection firewall and guardian | 3 | P0 | M | V2-03, V2-01 | `PANINI_GUARDIAN` | [LLD](lld/V2-13-guardian.md) | Red-team suite ≥ 95 %; taint provenance end to end; guardian pre-dispatch review on tainted effects | Partial |
-| V2-14 | Remote fabric: device keys, Tailscale, blind relay, ingress, push | 3 | P0 | L | V2-05 | `PANINI_REMOTE_MODE` | [LLD](lld/V2-14-remote-fabric.md) | QR pairing with device keys; E2E envelopes through the relay (I6); webhook ingress verified on the PC; Web Push delivered | Not started |
+| V2-14 | Remote fabric: device keys, Tailscale, blind relay, ingress, push | 3 | P0 | L | V2-05 | `PANINI_REMOTE_MODE` | [LLD](lld/V2-14-remote-fabric.md) | QR pairing with device keys; E2E envelopes through the relay (I6); webhook ingress verified on the PC; Web Push delivered | Built (gated) |
 | V2-15 | Phone app v2: approvals, passkeys, push, share, live | 3 | P0 | L | V2-14, V2-12 | (remote) | [LLD](lld/V2-15-phone-app.md) | Approve from a notification (tap) and with a passkey (verify); share target creates runs; live view and Stop | Not started |
 | V2-16 | Phone line: inbound calls over SIP | 3 | P1 | L | V2-14, V2-15, V2-06 | `PANINI_PHONE_LINE` | [LLD](lld/V2-16-phone-line-inbound.md) | Allow-listed caller reaches PANINI; PIN gate; effects approved on the phone; call receipt in the thread | Not started |
 | V2-17 | Messaging channels: Slack, Telegram, WhatsApp, email | 3 | P1 | L | V2-06, V2-13, V2-14 | `PANINI_CHANNELS` | [LLD](lld/V2-17-channels.md) | Slack and Telegram live; WhatsApp through ingress; allow-lists; safe failures; thread bindings | Not started |
@@ -234,6 +234,7 @@ command output summary.
 | 2026-10-03 | V2-11 | Podman live + native AppContainer sandbox | npm test; scripts/panini-sandbox-live.py on Podman; test_native_sandbox.py | green; Podman 4/4; native 5/5 + live service run |
 | 2026-10-03 | V2-12 | Live view and takeover for every hand | npm test; backend/tests/live (incl. real-browser screencast); Admin Live page live | green; frames <=4 fps only while watched; take/input/give back live; pointer seen in frames |
 | 2026-10-03 | V2-13 | Quarantine, poisoning rules, gate, Safety page; guardian and red-team cases not built | npm test; Admin Safety page live | green; gate holds gated surfaces off |
+| 2026-10-03 | V2-14 | Fabric built and tested; off until the V2-13 red-team gate passes | npm test; backend/tests/fabric (incl. Node relay e2e + I6); Admin Remote access live | green; 28 fabric tests; relay saw ciphertext only |
 | — | — | — | — | — |
 
 ---
