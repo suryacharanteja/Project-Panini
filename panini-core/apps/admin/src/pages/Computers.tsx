@@ -127,24 +127,52 @@ function ComputerCard({ computer, reload }: { computer: Computer; reload: () => 
 }
 
 /** PANINI's own isolated computers on Docker: start, stop, permissions, take-over, terminal (V2-11). */
+type Runtime = {
+  engines: string[];
+  autostart: string;
+  approved: boolean;
+  setup: { phase: string; message: string; ok: boolean | null; log: string[] };
+};
+
 export function ComputersPage() {
-  const list = useResource<{ configured: boolean; computers: Computer[] }>(
+  const list = useResource<{ configured: boolean; runtime?: Runtime; computers: Computer[] }>(
     harness('/computers'),
-    10000,
+    3000,
   );
   const { busy, run } = useAction();
+  const runtime = list.data?.runtime;
+  const setup = runtime?.setup;
+  const working = !!setup && !['idle', 'ready', 'failed'].includes(setup.phase);
+  const down = list.data?.computers.some((c) => c.state !== 'running' && c.state !== 'stopped');
   return (
     <Page title="Computers" deva="यन्त्र" eyebrow="Sandbox">
-      {list.data && !list.data.configured && (
+      {list.data && (!list.data.configured || down || working || setup?.phase === 'failed') && (
         <Card title="Set up the sandbox">
           <p className="mb-3 text-sm text-muted">
-            Creates the sandbox tokens in PANINI's secret store. Then start Docker Desktop and run{' '}
-            <code className="mono">scripts/panini-sandbox.py build</code> and{' '}
-            <code className="mono">up</code>.
+            One click: PANINI creates its sandbox tokens, starts the container engine
+            {runtime?.engines.length ? ` (${runtime.engines.join(' or ')})` : ''}, builds the pinned
+            computer images the first time, and starts the sandbox supervisor. You never start
+            Docker yourself.
           </p>
+          {runtime && runtime.engines.length === 0 && (
+            <p className="mb-3 text-sm text-danger">
+              No container engine is installed. Install Docker Desktop or Podman Desktop, then try
+              again.
+            </p>
+          )}
+          {setup && setup.phase !== 'idle' && (
+            <p
+              className={
+                setup.ok === false ? 'mb-3 text-sm text-danger' : 'mb-3 text-sm text-slate'
+              }
+            >
+              {setup.message}
+            </p>
+          )}
           <Button
             tone="primary"
-            busy={busy === 'setup'}
+            busy={busy === 'setup' || working}
+            disabled={runtime?.engines.length === 0}
             onClick={() =>
               run('setup', async () => {
                 await api(harness('/computers/setup'), { body: {} });
@@ -152,7 +180,7 @@ export function ComputersPage() {
               })
             }
           >
-            Set up the sandbox
+            {working ? 'Setting up…' : 'Set up the sandbox'}
           </Button>
         </Card>
       )}

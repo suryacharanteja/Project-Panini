@@ -427,6 +427,26 @@ SETTINGS += [
         options=["sandbox", "isolated", "off"],
         advanced=True,
     ),
+    Setting(
+        "PANINI_SANDBOX_ENGINE",
+        "v2",
+        "V2-11: sandbox engine",
+        "enum",
+        "Container engine for sandbox computers; auto prefers Docker Desktop, then Podman.",
+        default="auto",
+        options=["auto", "docker", "podman"],
+        advanced=True,
+    ),
+    Setting(
+        "PANINI_SANDBOX_AUTOSTART",
+        "v2",
+        "V2-11: start the engine",
+        "enum",
+        "Start the container engine when the sandbox is needed: ask once, always (on), or never (off).",
+        default="ask",
+        options=["ask", "on", "off"],
+        advanced=True,
+    ),
 ]
 BY_KEY = {s.key: s for s in SETTINGS}
 GROUPS = {

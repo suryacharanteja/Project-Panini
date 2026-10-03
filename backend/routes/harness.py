@@ -760,15 +760,28 @@ def add_computers(r, guard):
         s = service(request)
         return {
             "configured": s.configured,
+            "runtime": s.runtime.describe(),
             "computers": [await s.status(c["id"]) for c in s.computers()],
         }
 
     @r.post("/computers/setup")
     async def computers_setup(request: Request):
-        """Generate the supervisor and master tokens into the DPAPI secret store (never shown)."""
+        """One click: tokens in the DPAPI secret store, the engine started, the pinned images built, the supervisor
+        up and healthy. Runs in the background; GET /computers reports progress (ADR-0001)."""
         guard(request)
-        service(request).config.generate()
-        return {"configured": service(request).configured}
+        import asyncio
+
+        runtime = service(request).runtime
+        if runtime.setup_state["phase"] not in ("idle", "ready", "failed"):
+            return runtime.setup_state
+        runtime.setup_state = {
+            "phase": "starting",
+            "message": "Setting up the sandbox…",
+            "ok": None,
+            "log": [],
+        }
+        request.app.state.sandbox_setup = asyncio.get_running_loop().create_task(runtime.setup())
+        return runtime.setup_state
 
     @r.post("/computers/{computer_id}/start")
     async def computer_start(computer_id: str, request: Request):

@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 2 · P1 · L (1–1.5 weeks) |
 | Depends on | V2-02, V2-03, V2-04; Docker Desktop (register D4) |
 | Flag | `PANINI_SANDBOX` (default `false`) |
-| Status | Built 2026-10-03; live checks pending Docker |
+| Status | Done (2026-10-03) |
 
 ## 1. Outcome
 
@@ -193,10 +193,20 @@ Audit is the ledger (V2-04): every action has begin/end entries with actor `owne
   cancelling a hanging request in under 1 s, plus tools, file exchange, Docker-down status, routing, flag and
   background offering, receipted owner routes) and 2 in `frontend/test/sandbox-harden.test.mjs` (the supervisor
   patch).
-- **Live checks not yet run:** Docker Desktop was not running, and building the images downloads the pinned
-  OpenBot source and base images, which needs the owner's go-ahead. `scripts/panini-sandbox-live.py` runs the four
-  live checks (isolation between two computers, persistence across stop/start, revocation within 1 s, browsing
-  inside the sandbox) once the images are built and the supervisor is up.
+- **Runtime ownership (ADR-0001, added after review):** the person no longer starts Docker by hand.
+  `backend/hands/sandbox_runtime.py` detects Docker Desktop or Podman (`PANINI_SANDBOX_ENGINE`), starts the engine
+  when a sandbox is needed (asking once through the approval flow, `PANINI_SANDBOX_AUTOSTART=ask|on|off`), starts
+  the supervisor with the engine's own socket and waits for health. A start or action that finds the supervisor
+  down brings the runtime up first. Admin → Computers → **Set up the sandbox** is one click: tokens, engine, first
+  image build, supervisor, health, with progress. Images are never built in the middle of a task. Decision record:
+  [ADR-0001](../adr/ADR-0001-sandbox-runtime.md). 9 tests in `backend/tests/hands/test_sandbox_runtime.py`.
+- **Live (2026-10-03, Docker Desktop 29.8):** images built from the pinned revision (`panini-computer:b6932d3`
+  `d62305667e67`, 2.07 GB; `panini-supervisor:b6932d3-panini-auth` `b69b9997aacf`, 218 MB); the supervisor image
+  contains the `panini-computer:` derivation and not the upstream master-token line. PANINI's runtime started the
+  supervisor itself (nobody ran `up`). `scripts/panini-sandbox-live.py` 4/4: computer B cannot see computer A's
+  files; files survive stop/start; a 30 s command stopped 0.05 s after the shell permission was revoked;
+  example.com opened and read inside the sandbox. Running containers: loopback-only ports, `cap_drop: [ALL]`,
+  `no-new-privileges`, 2 GiB per computer, two named volumes each; only the supervisor mounts the engine socket.
 
 ## 6. Implementation steps
 
@@ -229,11 +239,11 @@ Ported from OpenDots and extended:
 
 ## 8. Acceptance criteria
 
-- [ ] Images build from the pinned revision; the patch check passes; digests recorded.
-- [ ] All ported tests green; live isolation and persistence checks pass.
+- [x] Images build from the pinned revision; the patch check passes; digests recorded.
+- [x] All ported tests green; live isolation and persistence checks pass.
 - [ ] An untrusted link opens in the sandbox when `PANINI_UNTRUSTED_BROWSING=sandbox`, and the agent reads it
       there.
-- [ ] Revoking the shell permission during a 30 s command cancels it within 1 s.
+- [x] Revoking the shell permission during a 30 s command cancels it within 1 s.
 
 ## 9. Rollout and rollback
 

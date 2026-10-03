@@ -207,12 +207,40 @@ class SandboxConfig:
 
 # Service -------------------------------------------------------------------------------------------
 class SandboxService:
-    def __init__(self, store, *, config=None, transport=None, deadline_s=70.0, paused=None, clock=time.time):
+    def __init__(
+        self,
+        store,
+        *,
+        config=None,
+        transport=None,
+        deadline_s=70.0,
+        paused=None,
+        clock=time.time,
+        runtime=None,
+    ):
         self.store, self.clock = store, clock
         self.config = config or SandboxConfig()
         self.transport = transport
         self.deadline_s = deadline_s
         self._paused = paused
+        self._runtime = runtime
+
+    @property
+    def runtime(self):
+        """The engine, images and supervisor behind the sandbox, started on demand (ADR-0001)."""
+        if self._runtime is None:
+            from .sandbox_runtime import SandboxRuntime
+
+            self._runtime = SandboxRuntime(self.config)
+        return self._runtime
+
+    async def ready(self, consent=None) -> None:
+        from .sandbox_runtime import RuntimeUnavailable
+
+        try:
+            await self.runtime.ensure_ready(consent)
+        except RuntimeUnavailable as exc:
+            raise SandboxError(str(exc)) from None
 
     # Computers and permissions ----------------------------------------------------------------
     def ensure_row(self, computer_id: str) -> None:
@@ -398,6 +426,10 @@ class SandboxService:
             "configured": self.configured,
             "permissions": self.permissions(computer_id),
         }
+        try:
+            base["runtime"] = self.runtime.describe()
+        except Exception:  # noqa: BLE001 -- Describing the runtime never breaks status.
+            pass
         if not self.configured:
             return {**base, "state": "not_configured"}
         try:
@@ -422,9 +454,17 @@ class SandboxService:
             (state, self.clock(), computer_id),
         )
 
-    async def start(self, computer_id: str, actor="owner") -> dict:
+    async def start(self, computer_id: str, actor="owner", consent=None) -> dict:
         self.allowed(computer_id, None, actor)
-        self.endpoint(computer_id, await self._supervisor(f"/computers/{computer_id}/ensure", {}))
+        try:
+            ensured = await self._supervisor(f"/computers/{computer_id}/ensure", {})
+        except SandboxError as exc:
+            if "unavailable" not in str(exc):
+                raise
+            # The engine or supervisor is down: PANINI starts them itself (asking once), then tries again.
+            await self.ready(consent if actor == "agent" else _owner_consent)
+            ensured = await self._supervisor(f"/computers/{computer_id}/ensure", {})
+        self.endpoint(computer_id, ensured)
         return await self.status(computer_id)
 
     async def stop(self, computer_id: str) -> dict:
@@ -495,6 +535,10 @@ class SandboxService:
         finally:
             stop.set()
             watcher.cancel()
+
+
+async def _owner_consent(summary, detail) -> bool:
+    return True  # The owner pressed Start in Admin: that is the consent.
 
 
 # Host file exchange --------------------------------------------------------------------------------
@@ -585,7 +629,7 @@ class SandboxHand:
                 status = await service.status(computer)
                 return ToolResult("ok", json.dumps(status), data=status)
             if name == "sandbox_start":
-                status = await service.start(computer, actor="agent")
+                status = await service.start(computer, actor="agent", consent=getattr(ctx, "confirm", None))
                 return ToolResult("ok", f"The sandbox computer is {status['state']}.", data=status)
             if name == "sandbox_stop":
                 status = await service.stop(computer)
