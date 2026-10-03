@@ -18,6 +18,12 @@ from backend.harness.store import Store
 MANIFEST = Path(__file__).resolve().parents[3] / "panini-core/capabilities/sandbox/manifests/30-sandbox.json"
 
 
+@pytest.fixture(autouse=True)
+def _container_engine(monkeypatch):
+    # These tests cover the container path; native mode has its own tests below.
+    monkeypatch.setenv("PANINI_SANDBOX_ENGINE", "docker")
+
+
 class World:
     def __init__(self, tmp_path, deadline=1.0, namespace="panini"):
         self.store = Store(tmp_path / "s.sqlite3")
@@ -389,3 +395,61 @@ def test_owner_routes_are_receipted(tmp_path, monkeypatch):
         receipts = client.get("/api/harness/receipts?tool=sandbox_start", headers=headers).json()["receipts"]
         assert {r["outcome"] for r in receipts} == {"failed", "ok"}
     w.store.close()
+
+
+class _FakeNative:
+    """Stands in for the AppContainer sandbox (its real behaviour is in test_native_sandbox.py)."""
+
+    def __init__(self):
+        self.files = {}
+
+    def run(self, computer, command, *, timeout_s):
+        return {
+            "exitCode": 0,
+            "timedOut": False,
+            "stdout": f"{computer}:{command}",
+            "stderr": "",
+            "seconds": 0,
+        }
+
+    def files_write(self, computer, path, contents, append=False):
+        self.files[path] = contents
+        return {"ok": True}
+
+    def files_read(self, computer, path):
+        return {"contents": self.files[path]}
+
+    def files_list(self, computer, path=""):
+        return {"entries": [{"name": n} for n in self.files]}
+
+
+def test_native_mode_runs_shell_and_files_without_an_engine_and_keeps_permissions(tmp_path):
+    store = Store(tmp_path / "s.sqlite3")
+    service = SandboxService(store, config=SimpleNamespace(), native=_FakeNative(), paused=lambda: False)
+    service.ensure_row("panini")
+    assert service.configured
+    status = asyncio.run(service.status("panini"))
+    assert status["state"] == "running" and status["engine"] == "native"
+    with pytest.raises(SandboxError):
+        asyncio.run(
+            service.action("panini", "exec", {"command": "echo hi"}, "agent")
+        )  # shell is off by default
+    service.patch_permissions("panini", {"enabled": True, "shell": True, "files": True, "browser": True})
+    result = asyncio.run(service.action("panini", "exec", {"command": "echo hi"}, "agent"))
+    assert result["exitCode"] == 0 and result["stdout"] == "panini:echo hi"
+    asyncio.run(service.action("panini", "files_write", {"path": "a.txt", "contents": "x"}, "agent"))
+    assert asyncio.run(service.action("panini", "files_read", {"path": "a.txt"}, "agent"))["contents"] == "x"
+    with pytest.raises(SandboxError, match="container engine"):
+        asyncio.run(service.action("panini", "navigate", {"url": "https://example.com"}, "agent"))
+
+
+def test_native_mode_is_chosen_when_no_engine_is_installed(tmp_path, monkeypatch):
+    from backend.hands import native_sandbox, sandbox_runtime
+
+    monkeypatch.setenv("PANINI_SANDBOX_ENGINE", "auto")
+    monkeypatch.setattr(sandbox_runtime, "detect", lambda *a, **k: [])
+    monkeypatch.setattr(native_sandbox, "available", lambda: True)
+    service = SandboxService(Store(tmp_path / "s.sqlite3"), config=SimpleNamespace())
+    assert isinstance(service.native, native_sandbox.NativeSandbox)
+    monkeypatch.setattr(sandbox_runtime, "detect", lambda *a, **k: ["docker"])
+    assert SandboxService(Store(tmp_path / "t.sqlite3"), config=SimpleNamespace()).native is None

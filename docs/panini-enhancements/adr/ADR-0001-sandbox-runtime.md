@@ -53,11 +53,15 @@ Three principles follow:
    - never builds images in the middle of a task: building is a setup step.
 3. **One-click setup in Admin → Computers:** tokens, engine, image build (first time), supervisor, health, with
    progress shown. The owner's click is the consent.
-4. **Nothing falls back to this PC.** If no engine is installed or it cannot start, the sandbox tools say so
-   plainly and the agent does not quietly run the work on the host.
-5. **Not built now, on purpose:** a native Windows command sandbox for host commands (Codex style) and a hosted
-   computer provider. Both fit behind the same interface and are recorded as follow-ups; a partial security
-   boundary would be worse than the policy approvals PANINI already has.
+4. **Nothing falls back to this PC unsandboxed.** If no engine is installed, shell and file tools run in the
+   native sandbox (5); browser tools say plainly that they need an engine. Work never runs on the host as the person.
+5. **Native Windows sandbox, Codex style** (`backend/hands/native_sandbox.py`, amended 2026-10-03): used when
+   `PANINI_SANDBOX_ENGINE=native`, or when `auto` finds no engine. Each computer gets its own AppContainer profile
+   (Low integrity, no capabilities, so no network) and its own workspace folder, the only folder granted to it.
+   Commands run with `cmd.exe` under a job object that ends the whole process tree at the timeout or when the
+   command ends, caps per-process memory and the number of processes, and applies UI restrictions. The same
+   permissions, pause and revocation checks apply as for container computers.
+6. **Still a follow-up:** a hosted computer provider, behind the same interface.
 
 ## Consequences
 
@@ -73,3 +77,8 @@ Three principles follow:
   build-then-up order, setup phases, and a start that finds the supervisor down and brings the runtime up first.
 - Live: images built from the pinned revision on Docker Desktop 29.8, supervisor started by PANINI, and
   `scripts/panini-sandbox-live.py` (isolation, persistence, revocation within 1 s, browsing in the sandbox).
+- Live on Podman 5 (rootful WSL machine): PANINI started the supervisor and `scripts/panini-sandbox-live.py`
+  passed 4/4.
+- Native: `backend/tests/hands/test_native_sandbox.py` (commands run at Low integrity in the workspace, exit codes,
+  files round-trip, separate containers per computer, timeout ends the command, memory cap) and the native-mode
+  service tests in `backend/tests/hands/test_sandbox.py`.

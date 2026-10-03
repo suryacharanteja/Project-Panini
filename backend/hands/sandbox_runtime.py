@@ -61,13 +61,19 @@ class Engine:
     @property
     def socket(self) -> str:
         # The supervisor talks to the engine through its socket, mounted into that one container only.
-        return "/var/run/docker.sock" if self.name == "docker" else "/run/podman/podman.sock"
+        if self.name == "docker":
+            return "/var/run/docker.sock"
+        # Podman machines run rootless by default (/run/user/<uid>/podman/podman.sock); ask Podman itself.
+        code, out = self.run([self.cli, "info", "--format", "{{.Host.RemoteSocket.Path}}"], 20)
+        path = out.strip().removeprefix("unix://") if code == 0 else ""
+        return path if path.startswith("/") else "/run/podman/podman.sock"
 
     def compose(self, *args) -> list[str]:
         return [self.cli, "compose", "-f", str(COMPOSE), *args]
 
     def running(self) -> bool:
-        code, _ = self.run([self.cli, "info", "--format", "{{.ServerVersion}}"], 20)
+        fmt = "{{.ServerVersion}}" if self.name == "docker" else "{{.Version.Version}}"
+        code, _ = self.run([self.cli, "info", "--format", fmt], 20)
         return code == 0
 
     def start(self) -> None:
@@ -81,6 +87,20 @@ class Engine:
             code, out = self.run([self.cli, "machine", "start"], START_TIMEOUT_S)
             if code != 0 and "already running" not in out.lower():
                 raise RuntimeUnavailable(f"Podman could not start its machine: {out.strip()[:200]}")
+
+    def rootless(self) -> bool:
+        if self.name != "podman":
+            return False
+        code, out = self.run([self.cli, "info", "--format", "{{.Host.Security.Rootless}}"], 20)
+        return code == 0 and out.strip().lower() == "true"
+
+    def make_rootful(self) -> None:
+        """Rootless Podman machines on Windows cannot apply the sandbox's memory limits (no delegated cgroup
+        memory controller); a rootful machine can, and it still runs inside its own WSL VM."""
+        for args in (["machine", "stop"], ["machine", "set", "--rootful"], ["machine", "start"]):
+            code, out = self.run([self.cli, *args], START_TIMEOUT_S)
+            if code != 0 and "already" not in out.lower():
+                raise RuntimeUnavailable(f"Podman could not switch to a rootful machine: {out.strip()[:200]}")
 
     def has_images(self) -> bool:
         return all(self.run([self.cli, "image", "inspect", image], 30)[0] == 0 for image in IMAGES)
@@ -180,6 +200,8 @@ class SandboxRuntime:
             )
         for engine in engines:
             if await asyncio.to_thread(engine.running):
+                if await asyncio.to_thread(engine.rootless):
+                    await self._rootful(engine, consent)
                 return engine
         if self.autostart() == "off":
             raise RuntimeUnavailable(f"{engines[0].name.title()} is not running (automatic start is off).")
@@ -195,6 +217,18 @@ class SandboxRuntime:
         await asyncio.to_thread(engine.start)
         await self._wait(engine.running, START_TIMEOUT_S, engine.name.title())
         return engine
+
+    async def _rootful(self, engine, consent):
+        if not self.approved():
+            if consent is None or not await consent(
+                "Switch Podman to a rootful machine for PANINI's sandbox?",
+                "Sandbox computers need memory limits, which rootless Podman on Windows cannot apply.",
+            ):
+                raise RuntimeUnavailable("Podman runs rootless, which cannot limit sandbox memory.")
+            self.remember_approval()
+        self._note("engine", "Switching Podman to a rootful machine…")
+        await asyncio.to_thread(engine.make_rootful)
+        await self._wait(engine.running, START_TIMEOUT_S, "Podman")
 
     async def ensure_supervisor(self, engine: Engine, *, build=False) -> None:
         if await asyncio.to_thread(self.healthy):

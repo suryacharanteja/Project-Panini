@@ -217,6 +217,7 @@ class SandboxService:
         paused=None,
         clock=time.time,
         runtime=None,
+        native=None,
     ):
         self.store, self.clock = store, clock
         self.config = config or SandboxConfig()
@@ -224,6 +225,39 @@ class SandboxService:
         self.deadline_s = deadline_s
         self._paused = paused
         self._runtime = runtime
+        self._native = native
+
+    # Native mode (ADR-0001 follow-up): with no container engine, shell and files run in a Windows AppContainer.
+    @property
+    def native(self):
+        """The native sandbox when PANINI_SANDBOX_ENGINE=native, or when auto finds no engine; else None."""
+        if self._native is not None:
+            return self._native or None
+        from . import native_sandbox
+        from .sandbox_runtime import detect
+
+        choice = os.getenv("PANINI_SANDBOX_ENGINE", "auto").strip().lower()
+        if native_sandbox.available() and (choice == "native" or (choice == "auto" and not detect())):
+            self._native = native_sandbox.NativeSandbox()
+        else:
+            self._native = False
+        return self._native or None
+
+    async def _native_action(self, computer_id, action, parsed):
+        box = self.native
+        if action == "exec":
+            return await asyncio.to_thread(
+                box.run, computer_id, parsed["command"], timeout_s=parsed["timeoutMs"] / 1000
+            )
+        if action == "files_list":
+            return await asyncio.to_thread(box.files_list, computer_id, parsed["path"])
+        if action == "files_read":
+            return await asyncio.to_thread(box.files_read, computer_id, parsed["path"])
+        if action == "files_write":
+            return await asyncio.to_thread(
+                box.files_write, computer_id, parsed["path"], parsed["contents"], parsed.get("append", False)
+            )
+        raise SandboxError("The browser needs a container engine (Docker or Podman); this sandbox is native.")
 
     @property
     def runtime(self):
@@ -278,6 +312,8 @@ class SandboxService:
 
     @property
     def configured(self) -> bool:
+        if self.native:
+            return True
         return bool(
             self.config.supervisor_url and self.config.supervisor_token and self.config.computer_token
         )
@@ -430,6 +466,8 @@ class SandboxService:
             base["runtime"] = self.runtime.describe()
         except Exception:  # noqa: BLE001 -- Describing the runtime never breaks status.
             pass
+        if self.native:
+            return {**base, "state": "running", "engine": "native", "tools": ["shell", "files"]}
         if not self.configured:
             return {**base, "state": "not_configured"}
         try:
@@ -456,6 +494,8 @@ class SandboxService:
 
     async def start(self, computer_id: str, actor="owner", consent=None) -> dict:
         self.allowed(computer_id, None, actor)
+        if self.native:
+            return await self.status(computer_id)
         try:
             ensured = await self._supervisor(f"/computers/{computer_id}/ensure", {})
         except SandboxError as exc:
@@ -469,6 +509,10 @@ class SandboxService:
 
     async def stop(self, computer_id: str) -> dict:
         self.require(computer_id)
+        if self.native:
+            return await self.status(
+                computer_id
+            )  # Native commands end with themselves; nothing keeps running.
         if not self.configured:
             raise SandboxError("The sandbox is not set up.")
         await self._supervisor(f"/computers/{computer_id}/stop", {})
@@ -505,6 +549,15 @@ class SandboxService:
             raise SandboxError("Human controls are owner-only.")
         kind = kind_of(action)
         self.allowed(computer_id, kind, actor)
+        if self.native:
+            from .native_sandbox import NativeSandboxError
+
+            try:
+                result = await self._native_action(computer_id, action, parsed)
+            except NativeSandboxError as exc:
+                raise SandboxError(str(exc)) from None
+            self.allowed(computer_id, kind, actor)
+            return result
         stop = asyncio.Event()
 
         async def watch():

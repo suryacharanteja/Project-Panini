@@ -249,3 +249,27 @@ def test_a_start_with_the_supervisor_down_brings_the_runtime_up_first(tmp_path):
     with pytest.raises(SandboxError, match="automatic start is off"):
         asyncio.run(service.start("panini"))
     store.close()
+
+
+def test_a_rootless_podman_machine_is_switched_to_rootful_once_approved(monkeypatch):
+    monkeypatch.setenv("PANINI_SANDBOX_AUTOSTART", "on")
+    fake = FakeEngine(running=True)
+    state = {"rootless": True}
+    original = fake.run
+
+    def run(args, timeout=60, env=None):
+        if "{{.Host.Security.Rootless}}" in args:
+            return 0, "true" if state["rootless"] else "false"
+        if args[1:4] == ["machine", "set", "--rootful"]:
+            state["rootless"] = False
+        return original(args, timeout, env)
+
+    rt, engine, _ = runtime(fake, name="podman")
+    engine.run = run
+    asyncio.run(rt.ensure_engine())
+    assert state["rootless"] is False
+    assert [a[1:3] for a, _ in fake.commands if "machine" in a] == [
+        ["machine", "stop"],
+        ["machine", "set"],
+        ["machine", "start"],
+    ]
