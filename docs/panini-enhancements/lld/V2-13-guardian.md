@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 3 · P0 · M (4–5 days) |
 | Depends on | V2-03 (taint and policy), V2-01 (eval harness) |
 | Flag | `PANINI_GUARDIAN` (default `false`; required before any remote surface is enabled) |
-| Status | Partial (2026-10-03) |
+| Status | Partial; red-team work in progress (2026-10-04) |
 
 ## 1. Outcome
 

@@ -17,7 +17,7 @@ def test_gated_surfaces_stay_off_without_a_result_and_say_why(tmp_path, monkeypa
     monkeypatch.setenv("PANINI_PHONE_LINE", "true")
     monkeypatch.setenv("PANINI_CHANNELS", "slack,email")
     assert not v2flags.enabled("PANINI_PHONE_LINE") and v2flags.listed("PANINI_CHANNELS") == set()
-    assert "No red-team result" in v2flags.blocked_by_gate("PANINI_PHONE_LINE")
+    assert "Red-team work is in progress" in v2flags.blocked_by_gate("PANINI_PHONE_LINE")
     assert "PANINI_CHANNELS" in v2flags.status()["gate"]["blocked"]
 
 

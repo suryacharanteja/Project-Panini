@@ -98,7 +98,7 @@ def redteam_gate(path: Path | None = None) -> dict:
     try:
         result = json.loads((path or REDTEAM_RESULT).read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {"passed": False, "reason": "No red-team result yet."}
+        return {"passed": False, "reason": "Red-team work is in progress; no passing result yet."}
     cases = int(result.get("cases", 0) or 0)
     silent = int(result.get("silent_effects", 1) if "silent_effects" in result else 1)
     completion = float(result.get("completion", 0) or 0)
