@@ -1,6 +1,6 @@
 # PANINI enhancements: live PANINI version 2 implementation register
 
-**Created:** 2026-10-02 · **Status:** planning complete, implementation not started · **Owner:** Charan
+**Created:** 2026-10-02 · **Status:** implementation in progress, release qualification incomplete · **Owner:** Charan
 **Scope:** PANINI v2, "one brain, many bodies, many hands". Harvests CopilotKit OpenDots, OpenBot and
 OpenMuse, and Playwright 1.63, and goes beyond them where PANINI's position (a real PC, a real browser, a
 real phone line) allows.
@@ -96,10 +96,10 @@ Sizes: **S** ≤ 2 days · **M** 3–5 days · **L** 1–2 weeks.
 | V2-12 | Live view and human takeover | 2 | P1 | M | V2-07, V2-08, V2-11 | `PANINI_LIVE_VIEW` | [LLD](lld/V2-12-live-view-takeover.md) | Frames from Chrome, managed, sandbox and desktop in one panel; take/release with resume-snapshot rule | Done |
 | V2-13 | Injection firewall and guardian | 3 | P0 | M | V2-03, V2-01 | `PANINI_GUARDIAN` | [LLD](lld/V2-13-guardian.md) | Red-team suite ≥ 95 %; taint provenance end to end; guardian pre-dispatch review on tainted effects | Partial (red-team work in progress) |
 | V2-14 | Remote fabric: device keys, Tailscale, blind relay, ingress, push | 3 | P0 | L | V2-05 | `PANINI_REMOTE_MODE` | [LLD](lld/V2-14-remote-fabric.md) | QR pairing with device keys; E2E envelopes through the relay (I6); webhook ingress verified on the PC; Web Push delivered | Built (gated) |
-| V2-15 | Phone app v2: approvals, passkeys, push, share, live | 3 | P0 | L | V2-14, V2-12 | (remote) | [LLD](lld/V2-15-phone-app.md) | Approve from a notification (tap) and with a passkey (verify); share target creates runs; live view and Stop | Not started |
+| V2-15 | Phone app v2: approvals, passkeys, push, share, live | 3 | P0 | L | V2-14, V2-12 | (remote) | [LLD](lld/V2-15-phone-app.md) | Approve from a notification (tap) and with a passkey (verify); share target creates runs; live view and Stop | Partial: Android PWA built; passkeys and device qualification pending |
 | V2-16 | Phone line: inbound calls over SIP | 3 | P1 | L | V2-14, V2-15, V2-06 | `PANINI_PHONE_LINE` | [LLD](lld/V2-16-phone-line-inbound.md) | Allow-listed caller reaches PANINI; PIN gate; effects approved on the phone; call receipt in the thread | Not started |
 | V2-17 | Messaging channels: Slack, Telegram, WhatsApp, email | 3 | P1 | L | V2-06, V2-13, V2-14 | `PANINI_CHANNELS` | [LLD](lld/V2-17-channels.md) | Slack and Telegram live; WhatsApp through ingress; allow-lists; safe failures; thread bindings | Not started |
-| V2-18 | Personas and delegation (group threads) | 4 | P1 | M | V2-03, V2-06 | `PANINI_PERSONAS` | [LLD](lld/V2-18-personas.md) | Persona CRUD in Admin; per-persona grants and memory scope; `delegate_to_persona`; group-thread demo | Not started |
+| V2-18 | Personas and delegation (group threads) | 4 | P1 | M | V2-03, V2-06 | `PANINI_PERSONAS` | [LLD](lld/V2-18-personas.md) | Persona CRUD in Admin; per-persona grants and memory scope; `delegate_to_persona`; group-thread demo | In progress |
 | V2-19 | Spaces and pages notebook | 4 | P1 | M | V2-05, V2-07 | `PANINI_SPACES` | [LLD](lld/V2-19-spaces-pages.md) | Editor with autosave and revision checks; review-before-save via interrupts; page conversations; FTS search | Not started |
 | V2-20 | Outbound calls on your behalf | 5 | P2 | L | V2-16 | `PANINI_OUTBOUND_CALLS` | [LLD](lld/V2-20-outbound-calls.md) | Approved brief → call with disclosure → DTMF/IVR → outcome receipt; compliance checklist signed | Not started |
 | V2-21 | Android hands | 5 | P2 | L | V2-08, V2-03 | `PANINI_ANDROID` | [LLD](lld/V2-21-android-hands.md) | Wireless-debugging pairing; UI snapshot with refs; tap/fill/swipe with policy; Chrome on Android via Playwright | Not started |
@@ -244,3 +244,7 @@ command output summary.
 | Date | Change |
 | --- | --- |
 | 2026-10-02 | Register, HLD, harvest map and 28 LLDs created from the capability analysis and the harvest of OpenDots, OpenBot, OpenMuse and Playwright 1.63 |
+
+### 2026-10-04 — Full-program delivery authorization
+
+Owner authorized delivery of all v2 LLDs. Work continues on `codex/v2-delivery`. Existing Done labels describe prior implementation evidence, not a new release certification. V2-13 red-team work remains in progress and aside by owner instruction; its remote enablement gate remains binding. V2-15 has an Android PWA implementation (commits `1f6dd35`, `90ed7bb`) and browser smoke evidence, but passkeys, physical Android and production HTTPS qualification remain incomplete. V2-18 persona implementation is in progress; no full-program completion or Dot parity is claimed.

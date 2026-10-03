@@ -24,6 +24,35 @@ const fixture = (name: string) =>
   sseEvents(readFileSync(join(__dirname, 'fixtures', `agui-${name}.sse`), 'utf-8') + '\n\n')
     .events as any[];
 
+it('keeps persona attribution on the matching message while text streams', () => {
+  let state = applyEvent(emptyConversation(), {
+    type: 'TEXT_MESSAGE_START',
+    messageId: 'member-1',
+    role: 'assistant',
+  });
+  state = applyEvent(state, {
+    type: 'CUSTOM',
+    name: 'panini.persona',
+    value: { messageId: 'member-1', personaId: 'scout' },
+  });
+  state = applyEvent(state, {
+    type: 'TEXT_MESSAGE_CONTENT',
+    messageId: 'member-1',
+    delta: 'Research result',
+  });
+  expect(state.entries[0]).toMatchObject({
+    kind: 'message',
+    personaId: 'scout',
+    text: 'Research result',
+  });
+  const unchanged = applyEvent(state, {
+    type: 'CUSTOM',
+    name: 'panini.persona',
+    value: { messageId: 'missing', personaId: 'quill' },
+  });
+  expect(unchanged.entries[0]).toEqual(state.entries[0]);
+});
+
 describe('AG-UI conformance (V2-07)', () => {
   // Recorded from the real endpoint by scripts/agui-fixture.py: a tool call, an approval interrupt and its resume.
   for (const name of ['run-interrupt', 'run-resume', 'connect']) {

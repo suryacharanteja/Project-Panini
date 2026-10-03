@@ -105,13 +105,14 @@ class BrowserHand:
             return self.active[run]
         preference = getattr(getattr(ctx, "agent", None), "browser_preference", None)
         ready = await self.ready()
-        if preference in ready and ready[preference].state == "ready":
-            browser = preference
-        elif ready["chrome"].state == "ready":
-            browser = "chrome"
-        elif ready["managed"].state == "ready":
-            browser = "managed"
-        else:
+        allowed = set(ready)
+        if getattr(getattr(ctx, "principal", None), "kind", None) == "persona":
+            permissions = self.runtime["harness"].personas.permissions(ctx.principal.client_id)
+            allowed = {b for b in ready if ("chrome" if b == "chrome" else "managed") in permissions}
+        browser = next(
+            (b for b in (preference, "chrome", "managed") if b in allowed and ready[b].state == "ready"), None
+        )
+        if browser is None:
             return None
         self.active[run] = browser
         return browser
@@ -139,6 +140,11 @@ class BrowserHand:
         if name == "browser_select":
             return await self._select(ctx, args)
         browser = await self.choose(ctx)
+        if browser and getattr(getattr(ctx, "principal", None), "kind", None) == "persona":
+            permissions = self.runtime["harness"].personas.permissions(ctx.principal.client_id)
+            required = "chrome" if browser == "chrome" else "managed"
+            if required not in permissions:
+                return ToolResult("blocked", "This persona lacks permission for this browser.")
         if browser is None:
             return ToolResult(
                 "blocked",
@@ -446,6 +452,10 @@ class BrowserHand:
 
     async def _select(self, ctx, args):
         browser = str(args.get("browser", ""))
+        if getattr(getattr(ctx, "principal", None), "kind", None) == "persona":
+            permissions = self.runtime["harness"].personas.permissions(ctx.principal.client_id)
+            if ("chrome" if browser == "chrome" else "managed") not in permissions:
+                return ToolResult("blocked", "This persona lacks permission for this browser.")
         if browser not in ("chrome", "managed", "isolated"):
             return ToolResult("blocked", "Choose chrome, managed or isolated.")
         ready = await self.ready()

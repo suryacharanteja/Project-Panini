@@ -155,6 +155,9 @@ export function ConversationsPage() {
                       : 'max-w-[90%] whitespace-pre-wrap text-sm'
                   }
                 >
+                  {entry.personaId && (
+                    <span className="mb-1 block text-xs text-copper-light">{entry.personaId}</span>
+                  )}
                   {entry.text}
                 </p>
               )}

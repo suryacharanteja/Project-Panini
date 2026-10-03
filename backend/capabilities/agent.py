@@ -112,6 +112,7 @@ class AgentAdapter:
             scope=None,
             deadline_seconds=540,
             confirm=confirm,
+            surface="avatar",
         )
 
         agent.run_id = context.task.task_id

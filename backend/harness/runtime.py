@@ -71,6 +71,9 @@ class Harness:
         from .. import policy
 
         self.policy = policy.install(policy.Policy(self.store))
+        from ..personas import Personas
+
+        self.personas = Personas(self.store, self.policy)
         from .. import ledger
         from ..extension_pairing import data_directory
 
@@ -106,7 +109,7 @@ class Harness:
         )
         from .. import v2flags
 
-        if v2flags.enabled("PANINI_V2_REGISTRY"):
+        if v2flags.enabled("PANINI_V2_REGISTRY") or v2flags.enabled("PANINI_PERSONAS"):
             agent.registry = self.registry
         return agent
 
@@ -298,6 +301,12 @@ class Harness:
         available = [c for c in BACKGROUND_CAPABILITIES if c in self.adapters]
 
         async def delegate(capability, instruction):
+            if capability not in available:
+                return {
+                    "outcome": "blocked",
+                    "message": "This capability is unavailable for background work.",
+                    "results": [],
+                }
             tasks.checkpoint(
                 task["id"], task["lease_id"], {"capability": capability, "instruction": instruction}
             )
@@ -353,6 +362,7 @@ class Harness:
             confirm=self._background_confirm(task) if active() else None,
             private=not external,
             background=True,
+            surface="phone_app" if task.get("origin") == "phone" else "background",
         )
         agent.run_id = task["id"]
         from .. import brain

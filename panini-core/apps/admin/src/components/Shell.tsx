@@ -58,6 +58,7 @@ export const NAV: Section[] = [
       { to: '/build/connectors', label: 'Connectors', icon: <Plug size={16} />, deva: 'सेतु' },
       { to: '/build/automations', label: 'Automations', icon: <Timer size={16} />, deva: 'नियम' },
       { to: '/build/agents', label: 'Agents', icon: <Bot size={16} />, deva: 'कर्ता' },
+      { to: '/build/personas', label: 'Personas', icon: <Bot size={16} /> },
       {
         to: '/build/capabilities',
         label: 'Capabilities',

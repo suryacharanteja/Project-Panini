@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 4 · P1 · M (5 days) |
 | Depends on | V2-03 (grants), V2-06 (run engine and sub-runs) |
 | Flag | `PANINI_PERSONAS` (default `false`) |
-| Status | Not started |
+| Status | In progress |
 
 ## 1. Outcome
 
@@ -60,8 +60,8 @@ CREATE TABLE IF NOT EXISTS personas(
   id TEXT PRIMARY KEY,                 -- slug: "panini", "scout", "quill"
   name TEXT NOT NULL, role TEXT NOT NULL, instructions TEXT NOT NULL,
   voice TEXT, color TEXT NOT NULL,     -- brand palette token
-  default_space_id TEXT, memory_scope TEXT NOT NULL DEFAULT 'global',   -- global | persona | none
-  memory_write INTEGER NOT NULL DEFAULT 1, computer_id TEXT, model_tier TEXT,
+  default_space_id TEXT, memory_scope TEXT NOT NULL DEFAULT 'persona',   -- global | persona | none
+  memory_write INTEGER NOT NULL DEFAULT 0, computer_id TEXT, model_tier TEXT,
   archived INTEGER NOT NULL DEFAULT 0, created REAL NOT NULL, updated REAL NOT NULL);
 ```
 
@@ -141,9 +141,37 @@ conversation; members speak only through delegations or when addressed directly.
 
 ## 9. Rollout and rollback
 
-Flag on after step 5. Rollback: flag off → every run uses `panini`; persona rows and grants remain.
+Flag on after qualification. Rollback: flag off → new runs use `panini`; specialist resume checkpoints are refused, and active specialists retain their restricted principal. Persona rows and grants remain.
 
 ## 10. Open questions
 
 - Per-persona model choice (for example a cheaper model for a researcher)? Supported through `model_tier`;
   default inherits the run engine's router.
+
+## 11. Implementation evidence — 2026-10-04
+
+Development checkpoint on `codex/v2-delivery`; this LLD remains **In progress**.
+
+Implemented:
+
+- SQLite migration and validated persona CRUD; PANINI identity file synchronization and protected default identity.
+- Explicit persona grants, expiry-aware scoped memory, permission changes and archive revocation; specialist policy is enforced even when owner policy is in shadow mode.
+- Explicit mentions, confidence-gated voice addressing, per-surface defaults and durable thread persona binding.
+- Fresh-context delegation, explicit quarantined context sharing, sequential teams/reviewers, depth-one delegation and per-child budget allocation.
+- Teams stop when a member cannot finish and report the unfinished chain; a failed reviewer cannot be presented as a completed review.
+- Persona identity and budget retained in resume checkpoints; disabling Personas refuses old specialist resumes rather than escalating them to owner privileges.
+- Assigned sandbox computer selection, Chrome/managed browser permission separation, attributed run principals and ledger receipts.
+- Admin persona editor, permission switches, defaults, effect-free identity preview and attributed conversation messages.
+
+Default adjustment: new specialists use `memory_scope=persona` and `memory_write=false`; they have no memory grant by default. PANINI itself retains global memory. This makes a new specialist private by default while preserving the explicit global setting.
+
+Verification: `backend/tests/personas/test_personas.py` covers isolation, context sharing, grants/expiry, archived identities, routing, team budget allocation, receipt attribution, sandbox selection, resume identity and rollback. `npm run personas:smoke` runs the built Admin UI against a loopback-only throwaway backend: create/edit/grants/test/reload/mobile/archive. Provider replies in this smoke are scripted; it is not live model qualification.
+
+Remaining before LLD completion:
+
+- Full persona colour/name chips and voice presentation across the avatar and phone, including live voice switching qualification.
+- Spaces access/default-destination integration (V2-19), and channel permission integration when V2-17 exists.
+- Complete group continuation across a member's parked approval, including lead resumption and cost accounting across attempts.
+- Persona cases in the evaluation scorecard and a live research-to-writing team qualification.
+
+`PANINI_PERSONAS` stays off by default. Existing remote enablement gates are unchanged; red-team work is in progress and aside.

@@ -260,7 +260,11 @@ class AguiRuns:
             return projector.tool_finished(data["call_id"], data.get("output"))
         if event == "message":
             said.append(data["text"])
-            return projector.text(data["text"])
+            return projector.text(data["text"], persona_id=data.get("persona_id"))
+        if event in {"subagent.started", "subagent.finished"}:
+            return projector.activity(
+                event, f"{data.get('persona_id', 'Specialist')}: {event.rsplit('.', 1)[-1]}"
+            )
         if event == "plan":
             return projector.plan(data.get("plan") or [])
         return projector.activity(data.get("kind", event), data.get("message", ""))
@@ -358,7 +362,12 @@ class AguiRuns:
                 publish("activity", kind=kind, message=message)
 
         agent = self.h.agent(
-            delegate=delegate, emit=emit, capabilities=chosen, confirm=confirm, deadline_seconds=540
+            delegate=delegate,
+            emit=emit,
+            capabilities=chosen,
+            confirm=confirm,
+            deadline_seconds=540,
+            surface="agui",
         )
         agent.run_id, agent.thread_id = ledger_run, thread
         agent.observe = publish

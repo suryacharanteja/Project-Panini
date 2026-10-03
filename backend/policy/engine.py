@@ -233,6 +233,12 @@ class Policy:
         if spec.name.endswith("_run") and effect is not E.CREDENTIAL:
             level = L.NONE  # The capability asks per action itself.
         subjects = subjects or _subjects(principal)
+        if principal.kind == "persona":
+            # Specialists never inherit owner or surface grants. An absent grant is a denial,
+            # including read-only tools; approval cannot supply a missing permission.
+            subjects = {f"persona:{principal.client_id}"}
+            if not any(g.applies(subjects, spec, principal, self.clock()) for g in self.grants()):
+                return Decision("deny", L.DENY, effect, ("Persona lacks this permission",), tier=where)
         grant_ids = []
         now = self.clock()
         for grant in sorted(self.grants(), key=lambda g: g.specificity(spec)):

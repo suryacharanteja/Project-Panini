@@ -17,6 +17,25 @@ from backend.harness.store import Store
 HEADERS = {"x-panini-console": "t" * 32}
 
 
+def test_persona_admin_boundary_crud_and_test_chat(client, monkeypatch):
+    root = "/api/admin/v1/personas"
+    assert client.post(root, json={"id": "scout"}).status_code in {401, 403}
+    response = client.post(root, headers=HEADERS, json={"id": "scout", "values": {"name": "Scout"}})
+    assert response.status_code == 200
+    assert response.json()["permissions"] == ["research", "spaces_read"]
+    assert client.patch(root + "/scout", headers=HEADERS, json={"archived": 1}).status_code == 422
+    assert client.put(root + "/scout/permissions", headers=HEADERS, json={"permissions": ["desktop"]}).json()[
+        "permissions"
+    ] == ["desktop"]
+    assert client.post(root + "/scout/test", headers=HEADERS, json={"text": "hi"}).status_code == 409
+    monkeypatch.setenv("PANINI_PERSONAS", "true")
+    tested = client.post(root + "/scout/test", headers=HEADERS, json={"text": "@panini hi"})
+    assert tested.status_code == 200 and tested.json()["persona_id"] == "scout"
+    assert client.delete(root + "/panini", headers=HEADERS).status_code == 422
+    assert client.delete(root + "/scout", headers=HEADERS).json()["archived"]
+    assert not client.h.policy.grants("persona:scout")
+
+
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     root = tmp_path / "root"

@@ -27,12 +27,12 @@ class PolicyHook(Hooks):
         return self._policy or current()
 
     async def before(self, ctx, spec, args):
-        if self.mode == "off":
+        if self.mode == "off" and ctx.principal.kind != "persona":
             return None
         background = bool(getattr(ctx.view, "background", False))
         decision = self.policy.decide(ctx.principal, spec, args, taint=ctx.taint, background=background)
         ctx.decision = decision
-        if self.mode != "enforce":
+        if self.mode != "enforce" and ctx.principal.kind != "persona":
             return None
         from ..core_contracts import ToolResult
 
@@ -74,7 +74,7 @@ class PolicyHook(Hooks):
         token_asked = v1_asked.set(cell)
         token_pre = preapproved.set(bool(getattr(ctx, "preapproved", False)))
         try:
-            if self.mode != "enforce":
+            if self.mode != "enforce" and ctx.principal.kind != "persona":
                 return await call()
             return await self._revocable(ctx, spec, args, call)
         finally:

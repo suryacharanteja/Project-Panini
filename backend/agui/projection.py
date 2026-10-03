@@ -43,11 +43,15 @@ class Projector:
             RunStartedEvent(thread_id=self.thread_id, run_id=self.run_id, parent_run_id=self.parent_run_id)
         ]
 
-    def text(self, text: str):
+    def text(self, text: str, persona_id: str | None = None):
         if not text:
             return []
         message_id = uuid4().hex
         events = [TextMessageStartEvent(message_id=message_id, role="assistant")]
+        if persona_id:
+            events.append(
+                CustomEvent(name="panini.persona", value={"messageId": message_id, "personaId": persona_id})
+            )
         events += [
             TextMessageContentEvent(message_id=message_id, delta=text[i : i + TEXT_CHUNK])
             for i in range(0, len(text), TEXT_CHUNK)

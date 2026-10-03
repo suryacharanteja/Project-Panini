@@ -90,15 +90,22 @@ class Memory:
             (limit,),
         )
 
-    def search(self, query, *, limit=6, scope=None, budget_chars=2400):
+    def search(self, query, *, limit=6, scope=None, budget_chars=2400, global_kinds=None):
         query = str(query or "").strip()
         if not query:
             return []
         scopes = ("global", scope) if scope else ("global",)
         marks = ",".join("?" * len(scopes))
+        restriction = ""
+        params = scopes
+        if global_kinds is not None:
+            if not global_kinds or any(kind not in KINDS for kind in global_kinds):
+                raise MemoryError("Choose supported global memory kinds.")
+            restriction = f" AND (scope!='global' OR kind IN ({','.join('?' for _ in global_kinds)}))"
+            params = (*scopes, *global_kinds)
         rows = self.store.all(
-            f"SELECT rowid, id, kind, text, source, scope, vector FROM memories WHERE scope IN ({marks})",
-            scopes,
+            f"SELECT rowid, id, kind, text, source, scope, vector FROM memories WHERE scope IN ({marks}){restriction}",
+            params,
         )
         if not rows:
             return []

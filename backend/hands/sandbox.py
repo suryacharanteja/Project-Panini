@@ -759,7 +759,17 @@ class SandboxHand:
     @staticmethod
     def computer_for(ctx) -> str:
         """One computer per persona; until personas arrive (V2-18) PANINI has one, named panini."""
-        persona = getattr(getattr(ctx, "principal", None), "persona", None)
+        principal = getattr(ctx, "principal", None)
+        if getattr(principal, "kind", None) == "persona":
+            harness = getattr(getattr(ctx, "agent", None), "h", None)
+            if harness is None:
+                raise SandboxError("A specialist sandbox requires its authenticated run context.")
+            persona = harness.personas.get(principal.client_id)
+            computer = persona["computer_id"]
+            if not computer or not NAME.fullmatch(computer):
+                raise SandboxError("This persona has no assigned computer.")
+            return computer
+        persona = getattr(principal, "persona", None)
         return persona if isinstance(persona, str) and NAME.match(persona) else DEFAULT_COMPUTER
 
     async def readiness(self, capability=None):

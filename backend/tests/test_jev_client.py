@@ -1,10 +1,39 @@
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from io import StringIO
 from pathlib import Path
 
 import pytest
 
 from backend.jev_client import JevClient
+
+
+def test_disabled_gates_do_not_spawn_a_warmup_process(monkeypatch):
+    from backend import jev_client
+
+    monkeypatch.setattr(jev_client.config, "jev_gates", lambda: False)
+    monkeypatch.setattr(jev_client._client, "start", lambda: pytest.fail("Disabled Jev was spawned"))
+    assert jev_client.warm() is False
+
+
+def test_startup_workers_capture_process_before_reader_clears_it(monkeypatch):
+    from types import SimpleNamespace
+
+    from backend import jev_client
+
+    process = SimpleNamespace(stdout=StringIO(""), stderr=StringIO(""), poll=lambda: 1, pid=9999)
+    monkeypatch.setattr(jev_client.subprocess, "Popen", lambda *args, **kwargs: process)
+
+    class ImmediateThread:
+        def __init__(self, *, target, args, daemon):
+            self.target, self.args = target, args
+
+        def start(self):
+            self.target(*self.args)
+
+    monkeypatch.setattr(jev_client.threading, "Thread", ImmediateThread)
+    with pytest.raises(RuntimeError, match="did not become ready"):
+        JevClient().start()
 
 
 @pytest.fixture

@@ -367,6 +367,9 @@ class AgentResult:
 
 
 class Agent:
+    persona_id = "panini"
+    surface = "agent"
+
     def __init__(
         self,
         harness,
@@ -382,6 +385,8 @@ class Agent:
         depth=0,
         private=True,
         background=False,
+        persona_id=None,
+        surface="agent",
     ):
         self.h, self.model, self.delegate = harness, model, delegate
         self.emit = emit or (lambda kind, message, **detail: None)
@@ -391,6 +396,13 @@ class Agent:
         # confirm(summary, detail) -> bool asks the person; None means nobody can be asked.
         self.confirm, self.depth = confirm, depth
         self.background = background
+        from .. import v2flags
+
+        self.persona_explicit = persona_id is not None
+        self.persona_id = (persona_id or "panini") if v2flags.enabled("PANINI_PERSONAS") else "panini"
+        self.surface = surface
+        self.budget_override = None
+        self.delegated_usd = 0.0
         # private=False: the result goes to someone else (another agent), so the person's
         # memories and skills-from-memory stay out of the context and memory tools are off.
         self.private = private
@@ -427,7 +439,7 @@ class Agent:
             s.name: [t["name"] for t in s.tools][:12]
             for s in (connectors.servers.values() if connectors else [])
         }
-        memories = self.h.memory.search(goal, scope=self.scope) if self.private else []
+        memories = self._search_memory(goal) if self.private else []
         questions = {
             f"group_{name}": {"type": "boolean", "instructions": text}
             for name, text in TOOL_GROUP_QUESTIONS.items()
@@ -513,7 +525,7 @@ class Agent:
         remotes = getattr(self.h, "remotes", None)
         return ToolView(
             capabilities=frozenset(self.capabilities),
-            surface="background" if self.background else "agent",
+            surface="background" if self.background else self.surface,
             background=self.background,
             private=self.private,
             depth=self.depth,
@@ -533,8 +545,12 @@ class Agent:
 
         if self._tool_context is None:
             principal = Principal(
-                kind="owner" if self.private else "external_agent",
-                surface="background" if self.background else "agent",
+                kind="persona"
+                if self.persona_id != "panini"
+                else ("owner" if self.private else "external_agent"),
+                surface="background" if self.background else self.surface,
+                client_id=self.persona_id if self.persona_id != "panini" else None,
+                verified=self.private,
             )
             self._tool_context = ToolContext(
                 principal=principal,
@@ -548,6 +564,52 @@ class Agent:
 
     def tools(self):
         offered = self._offered_tools()
+        from .. import v2flags
+
+        if v2flags.enabled("PANINI_PERSONAS") and self.private and not self.depth:
+            offered += [
+                _tool(
+                    "delegate_to_persona",
+                    "Assign one task to a specialist with its own permissions and fresh context.",
+                    {"persona_id": STRING, "task": STRING, "share_context": {"type": "boolean"}},
+                ),
+                _tool(
+                    "run_team",
+                    "Assign a shared goal to 1-4 named specialists, then synthesize their results.",
+                    {
+                        "goal": STRING,
+                        "members": {"type": "array", "items": STRING},
+                        "reviewer": {"type": ["string", "null"]},
+                    },
+                ),
+            ]
+        if self.persona_id != "panini":
+            try:
+                allowed_capabilities = [
+                    c
+                    for c in self.capabilities
+                    if self.registry is not None
+                    and self.h.personas.allows(
+                        self.persona_id, self.registry.resolve("use_capability", {"capability": c})
+                    )
+                ]
+                for tool in offered:
+                    if tool["name"] == "use_capability":
+                        tool["parameters"]["properties"]["capability"]["enum"] = allowed_capabilities
+                offered = [
+                    t
+                    for t in offered
+                    if t["name"] in {"finish", "update_plan", "delegate_to_persona", "run_team"}
+                    or (t["name"] == "use_capability" and allowed_capabilities)
+                    or (
+                        self.registry is not None
+                        and t["name"] in self.registry.specs
+                        and self.h.personas.allows(self.persona_id, self.registry.specs[t["name"]])
+                    )
+                ]
+                self.h.personas.get(self.persona_id)
+            except KeyError:
+                offered = []
         if _browser_v2() and getattr(self, "registry", None) is not None:
             offered = [t for t in offered if t["name"] != "browser"]
         only = getattr(self, "only_tools", None)
@@ -598,14 +660,22 @@ class Agent:
         from .learning import persona
 
         guide = INSTRUCTIONS if self.selection is None else principles({t["name"] for t in self.tools()})
+        if self.persona_id != "panini":
+            guide = guide.replace(
+                "You are PANINI, the person's personal agent",
+                "You are this named specialist, part of PANINI's team",
+            )
         # Identity first: it never changes within a task, so this prefix stays cached.
-        parts = [persona(), guide, f"Capabilities available now: {', '.join(self.capabilities) or 'none'}."]
+        from ..personas.prompt import identity
+
+        prefix = identity(self.h.personas.get(self.persona_id)) if self.persona_id != "panini" else persona()
+        parts = [prefix, guide, f"Capabilities available now: {', '.join(self.capabilities) or 'none'}."]
         chosen = self.selection
         if chosen is None:
             if catalog := self.h.skills.prompt():
                 parts.append(catalog)
             if self.private:
-                parts.extend(self._memory_blocks(self.h.memory.search(goal, scope=self.scope)))
+                parts.extend(self._memory_blocks(self._search_memory(goal)))
         else:
             skills = [
                 s
@@ -630,6 +700,11 @@ class Agent:
         parts.append(f"Local time: {time.strftime('%A %Y-%m-%d %H:%M')}.")
         return "\n\n".join(parts)
 
+    def _search_memory(self, query):
+        if self.persona_id != "panini":
+            return self.h.personas.search_memory(self.h.memory, self.persona_id, query)
+        return self.h.memory.search(query, scope=self.scope)
+
     def _memory_blocks(self, memories):
         """Relevant memories, with learned lessons as their own block. Lessons shown are recorded
         so each one is graded by how the tasks that used it went."""
@@ -651,11 +726,60 @@ class Agent:
 
     async def run(self, goal, *, session_id=None, resume=None):
         """Run the loop. `resume` is a checkpoint (V2-06) to continue a parked or interrupted run from."""
-        from .. import brain
+        from .. import brain, v2flags
+
+        if (
+            resume
+            and resume.get("persona_id", "panini") != "panini"
+            and not v2flags.enabled("PANINI_PERSONAS")
+        ):
+            return AgentResult(
+                "blocked", "This specialist run cannot resume while Personas are off. Start a new request."
+            )
+        if resume and v2flags.enabled("PANINI_PERSONAS"):
+            self.persona_id = resume.get("persona_id", self.persona_id)
+            self.depth = max(self.depth, int(resume.get("depth", 0)))
+            self.h.personas.get(self.persona_id)
+            self._tool_context = None
+            if resume.get("persona_budget"):
+                self.budget_override = brain.Budget(**resume["persona_budget"])
+            self.delegated_usd = float(resume.get("delegated_usd", 0))
+        if v2flags.enabled("PANINI_PERSONAS") and not self.depth and self.private:
+            from ..personas.routing import select, voice_probabilities
+
+            self.thread_id = self.thread_id or session_id
+            bound = (
+                self.h.store.one(
+                    "SELECT persona_id FROM persona_threads WHERE thread_id=?", (self.thread_id,)
+                )
+                if self.thread_id
+                else None
+            )
+            self.persona_id = select(
+                self.h.personas,
+                goal,
+                surface=self.surface,
+                bound=bound["persona_id"] if bound else (self.persona_id if self.persona_explicit else None),
+                voice=self.surface == "avatar",
+                probabilities=await voice_probabilities(self.h.personas, goal)
+                if self.surface == "avatar"
+                else None,
+            )
+            self._tool_context = None
+            if self.thread_id:
+                self.h.store.execute(
+                    "INSERT INTO persona_threads(thread_id,persona_id) VALUES (?,?) ON CONFLICT(thread_id) DO UPDATE SET persona_id=excluded.persona_id",
+                    (self.thread_id, self.persona_id),
+                )
 
         started = time.monotonic()
         self.goal = goal
-        one_brain = (brain.enabled() or self.durable) and getattr(self.h, "runs", None) is not None
+        one_brain = (
+            brain.enabled()
+            or self.durable
+            or v2flags.enabled("PANINI_PERSONAS")
+            or self.persona_id != "panini"
+        ) and getattr(self.h, "runs", None) is not None
         items, summary, first = [], "", 1
         if session_id:
             session = self.h.sessions.get(session_id)
@@ -710,13 +834,32 @@ class Agent:
                 prompt = instructions + (
                     f"\n\nEarlier in this conversation (summary):\n{summary}" if summary else ""
                 )
-                turn = await self.model.respond(prompt, items, self.tools(), cache_key="panini-agent")
+                turn = await self.model.respond(
+                    prompt,
+                    items,
+                    self.tools(),
+                    cache_key=f"panini-agent:{self.persona_id}"
+                    if v2flags.enabled("PANINI_PERSONAS")
+                    else "panini-agent",
+                )
                 record_usage(self.model, getattr(turn, "usage", None))
                 if self.brain:
                     self.brain["meter"].add_turn(self.brain["router"].name, getattr(turn, "usage", None))
                 items.extend(turn.items)
                 if turn.text and self.observe:
-                    self.observe("message", text=turn.text)
+                    self.observe("message", text=turn.text, persona_id=self.persona_id)
+                if turn.text and v2flags.enabled("PANINI_PERSONAS"):
+                    self.h.store.execute(
+                        "INSERT INTO persona_messages(thread_id,run_id,persona_id,kind,text,created) VALUES (?,?,?,?,?,?)",
+                        (
+                            self.thread_id,
+                            (self.brain or {}).get("run"),
+                            self.persona_id,
+                            "assistant",
+                            turn.text[:16000],
+                            time.time(),
+                        ),
+                    )
                 if not turn.calls:
                     # A plain answer: backed by verified steps it is complete; otherwise just a reply.
                     outcome = "reply"
@@ -808,7 +951,9 @@ class Agent:
         if self.observe:
             self.observe("tool.started", call_id=call_id, name=name, args=_arguments(arguments))
         if name.startswith("client_") and self.client_call is not None:
-            if name not in {t["name"] for t in self.client_tools}:
+            if name not in {t["name"] for t in self.client_tools} or name not in {
+                t["name"] for t in self.tools()
+            }:
                 output, final = {"error": "This tool is unavailable in this task."}, None
             else:
                 output, final = {"result": await self.client_call(call_id, name, arguments)}, None
@@ -822,18 +967,27 @@ class Agent:
     def _start_run(self, resume):
         from .. import brain
 
-        budget = brain.Budget.for_mode(self.background)
+        budget = self.budget_override or brain.Budget.for_mode(self.background)
         self.max_steps = min(self.max_steps, budget.max_steps)
         self.deadline = min(self.deadline, budget.max_seconds)
         runs = self.h.runs
         tier = (self.selection or {}).get("tier") or (resume or {}).get("tier") or "agent"
+        if self.persona_id != "panini":
+            tier = self.h.personas.get(self.persona_id)["model_tier"] or tier
         router = brain.ModelRouter(self.model, tier, emit=self.emit)
         meter = brain.Meter(budget, spent_today=runs.spent_today)
+        if resume and resume.get("persona_budget"):
+            meter.usd = float(resume.get("budget_spent_usd", 0))
+            meter.steps = int(resume.get("budget_spent_steps", 0))
         run_id = runs.start(
             mode="background" if self.background else ("subagent" if self.depth else "foreground"),
             principal={
-                "kind": "owner" if self.private else "external_agent",
-                "surface": "background" if self.background else "agent",
+                "kind": "persona"
+                if self.persona_id != "panini"
+                else ("owner" if self.private else "external_agent"),
+                "client_id": self.persona_id if self.persona_id != "panini" else None,
+                "surface": "background" if self.background else self.surface,
+                "verified": self.private,
             },
             thread_id=self.thread_id,
             task_id=self.run_id,
@@ -851,6 +1005,12 @@ class Agent:
                 b["run"],
                 {
                     "run_id": b["run"],
+                    "persona_id": self.persona_id,
+                    "depth": self.depth,
+                    "persona_budget": b["meter"].budget.view(),
+                    "budget_spent_usd": b["meter"].usd,
+                    "budget_spent_steps": b["meter"].steps,
+                    "delegated_usd": self.delegated_usd,
                     "goal": self.goal,
                     "pending": pending or [],
                     "items": items,
@@ -862,7 +1022,7 @@ class Agent:
                     "tier": b["router"].tier,
                 },
             )
-            self.h.runs.update(b["run"], tier=b["router"].tier, usage=b["meter"].view())
+            self.h.runs.update(b["run"], tier=b["router"].tier, usage=self._usage_view())
         except Exception:  # noqa: BLE001 -- Checkpoints are an optimisation; the run continues.
             logger.warning("Run checkpoint failed", exc_info=True)
 
@@ -873,16 +1033,26 @@ class Agent:
                 b["run"],
                 state,
                 {**result, "tier": b["router"].tier, "escalations": b["router"].escalations},
-                usage=b["meter"].view(),
+                usage=self._usage_view(),
             )
         except Exception:  # noqa: BLE001 -- Recording the run must never change its outcome.
             logger.warning("Run record failed", exc_info=True)
+
+    def _usage_view(self):
+        usage = self.brain["meter"].view()
+        # Child run rows already record their spend. Keep aggregate spend for the lead's
+        # budget, but store only its own spend in $.usd for the daily account total.
+        usage["delegated_usd"] = round(self.delegated_usd, 6)
+        usage["usd"] = round(max(0, self.brain["meter"].usd - self.delegated_usd), 6)
+        return usage
 
     async def _over_budget(self):
         """A plain stop message when a run or daily budget is reached, else None."""
         from ..brain import STOP_MESSAGES
 
         meter = self.brain["meter"]
+        if meter.steps >= meter.budget.max_steps:
+            return "I stopped at the step limit for this task."
         crossed = meter.exceeded()
         if crossed:
             return STOP_MESSAGES[crossed]
@@ -965,6 +1135,24 @@ class Agent:
 
     async def _call(self, name, a):
         registry = getattr(self, "registry", None)
+        if name in {"delegate_to_persona", "run_team"}:
+            from ..brain.control_tools import delegate_to_persona, run_team
+
+            if name == "delegate_to_persona":
+                return await delegate_to_persona(
+                    self, a["persona_id"], a["task"], a.get("share_context", False)
+                ), None
+            return await run_team(self, a["goal"], a["members"], a.get("reviewer")), None
+        if self.persona_id != "panini":
+            row = self.h.personas.get(self.persona_id)
+            if registry is None:
+                return {"error": "Specialists require the permission-enforcing registry."}, None
+            if name not in {"finish", "update_plan"}:
+                target = registry.resolve(name, a)
+                if not self.h.personas.allows(self.persona_id, target):
+                    return {"error": "This persona lacks this permission."}, None
+            if name.startswith("sandbox_") and a.get("computer", row["computer_id"]) != row["computer_id"]:
+                return {"error": "This persona can use only its assigned computer."}, None
         if registry is not None and name not in registry.control:
             ctx = self.tool_context()
             ctx.final = None
@@ -1032,7 +1220,7 @@ class Agent:
         if name in COMPUTER_TOOLS:
             return await self._computer(name, a), None
         if name == "recall":
-            found = self.h.memory.search(a["query"], scope=self.scope)
+            found = self._search_memory(a["query"])
             return {"memories": [{k: m[k] for k in ("id", "kind", "text")} for m in found]}, None
         if name == "remember":
             source = "agent"
@@ -1043,11 +1231,21 @@ class Agent:
                 if not await self._approved("Remember this?", a["text"]):
                     return {"error": "The person did not approve saving this memory."}, None
                 source = "agent:tainted"
-            memory = self.h.memory.add(a["text"], kind=a["kind"], source=source, scope=self.scope or "global")
+            destination = (
+                self.h.personas.memory_destination(self.persona_id)
+                if self.persona_id != "panini"
+                else self.scope or "global"
+            )
+            memory = self.h.memory.add(a["text"], kind=a["kind"], source=source, scope=destination)
             self.evidence.append(f"memory:{memory['id']}")
             self.emit("memory", f"Remembered: {memory['text'][:200]}")
             return {"ok": True, "id": memory["id"]}, None
         if name == "forget":
+            if self.persona_id != "panini":
+                destination = self.h.personas.memory_destination(self.persona_id)
+                row = self.h.store.one("SELECT scope FROM memories WHERE id=?", (a["memory_id"],))
+                if row and row["scope"] != destination:
+                    return {"error": "This memory belongs to another scope."}, None
             return {"deleted": self.h.memory.forget(a["memory_id"])}, None
         if name == "load_skill":
             skill = self.h.skills.load(a["name"])
@@ -1374,7 +1572,10 @@ class Agent:
                 scope=self.scope,
                 confirm=self.confirm,
                 depth=self.depth + 1,
+                persona_id=self.persona_id,
+                private=self.private,
             )
+            child.registry = self.registry
             child.run_id, child.parent_run = self.run_id, (self.brain or {}).get("run")
             self.emit("subagent", f"Sub-agent {index + 1}: {t['task'][:200]}")
             result = await child.run(t["task"][:4000])

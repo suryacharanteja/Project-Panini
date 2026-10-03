@@ -40,7 +40,8 @@
     "cli": ".venv\\Scripts\\panini-cli.exe",
     "phone:dev": ".venv\\Scripts\\python.exe scripts/panini-phone-dev.py",
     "phone:test": "node --test panini-core/apps/phone/test/*.test.mjs",
-    "phone:smoke": "node scripts/panini-phone-smoke.mjs"
+    "phone:smoke": "node scripts/panini-phone-smoke.mjs",
+    "personas:smoke": "node scripts/panini-persona-smoke.mjs"
   },
   "keywords": [
     "panini",
