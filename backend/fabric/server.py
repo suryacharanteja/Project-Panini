@@ -28,6 +28,7 @@ class FabricServer:
     def __init__(self, app, identity, devices, *, clock=time.time):
         self.app, self.identity, self.devices, self.clock = app, identity, devices, clock
         self.secret = secrets.token_urlsafe(32)
+        self.push_key = ""  # The VAPID public key, set by the runtime.
         self.sessions: dict[str, envelope.Session] = {}
         self._calls: dict[tuple[str, str], deque] = defaultdict(deque)
 
@@ -70,6 +71,18 @@ class FabricServer:
 
     async def handle(self, conn: str, frame: dict) -> dict:
         try:
+            if frame.get("type") == "pair":
+                # Pairing runs on the same socket, so it also works through the relay (the PC still needs the
+                # person to confirm the SAS before the device can open a session).
+                from .devices import PairingError
+
+                p = frame.get("message") or {}
+                try:
+                    answer = self.devices.pair(str(p.get("code", "")), str(p.get("name", "Phone"))[:60],
+                                               str(p.get("sign_pub", "")), str(p.get("agree_pub", "")))  # fmt: skip
+                except (PairingError, ValueError) as exc:
+                    return {"type": "error", "error": str(exc)}
+                return {"type": "paired", "message": answer}
             if frame.get("type") == "hello":
                 welcome, session = envelope.welcome(self.identity, self.devices, frame.get("message") or {})
                 self.sessions[conn] = session

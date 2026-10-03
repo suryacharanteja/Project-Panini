@@ -1,0 +1,245 @@
+:root {
+  --bg: #f6f7f1;
+  --ink: #293428;
+  --muted: #6c7862;
+  --card: #fff;
+  --line: #e0e6d6;
+  --accent: #62794b;
+  --copper: #c98a4b;
+  --danger: #b4513f;
+  color-scheme: light dark;
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151a13;
+    --ink: #e5eadc;
+    --muted: #9aa78d;
+    --card: #1f251d;
+    --line: #333d2e;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100dvh;
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+}
+header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.mark {
+  letter-spacing: 4px;
+  font-weight: 600;
+}
+main {
+  padding: 16px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+h2 {
+  margin: 4px 0 12px;
+  font-size: 1.4rem;
+}
+h3 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.hero h2 {
+  font-size: 1.8rem;
+}
+.eyebrow {
+  margin: 0 0 4px;
+  font-size: 0.72rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.muted {
+  color: var(--muted);
+  margin: 4px 0;
+}
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 32px 0;
+}
+.note {
+  color: var(--copper);
+}
+.warn {
+  color: var(--danger);
+}
+.sas {
+  font-size: 2.2rem;
+  letter-spacing: 6px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  margin: 12px 0;
+}
+button {
+  min-height: 48px; /* Android touch target */
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+button.wide {
+  width: 100%;
+  margin-top: 10px;
+}
+button:disabled {
+  opacity: 0.5;
+}
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.actions button {
+  flex: 1;
+}
+input,
+textarea {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px;
+  margin: 8px 0;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8rem;
+}
+.interrupt[data-level='verify'] {
+  border-color: var(--copper);
+}
+.frame {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  display: block;
+  margin-top: 8px;
+  background: #000;
+  min-height: 120px;
+}
+.frame.input {
+  outline: 2px solid var(--copper);
+}
+nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+nav[hidden] {
+  display: none;
+}
+nav button {
+  flex: 1;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  font-weight: 500;
+  position: relative;
+}
+nav button.active {
+  color: var(--accent);
+  font-weight: 700;
+}
+nav button[data-badge]:not([data-badge=''])::after {
+  content: attr(data-badge);
+  position: absolute;
+  top: 6px;
+  right: calc(50% - 26px);
+  background: var(--copper);
+  color: #fff;
+  border-radius: 9px;
+  font-size: 0.7rem;
+  padding: 1px 6px;
+}
+.toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  background: var(--ink);
+  color: var(--bg);
+  padding: 12px 14px;
+  border-radius: 12px;
+  z-index: 5;
+}
+.toast.warn {
+  background: var(--danger);
+  color: #fff;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+[hidden] {
+  display: none !important;
+}
+button,
+input,
+select {
+  min-height: 48px;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 3px solid var(--copper);
+  outline-offset: 3px;
+}
+main[aria-busy='true'] {
+  opacity: 0.75;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

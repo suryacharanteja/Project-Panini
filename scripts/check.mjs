@@ -33,6 +33,8 @@ const checks = [
     'panini-core/capabilities/cli',
   ],
   [process.execPath, ['--test', 'frontend/test/*.test.mjs']],
+  // Phone app (V2-15): card logic and decision signing, in Node.
+  [process.execPath, ['--test', 'panini-core/apps/phone/test/*.test.mjs']],
   [process.execPath, [process.env.npm_execpath, 'run', 'test:search']],
   [
     process.execPath,

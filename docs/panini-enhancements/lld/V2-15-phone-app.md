@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 3 · P0 · L (1.5 weeks) |
 | Depends on | V2-14 (fabric), V2-12 (live view), V2-05 (interrupts) |
 | Flag | Active when `PANINI_REMOTE_MODE` ≠ `off` |
-| Status | Not started |
+| Status | In development: Android PWA pairing, screens, signed decisions and browser smoke verified; physical-device qualification pending |
 
 ## 1. Outcome
 

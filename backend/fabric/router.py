@@ -52,6 +52,19 @@ class Decision(BaseModel):
     signature: str
 
 
+class Ask(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class Share(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(default="", max_length=300)
+    text: str = Field(default="", max_length=8000)
+    url: str = Field(default="", max_length=2048)
+    note: str = Field(default="", max_length=1000)
+
+
 class Subscription(BaseModel):
     model_config = ConfigDict(extra="forbid")
     endpoint: str = Field(pattern="^https://")
@@ -149,3 +162,35 @@ async def forget(request: Request):
     fabric, device_id = _fabric(request)
     fabric.revoke(device_id)
     return {"forgotten": True}
+
+
+@router.post("/ask")
+async def ask(payload: Ask, request: Request):
+    """A request from the phone. It runs as a background task (least privilege); its approvals come back here."""
+    _, device_id = _fabric(request)
+    task = _harness(request).tasks.submit(payload.text, origin="phone", title=payload.text[:80])
+    return {"task_id": task["id"], "title": task.get("title", "")}
+
+
+@router.post("/share")
+async def share(payload: Share, request: Request):
+    """Something shared from another app on the phone (V2-15 §5.5). The shared content is untrusted: it reaches
+    PANINI inside an untrusted envelope, and only the person's own note says what to do with it."""
+    _fabric(request)
+    from ..policy.provenance import quarantine
+
+    if not (payload.text or payload.url or payload.title):
+        raise HTTPException(422, "Nothing was shared.")
+    shared = {"title": payload.title, "text": payload.text, "url": payload.url}
+    instruction = payload.note.strip() or "Tell me what this is and ask what I want to do with it."
+    goal = " ".join([instruction, "Shared from my phone:", quarantine(shared, ["shared"])["untrusted"]])
+    task = _harness(request).tasks.submit(
+        goal[:4000], origin="phone-share", title=(payload.title or payload.url or "Shared item")[:80]
+    )
+    return {"task_id": task["id"]}
+
+
+@router.get("/push/key")
+async def push_key(request: Request):
+    fabric, _ = _fabric(request)
+    return {"key": fabric.push_key}

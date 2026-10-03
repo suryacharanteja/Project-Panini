@@ -26,6 +26,7 @@ class Fabric:
         self.devices = Devices(store, self.identity)
         self.server = FabricServer(app, self.identity, self.devices).install()
         self.push = Push(store, secrets_store)
+        self.server.push_key = self.push.public_key
         self.settings_path = settings_path
         self.ingress = Ingress(store, self.settings().get("hooks", {}))
         self._tailscale = tailscale

@@ -10,6 +10,7 @@ import base64
 import json
 import secrets
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -19,6 +20,35 @@ from ..devices import PairingError
 from ..envelope import EnvelopeError
 
 MAX_FRAME = 1024 * 1024
+PHONE = Path(__file__).resolve().parents[3] / "panini-core" / "apps" / "phone"
+PUBLIC = {"index.html", "app.css", "app.js", "sw.js", "manifest.webmanifest"}
+PUBLIC_DIRS = ("lib/", "screens/", "icons/")
+TYPES = {".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript",
+         ".webmanifest": "application/manifest+json", ".png": "image/png", ".svg": "image/svg+xml"}  # fmt: skip
+CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
+    "connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+)
+
+
+def _asset(path: str):
+    """The phone app's public files only (never its tests), with a strict CSP."""
+    from fastapi.responses import FileResponse, Response
+
+    clean = path.strip("/")
+    if ".." in clean or not (clean in PUBLIC or clean.startswith(PUBLIC_DIRS)):
+        return Response(status_code=404)
+    file = PHONE / clean
+    if not file.is_file():
+        return Response(status_code=404)
+    headers = {
+        "Content-Security-Policy": CSP,
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-cache",
+    }
+    if clean == "sw.js":
+        headers["Service-Worker-Allowed"] = "/"
+    return FileResponse(file, media_type=TYPES.get(file.suffix, "application/octet-stream"), headers=headers)
 
 
 class Pair(BaseModel):
@@ -84,6 +114,11 @@ def build(fabric, mode: str, owner_login: str = "") -> FastAPI:
         finally:
             fabric.server.close(conn)
 
+    @app.get("/")
+    @app.get("/pair")
+    async def shell():
+        return _asset("index.html")
+
     @app.api_route("/hooks/{hook_id}/{secret}", methods=["GET", "POST"])
     async def hook(hook_id: str, secret: str, request: Request):
         body = await request.body()
@@ -92,5 +127,9 @@ def build(fabric, mode: str, owner_login: str = "") -> FastAPI:
             "headers": dict(request.headers), "body": base64.b64encode(body).decode(),
         })  # fmt: skip
         return PlainTextResponse(answer.get("body") or "", answer.get("status", 200))
+
+    @app.get("/{path:path}")  # Last: everything else is a phone-app file or 404.
+    async def asset(path: str):
+        return _asset(path)
 
     return app
