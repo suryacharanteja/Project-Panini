@@ -520,6 +520,7 @@ class Agent:
             ledger=v2flags.enabled("PANINI_V2_LEDGER"),
             managed_browser=v2flags.value("PANINI_BROWSER_DRIVER") == "playwright" and not self.background,
             claw_cdp=v2flags.enabled("PANINI_CLAW_CDP") and not self.background,
+            sandbox=v2flags.enabled("PANINI_SANDBOX"),  # Also for background work: it never touches this PC.
         )
 
     def tool_context(self):

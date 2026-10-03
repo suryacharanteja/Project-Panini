@@ -20,6 +20,7 @@ class ToolView:
     ledger: bool = False
     managed_browser: bool = False  # V2-08: PANINI_BROWSER_DRIVER=playwright
     claw_cdp: bool = False  # V2-09: PANINI_CLAW_CDP (full control of the attached Chrome tab)
+    sandbox: bool = False  # V2-11: PANINI_SANDBOX (PANINI's own isolated computers)
 
     def satisfies(self, requires) -> bool:
         checks = {
@@ -33,6 +34,7 @@ class ToolView:
             "managed_browser": self.managed_browser,
             "claw_cdp": self.claw_cdp,
             "browser_v2": self.managed_browser or self.claw_cdp,
+            "sandbox": self.sandbox,
         }
         return all(checks[r] for r in requires)
 

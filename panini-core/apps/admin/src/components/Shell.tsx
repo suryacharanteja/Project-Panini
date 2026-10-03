@@ -2,6 +2,7 @@ import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-route
 import {
   Activity,
   Bot,
+  Box,
   Boxes,
   Brain,
   Code2,
@@ -62,6 +63,7 @@ export const NAV: Section[] = [
         icon: <Layers size={16} />,
         deva: 'शक्ति',
       },
+      { to: '/build/computers', label: 'Computers', icon: <Box size={16} />, deva: 'यन्त्र' },
       { to: '/memory', label: 'Memory', icon: <Brain size={16} />, deva: 'स्मृति' },
     ],
   },

@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 2 · P1 · L (1–1.5 weeks) |
 | Depends on | V2-02, V2-03, V2-04; Docker Desktop (register D4) |
 | Flag | `PANINI_SANDBOX` (default `false`) |
-| Status | Not started |
+| Status | Built 2026-10-03; live checks pending Docker |
 
 ## 1. Outcome
 
@@ -153,6 +153,50 @@ Audit is the ledger (V2-04): every action has begin/end entries with actor `owne
 | Identity or endpoint mismatch | Refuse ("Computer endpoint is not bound to this persona"); log |
 | Revocation mid-action | Cancel token aborts the HTTP request; the receipt is `cancelled` or `unknown_effect` after dispatch; OpenDots note kept: an upstream browser operation may finish after cancellation |
 | Image or master token changed | Supervisor replaces owned containers on the next ensure, keeping volumes (OpenDots behaviour); Admin warns that in-flight work ends |
+
+### 5.9 As built (2026-10-03)
+
+- **Deployment** (`deployment/computers/`): `compose.yml` (project `panini-sandbox`, images
+  `panini-computer:b6932d3` and `panini-supervisor:b6932d3-panini-auth`, OpenBot pinned at
+  `b6932d31a8d6e7896c15139dfc27a6c6911deb27`, supervisor only on `127.0.0.1:4312`, Docker socket only in the
+  supervisor, `no-new-privileges`, `cap_drop: [ALL]`, `init`, health check), `supervisor.Dockerfile`,
+  `harden-supervisor.mjs` (per-computer credential `HMAC-SHA256(master, "panini-computer:" + id)`; refuses to
+  build if the pinned upstream line changed), `LICENSE.openbot`, `README.md`. Tokens are generated into the DPAPI
+  secret store (`sandbox-secrets.bin`) by Admin's **Set up the sandbox** or `scripts/panini-sandbox.py setup`;
+  `scripts/panini-sandbox.py build|up|down|status` (plus a `.ps1` wrapper) passes them to `docker compose` through
+  the environment only. `down` stops the supervisor and never removes volumes.
+- **Service** (`backend/hands/sandbox.py` `SandboxService`): Python port of OpenDots' `ComputerService` and input
+  schemas: identity and endpoint binding, status never provisions, per-computer credentials, owner-only human
+  controls, permissions checked before, during (50 ms watcher that cancels the HTTP request) and after,
+  4,000,000-byte response cap, secret redaction, 409 recovery text, redirects refused, `exec` without the command.
+  The agents-paused check uses the policy engine's pause (V2-03).
+- **Storage:** migration `0007_sandbox.sql` (`sandbox_computers` with the permission switches; the design said
+  0008). Every agent action is a registry receipt; every owner action through the routes is a ledger receipt
+  with actor owner.
+- **Tools** (`panini-core/capabilities/sandbox/manifests/30-sandbox.json`, `SandboxHand`): 17 tools (status,
+  start, stop, navigate, read, snapshot, screenshot, click, type, key, scroll, files list/read/write, exec,
+  import, export), offered with `PANINI_SANDBOX`, also in background runs (they never touch this PC). Evidence:
+  exit codes for commands, content hashes for written, imported and exported files, page observations.
+  `sandbox_import` copies a text file (≤100 KB, never secret-looking) from this PC; `sandbox_export` saves to
+  `Downloads\PANINI sandbox` without overwriting. OpenBot's file API is text-only, so binary files do not move
+  in this version.
+- **Persona computers:** one computer, `panini`, created with every permission off; `SandboxHand` picks the
+  principal's persona when V2-18 adds them.
+- **Routing:** with `PANINI_UNTRUSTED_BROWSING=sandbox`, a run that read untrusted content (email, channel, call,
+  MCP, A2A, shared) gets `browser_navigate` refused in your Chrome and the managed browser, with an instruction
+  to use `sandbox_navigate` (or ask the person). The "run on your PC or in the sandbox" choice for risky host
+  commands needs choice cards and is left to the interrupts UI work.
+- **Admin:** Computers page (`/build/computers`): setup, start/stop, the four permission switches, take control /
+  hand back, an owner terminal. Routes `/api/harness/computers*`. Settings: supervisor URL, namespace, memory,
+  untrusted browsing.
+- **Tests:** 15 in `backend/tests/hands/test_sandbox.py` (the 10 OpenDots behaviours, including revocation
+  cancelling a hanging request in under 1 s, plus tools, file exchange, Docker-down status, routing, flag and
+  background offering, receipted owner routes) and 2 in `frontend/test/sandbox-harden.test.mjs` (the supervisor
+  patch).
+- **Live checks not yet run:** Docker Desktop was not running, and building the images downloads the pinned
+  OpenBot source and base images, which needs the owner's go-ahead. `scripts/panini-sandbox-live.py` runs the four
+  live checks (isolation between two computers, persistence across stop/start, revocation within 1 s, browsing
+  inside the sandbox) once the images are built and the supervisor is up.
 
 ## 6. Implementation steps
 

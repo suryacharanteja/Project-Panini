@@ -128,6 +128,9 @@ class BrowserHand:
             }[browser]
             return ToolResult("blocked", f"{name} is not allowed in {where}.")
         key = self.key(browser, ctx)
+        refusal = self._untrusted(ctx, browser, name)
+        if refusal:
+            return ToolResult("blocked", refusal)
         try:
             await self._check(ctx, browser, key, tool, args)
         except ValueError as exc:
@@ -192,6 +195,31 @@ class BrowserHand:
             "settled_ms": int((time.monotonic() - started) * 1000),
         }
         return ToolResult("ok", content, data=data, evidence=evidence, artifact_ids=artifact_ids)
+
+    @staticmethod
+    def _untrusted(ctx, browser, name):
+        """After reading an email, a channel message, another agent's or an MCP result, links open in the
+        sandbox computer when PANINI_UNTRUSTED_BROWSING=sandbox; the person can still ask for their Chrome."""
+        from .. import v2flags
+
+        if name not in ("browser_navigate", "browser_tabs") or browser == "isolated":
+            return None
+        if os.getenv("PANINI_UNTRUSTED_BROWSING", "isolated").strip().lower() != "sandbox":
+            return None
+        untrusted = set(getattr(ctx, "taint", ()) or ()) & {
+            "email",
+            "channel",
+            "call",
+            "mcp",
+            "a2a",
+            "shared",
+        }
+        if not untrusted or not v2flags.enabled("PANINI_SANDBOX"):
+            return None
+        return (
+            "This link came from untrusted content, so it opens in PANINI's sandbox computer: use "
+            "sandbox_navigate. Ask the person first if it must open in their own browser."
+        )
 
     # Checks -----------------------------------------------------------------------
     async def _check(self, ctx, browser, key, tool, args):

@@ -88,6 +88,10 @@ class Harness:
         from ..hands.playwright_mcp import PlaywrightPool
 
         self.browsers = PlaywrightPool()  # V2-08 Playwright browser sessions, started on first use.
+        from ..hands.sandbox import DEFAULT_COMPUTER, SandboxService
+
+        self.sandbox = SandboxService(self.store)  # V2-11 sandbox computers (OpenBot on Docker).
+        self.sandbox.ensure_row(DEFAULT_COMPUTER)
         self.threads = Threads(self.store, self.sessions)
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):

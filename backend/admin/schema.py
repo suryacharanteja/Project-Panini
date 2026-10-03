@@ -393,6 +393,40 @@ SETTINGS += [
         default="true",
         advanced=True,
     ),
+    Setting(
+        "PANINI_SANDBOX_SUPERVISOR_URL",
+        "v2",
+        "V2-11: sandbox supervisor",
+        help="Loopback address of the OpenBot supervisor.",
+        default="http://127.0.0.1:4312",
+        advanced=True,
+    ),
+    Setting(
+        "PANINI_SANDBOX_NAMESPACE",
+        "v2",
+        "V2-11: sandbox namespace",
+        help="Selects the sandbox containers and volumes; keep it stable.",
+        default="panini",
+        advanced=True,
+    ),
+    Setting(
+        "PANINI_SANDBOX_MEMORY_BYTES",
+        "v2",
+        "V2-11: sandbox memory",
+        help="Memory per sandbox computer in bytes.",
+        default="2147483648",
+        advanced=True,
+    ),
+    Setting(
+        "PANINI_UNTRUSTED_BROWSING",
+        "v2",
+        "V2-11: untrusted links",
+        "enum",
+        "Where links from untrusted content open.",
+        default="isolated",
+        options=["sandbox", "isolated", "off"],
+        advanced=True,
+    ),
 ]
 BY_KEY = {s.key: s for s in SETTINGS}
 GROUPS = {

@@ -722,9 +722,100 @@ def add_runs(r, guard):
         return found
 
 
+def add_computers(r, guard):
+    """Sandbox computers (V2-11): owner controls. Every owner action is a ledger receipt with actor owner."""
+    from ..hands.sandbox import SandboxError
+
+    def service(request):
+        return harness(request).sandbox
+
+    async def owner(request, computer_id, action, fn):
+        from .. import ledger
+
+        book = ledger.active()
+        receipt = None
+        if book is not None:
+            receipt = book.begin(
+                run_id=f"owner-{computer_id}",
+                tool=f"sandbox_{action}",
+                capability="sandbox",
+                hand="sandbox",
+                args={"computer": computer_id},
+                effect="local_exec",
+                principal={"kind": "owner", "surface": "admin"},
+            )["id"]
+        try:
+            result = await fn()
+        except SandboxError as exc:
+            if receipt:
+                book.end(receipt, outcome="failed", content=str(exc)[:300])
+            raise HTTPException(409 if "409" in str(exc) else 422, str(exc)) from None
+        if receipt:
+            book.end(receipt, outcome="ok", content=action)
+        return result
+
+    @r.get("/computers")
+    async def computers(request: Request):
+        guard(request)
+        s = service(request)
+        return {
+            "configured": s.configured,
+            "computers": [await s.status(c["id"]) for c in s.computers()],
+        }
+
+    @r.post("/computers/setup")
+    async def computers_setup(request: Request):
+        """Generate the supervisor and master tokens into the DPAPI secret store (never shown)."""
+        guard(request)
+        service(request).config.generate()
+        return {"configured": service(request).configured}
+
+    @r.post("/computers/{computer_id}/start")
+    async def computer_start(computer_id: str, request: Request):
+        guard(request)
+        return await owner(request, computer_id, "start", lambda: service(request).start(computer_id))
+
+    @r.post("/computers/{computer_id}/stop")
+    async def computer_stop(computer_id: str, request: Request):
+        guard(request)
+        return await owner(request, computer_id, "stop", lambda: service(request).stop(computer_id))
+
+    @r.patch("/computers/{computer_id}/permissions")
+    async def computer_permissions(computer_id: str, request: Request):
+        guard(request)
+        patch = await request.json()
+
+        async def apply():
+            service(request).patch_permissions(computer_id, patch if isinstance(patch, dict) else {})
+            return await service(request).status(computer_id)
+
+        return await owner(request, computer_id, "permissions", apply)
+
+    @r.post("/computers/{computer_id}/control/{verb}")
+    async def computer_control(computer_id: str, verb: str, request: Request):
+        guard(request)
+        return await owner(request, computer_id, verb, lambda: service(request).control(computer_id, verb))
+
+    @r.post("/computers/{computer_id}/actions/{action}")
+    async def computer_action(computer_id: str, action: str, request: Request):
+        """Owner actions: files, a terminal command, and human_* controls while holding the browser."""
+        guard(request)
+        body = await request.json()
+
+        async def run():
+            result = await service(request).action(
+                computer_id, action, body if isinstance(body, dict) else {}, "owner"
+            )
+            return {"result": result}
+
+        return await owner(request, computer_id, action, run)
+
+
 add_ledger(console_router, lambda request: None)
+add_computers(console_router, lambda request: None)
 add_runs(console_router, lambda request: None)
 add_ledger(shell_router, lambda request: principal(request))
+add_computers(shell_router, lambda request: principal(request))
 add_runs(shell_router, lambda request: principal(request))
 
 

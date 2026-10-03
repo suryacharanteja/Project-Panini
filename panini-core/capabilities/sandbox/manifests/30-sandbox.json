@@ -1,0 +1,511 @@
+{
+  "schema": "panini.capability/1",
+  "id": "sandbox",
+  "title": "Sandbox computer",
+  "version": "1.0.0",
+  "summary": "PANINI's own isolated, persistent computer on Docker: a browser, a workspace folder and a shell, apart from this PC.",
+  "entry": "backend.hands.sandbox:SandboxHand",
+  "prompt": {
+    "principles": [
+      "Use the sandbox (sandbox_*) for untrusted links, unknown downloads and experimental code; this PC stays the trusted computer.",
+      "Act on refs and the snapshotId from the latest sandbox_snapshot; after HTTP 409 take a new snapshot, and never work around the owner's take-over.",
+      "Nothing falls back to this PC when the sandbox is unavailable: say so instead."
+    ]
+  },
+  "tools": [
+    {
+      "name": "sandbox_status",
+      "hand": "sandbox",
+      "title": "Sandbox status",
+      "description": "Whether PANINI's sandbox computer is set up, stopped or running, its permissions and who controls its browser.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "effect": "observe",
+      "group": "sandbox_lifecycle",
+      "taints": [],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 120,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_start",
+      "hand": "sandbox",
+      "title": "Start the sandbox",
+      "description": "Start PANINI's isolated sandbox computer (a container with a browser, a workspace folder and a shell). Files and browser logins persist.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "effect": "local_exec",
+      "group": "sandbox_lifecycle",
+      "taints": [],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 121,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_stop",
+      "hand": "sandbox",
+      "title": "Stop the sandbox",
+      "description": "Stop the sandbox computer. Its files and browser profile are kept.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "effect": "local_exec",
+      "group": "sandbox_lifecycle",
+      "taints": [],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 122,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_navigate",
+      "hand": "sandbox",
+      "title": "Open a page in the sandbox",
+      "description": "Open a web address in the sandbox browser (isolated from this PC). Use it for untrusted links and unknown sites.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      },
+      "effect": "navigate",
+      "group": "sandbox_browser",
+      "taints": [
+        "web"
+      ],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 123,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_read",
+      "hand": "sandbox",
+      "title": "Read the sandbox page",
+      "description": "Read the text of the page in the sandbox browser.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "effect": "observe",
+      "group": "sandbox_browser",
+      "taints": [
+        "web"
+      ],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 124,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_snapshot",
+      "hand": "sandbox",
+      "title": "Snapshot the sandbox page",
+      "description": "Snapshot the sandbox browser: controls with refs and a snapshotId to act on.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "effect": "observe",
+      "group": "sandbox_browser",
+      "taints": [
+        "web"
+      ],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 125,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_screenshot",
+      "hand": "sandbox",
+      "title": "Sandbox screenshot",
+      "description": "Take a screenshot of the sandbox browser.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "effect": "observe",
+      "group": "sandbox_browser",
+      "taints": [
+        "web"
+      ],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 126,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_click",
+      "hand": "sandbox",
+      "title": "Click in the sandbox",
+      "description": "Click an element in the sandbox browser by ref and snapshotId from the latest sandbox_snapshot.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Element ref from the latest sandbox_snapshot."
+          },
+          "snapshotId": {
+            "type": "integer",
+            "description": "snapshotId from that sandbox_snapshot."
+          }
+        },
+        "required": [
+          "ref",
+          "snapshotId"
+        ]
+      },
+      "effect": "submit",
+      "group": "sandbox_browser",
+      "taints": [],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 127,
+      "dynamic_effect": true
+    },
+    {
+      "name": "sandbox_type",
+      "hand": "sandbox",
+      "title": "Type in the sandbox",
+      "description": "Type text into an element in the sandbox browser; submit presses Enter afterwards.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Element ref from the latest sandbox_snapshot."
+          },
+          "snapshotId": {
+            "type": "integer",
+            "description": "snapshotId from that sandbox_snapshot."
+          },
+          "text": {
+            "type": "string"
+          },
+          "submit": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ref",
+          "snapshotId",
+          "text",
+          "submit"
+        ]
+      },
+      "effect": "input",
+      "group": "sandbox_browser",
+      "taints": [],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 128,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_key",
+      "hand": "sandbox",
+      "title": "Press a key in the sandbox",
+      "description": "Press a key in the sandbox browser, for example Enter or PageDown.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ]
+      },
+      "effect": "input",
+      "group": "sandbox_browser",
+      "taints": [],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 129,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_scroll",
+      "hand": "sandbox",
+      "title": "Scroll the sandbox page",
+      "description": "Scroll the sandbox browser by deltaY pixels (-10000 to 10000).",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deltaY": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "deltaY"
+        ]
+      },
+      "effect": "navigate",
+      "group": "sandbox_browser",
+      "taints": [],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 130,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_files_list",
+      "hand": "sandbox",
+      "title": "List sandbox files",
+      "description": "List files in the sandbox workspace folder ('' for the top).",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path relative to the sandbox workspace, without '..'."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "effect": "observe",
+      "group": "sandbox_files",
+      "taints": [],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 131,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_files_read",
+      "hand": "sandbox",
+      "title": "Read a sandbox file",
+      "description": "Read a text file from the sandbox workspace.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path relative to the sandbox workspace, without '..'."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "effect": "observe",
+      "group": "sandbox_files",
+      "taints": [],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 132,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_files_write",
+      "hand": "sandbox",
+      "title": "Write a sandbox file",
+      "description": "Write (or append to) a text file in the sandbox workspace, at most 100,000 characters. It stays inside the sandbox.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path relative to the sandbox workspace, without '..'."
+          },
+          "contents": {
+            "type": "string"
+          },
+          "append": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "contents",
+          "append"
+        ]
+      },
+      "effect": "local_write",
+      "group": "sandbox_files",
+      "taints": [],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 133,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_exec",
+      "hand": "sandbox",
+      "title": "Run a command in the sandbox",
+      "description": "Run a shell command inside the sandbox computer (not on this PC), 1-60 s (timeoutMs 1000-60000). Use it for experimental or untrusted code.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "timeoutMs": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command",
+          "timeoutMs"
+        ]
+      },
+      "effect": "local_exec",
+      "group": "sandbox_shell",
+      "taints": [],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 134,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_import",
+      "hand": "sandbox",
+      "title": "Copy a file into the sandbox",
+      "description": "Copy a text file from this PC (absolute host_path, up to 100 KB, never secrets) into the sandbox workspace at dest ('' keeps the name).",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "host_path": {
+            "type": "string"
+          },
+          "dest": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "host_path",
+          "dest"
+        ]
+      },
+      "effect": "share_out",
+      "group": "sandbox_files",
+      "taints": [],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 135,
+      "dynamic_effect": false
+    },
+    {
+      "name": "sandbox_export",
+      "hand": "sandbox",
+      "title": "Save a sandbox file on this PC",
+      "description": "Copy a text file from the sandbox workspace to Downloads\\PANINI sandbox on this PC (name '' keeps the file name; nothing is overwritten).",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path relative to the sandbox workspace, without '..'."
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "name"
+        ]
+      },
+      "effect": "local_write",
+      "group": "sandbox_files",
+      "taints": [
+        "download"
+      ],
+      "timeout_ms": 90000,
+      "concurrency": "sandbox",
+      "requires": [
+        "sandbox"
+      ],
+      "order": 136,
+      "dynamic_effect": false
+    }
+  ]
+}
