@@ -22,6 +22,8 @@ class _Target:
     seq: int = 0
     history: deque = field(default_factory=lambda: deque(maxlen=20))
     viewers: int = 0
+    remote_viewers: int = 0  # Viewers on remote surfaces (phone, relay): shown on the PC for chrome/desktop.
+    remote_seen: float = 0.0
     waiters: set = field(default_factory=set)  # (loop, event) per subscriber; woken safely from any thread.
     last_view: float = 0.0
 
@@ -98,10 +100,12 @@ class LiveHub:
         return entry.viewers > 0 or self.clock() - entry.last_view < grace_s
 
     # Viewers --------------------------------------------------------------------------------------
-    def touch(self, hand: str, target: str) -> None:
+    def touch(self, hand: str, target: str, *, remote: bool = False) -> None:
         """A polling viewer (for example the desktop shell reading latest frames) counts as watching."""
         entry = self._target(hand, target)
         entry.last_view = self.clock()
+        if remote:
+            entry.remote_seen = self.clock()
         if hand in self._pollers and (hand, target) not in self._polling:
             self._polling.add((hand, target))
             asyncio.ensure_future(self._poll(hand, target))
@@ -116,10 +120,11 @@ class LiveHub:
         entry = self._targets.get((hand, target))
         return list(entry.history) if entry else []
 
-    async def subscribe(self, hand: str, target: str, *, max_fps: float = 4.0):
+    async def subscribe(self, hand: str, target: str, *, max_fps: float = 4.0, remote: bool = False):
         """Yields {seq, ts, url, title, width, height, frame (base64 JPEG)}: newest frame, at most max_fps."""
         entry = self._target(hand, target)
         entry.viewers += 1
+        entry.remote_viewers += 1 if remote else 0
         interval = 1.0 / max(0.1, max_fps)
         sent = 0
         waiter = (asyncio.get_running_loop(), asyncio.Event())
@@ -142,10 +147,18 @@ class LiveHub:
         finally:
             entry.waiters.discard(waiter)
             entry.viewers -= 1
+            entry.remote_viewers -= 1 if remote else 0
             entry.last_view = self.clock()
 
     def describe(self) -> list[dict]:
         return [
-            {"hand": h, "target": t, "seq": e.seq, "viewers": e.viewers, "url": e.meta.get("url")}
+            {
+                "hand": h,
+                "target": t,
+                "seq": e.seq,
+                "viewers": e.viewers,
+                "url": e.meta.get("url"),
+                "watchedRemotely": e.remote_viewers > 0 or self.clock() - e.remote_seen < 5,
+            }
             for (h, t), e in self._targets.items()
         ]

@@ -521,6 +521,7 @@ class Agent:
             managed_browser=v2flags.value("PANINI_BROWSER_DRIVER") == "playwright" and not self.background,
             claw_cdp=v2flags.enabled("PANINI_CLAW_CDP") and not self.background,
             sandbox=v2flags.enabled("PANINI_SANDBOX"),  # Also for background work: it never touches this PC.
+            live=v2flags.enabled("PANINI_LIVE_VIEW"),
         )
 
     def tool_context(self):

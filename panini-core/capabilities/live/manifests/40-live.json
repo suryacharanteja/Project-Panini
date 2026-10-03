@@ -1,0 +1,39 @@
+{
+  "schema": "panini.capability/1",
+  "id": "live",
+  "title": "Live view and takeover",
+  "version": "1.0.0",
+  "summary": "Ask the person to take over a browser, the sandbox computer or the desktop for a step only they should do.",
+  "entry": "backend.hands.live_hand:LiveHand",
+  "prompt": {
+    "principles": [
+      "Use request_takeover for steps only the person should do: signing in, passwords and one-time codes, CAPTCHAs, payments, or anything you are unsure they want done.",
+      "While waiting, do nothing on that hand. When control comes back, take a snapshot before acting: the page may have changed."
+    ]
+  },
+  "tools": [
+    {
+      "name": "request_takeover",
+      "hand": "live",
+      "title": "Ask the person to take over",
+      "description": "Ask the person to take control of a hand (chrome, managed, sandbox or desktop) for a step only they should do, and wait until they give it back. Returns when they are done or decline.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "hand": {"type": "string", "enum": ["chrome", "managed", "sandbox", "desktop"]},
+          "reason": {"type": "string", "minLength": 3, "maxLength": 300, "description": "What the person should do, in one sentence."}
+        },
+        "required": ["hand", "reason"]
+      },
+      "effect": "observe",
+      "group": "live",
+      "taints": [],
+      "timeout_ms": 1860000,
+      "concurrency": "live",
+      "requires": ["live", "foreground"],
+      "order": 140,
+      "dynamic_effect": false
+    }
+  ]
+}

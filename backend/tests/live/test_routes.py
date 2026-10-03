@@ -61,3 +61,40 @@ def test_take_input_and_give_back(client, monkeypatch):
 def test_live_view_is_off_by_default(client, monkeypatch):
     monkeypatch.setenv("PANINI_LIVE_VIEW", "false")
     assert client.get("/api/harness/live").status_code == 404
+
+
+def _remote_app(monkeypatch, tmp_path, verifier):
+    from backend.live.remote_grants import Grants
+
+    monkeypatch.setenv("PANINI_LIVE_VIEW", "true")
+    monkeypatch.setattr(live, "_grants", Grants(tmp_path / "grants.json"))
+    monkeypatch.setattr(routes, "remote_verifier", verifier)
+    app = FastAPI()
+    app.include_router(routes.console_router)
+    app.include_router(routes.remote_router)
+    return TestClient(app)
+
+
+def test_remote_live_view_is_closed_until_remote_access_registers_a_verifier(monkeypatch, tmp_path):
+    client = _remote_app(monkeypatch, tmp_path, None)
+    assert client.get("/api/remote/harness/live").status_code == 404
+
+
+def test_remote_viewers_see_only_granted_hands_and_the_pc_knows_they_are_watching(monkeypatch, tmp_path):
+    client = _remote_app(monkeypatch, tmp_path, lambda request: None)
+    hub = live.hub()
+    hub.publish(None, "chrome", "attached", b"\xff\xd8mine")
+    hub.publish(None, "sandbox", "panini", b"\xff\xd8box")
+    # Your Chrome and desktop are off for remote surfaces by default; the sandbox is on.
+    assert [t["hand"] for t in client.get("/api/remote/harness/live").json()["targets"]] == ["sandbox"]
+    refused = client.get("/api/remote/harness/live/chrome/attached/latest.jpg")
+    assert refused.status_code == 403 and "Remote viewing of your Chrome is off" in refused.json()["detail"]
+    assert client.post("/api/remote/harness/live/desktop/pc/control/take").status_code == 403
+    assert client.get("/api/remote/harness/live/sandbox/panini/latest.jpg").content == b"\xff\xd8box"
+    # The owner turns Chrome on (locally); now the phone can watch, and the PC shows it.
+    assert client.patch("/api/harness/live/grants", json={"chrome": True}).json()["chrome"] is True
+    assert client.get("/api/remote/harness/live/chrome/attached/latest.jpg").status_code == 200
+    targets = {t["hand"]: t for t in client.get("/api/harness/live").json()["targets"]}
+    assert targets["chrome"]["watchedRemotely"]  # The PC shows "Watching from your phone".
+    assert "watchedRemotely" in targets["sandbox"]
+    assert client.patch("/api/harness/live/grants", json={"toaster": True}).status_code == 422

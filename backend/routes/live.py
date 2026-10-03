@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
 from .. import live
+from ..live.control import HAND_LABELS
 from .panini import principal
 
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
@@ -37,20 +38,46 @@ def _hand(hand: str) -> str:
     return hand
 
 
-def build(prefix, guard):
+def build(prefix, guard, *, remote=False):
+    """remote=True for phones and the relay: only hands you granted (your Chrome and desktop are off by default)."""
     r = APIRouter(prefix=prefix)
+
+    def allowed(hand: str) -> str:
+        _hand(hand)
+        if remote and not live.grants().allowed(hand):
+            name = HAND_LABELS.get(hand, hand)
+            raise HTTPException(403, f"Remote viewing of {name} is off. Turn it on in Admin, Live.")
+        return hand
 
     @r.get("/live")
     async def overview(request: Request):
         guard(request)
         _enabled()
-        return {"targets": live.hub().describe(), "holding": live.takeover().holding()}
+        targets = live.hub().describe()
+        if remote:
+            targets = [t for t in targets if live.grants().allowed(t["hand"])]
+        return {"targets": targets, "holding": live.takeover().holding()}
+
+    if not remote:
+
+        @r.get("/live/grants")
+        async def grants(request: Request):
+            guard(request)
+            return live.grants().all()
+
+        @r.patch("/live/grants")
+        async def set_grants(request: Request):
+            guard(request)
+            try:
+                return live.grants().set(await request.json())
+            except (ValueError, AttributeError) as exc:
+                raise HTTPException(422, str(exc)) from None
 
     @r.get("/live/{hand}/{target}/stream")
     async def stream(hand: str, target: str, request: Request, fps: float = 4.0):
         guard(request)
         _enabled()
-        frames = live.hub().subscribe(_hand(hand), target, max_fps=min(4.0, max(0.2, fps)))
+        frames = live.hub().subscribe(allowed(hand), target, max_fps=min(4.0, max(0.2, fps)), remote=remote)
 
         async def body():
             async with contextlib.aclosing(frames) as source:
@@ -68,7 +95,7 @@ def build(prefix, guard):
     async def latest(hand: str, target: str, request: Request):
         guard(request)
         _enabled()
-        live.hub().touch(_hand(hand), target)
+        live.hub().touch(allowed(hand), target, remote=remote)
         found = live.hub().latest(hand, target)
         if not found:
             raise HTTPException(404, "No frame yet.")
@@ -88,7 +115,7 @@ def build(prefix, guard):
     async def control(hand: str, target: str, request: Request):
         guard(request)
         _enabled()
-        return live.takeover().state(_hand(hand), target).view()
+        return live.takeover().state(allowed(hand), target).view()
 
     @r.post("/live/{hand}/{target}/control/{verb}")
     async def change(hand: str, target: str, verb: str, request: Request):
@@ -96,9 +123,9 @@ def build(prefix, guard):
         _enabled()
         takeover = live.takeover()
         if verb == "take":
-            return takeover.take(_hand(hand), target)
+            return takeover.take(allowed(hand), target)
         if verb == "release":
-            return takeover.release(_hand(hand), target)
+            return takeover.release(allowed(hand), target)
         raise HTTPException(404, "Use take or release.")
 
     @r.post("/live/{hand}/{target}/input/{action}")
@@ -107,7 +134,7 @@ def build(prefix, guard):
         _enabled()
         if action not in INPUTS:
             raise HTTPException(404, "Use click, type, key or scroll.")
-        if live.takeover().state(_hand(hand), target).holder != "human":
+        if live.takeover().state(allowed(hand), target).holder != "human":
             raise HTTPException(409, "Take control first.")
         handler = input_handlers.get(hand)
         if handler is None:
@@ -126,6 +153,18 @@ def build(prefix, guard):
 
 console_router = build("/api/harness", lambda request: None)  # ConsoleBoundary checks the console token.
 shell_router = build("/api/panini/harness", lambda request: principal(request, controller=True))
+
+# Remote surfaces (the phone app and relay, V2-14) register a verifier; until then remote live view is closed.
+remote_verifier = None
+
+
+def _remote_guard(request):
+    if remote_verifier is None:
+        raise HTTPException(404, "Remote live view arrives with remote access (V2-14).")
+    remote_verifier(request)
+
+
+remote_router = build("/api/remote/harness", _remote_guard, remote=True)
 
 ingest_router = APIRouter(prefix="/api/live/ingest")
 

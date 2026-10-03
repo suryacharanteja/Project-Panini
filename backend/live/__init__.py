@@ -5,6 +5,7 @@ from .hub import LiveHub
 
 _hub: LiveHub | None = None
 _takeover: Takeover | None = None
+_grants = None
 
 
 def hub() -> LiveHub:
@@ -21,10 +22,19 @@ def takeover() -> Takeover:
     return _takeover
 
 
+def grants():
+    global _grants
+    if _grants is None:
+        from .remote_grants import Grants
+
+        _grants = Grants()
+    return _grants
+
+
 def enabled() -> bool:
     from .. import v2flags
 
     return v2flags.enabled("PANINI_LIVE_VIEW")
 
 
-__all__ = ["ControlBlocked", "LiveHub", "Takeover", "enabled", "hub", "takeover"]
+__all__ = ["ControlBlocked", "LiveHub", "Takeover", "enabled", "grants", "hub", "takeover"]

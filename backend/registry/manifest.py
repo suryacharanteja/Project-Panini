@@ -25,6 +25,7 @@ REQUIREMENTS = {
     "claw_cdp",
     "browser_v2",
     "sandbox",
+    "live",
 }
 
 

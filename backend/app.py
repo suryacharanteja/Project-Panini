@@ -144,6 +144,7 @@ def create_app(
     app.include_router(live_routes.console_router)
     app.include_router(live_routes.shell_router)
     app.include_router(live_routes.ingest_router)
+    app.include_router(live_routes.remote_router)
 
     @app.exception_handler(Fault)
     async def panini_error(request: Request, error: Fault):

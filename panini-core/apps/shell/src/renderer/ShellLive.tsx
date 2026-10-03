@@ -32,7 +32,7 @@ const ipcTransport: LiveTransport = {
   post: (path, body) => api.invoke('live', { action: 'post', path, body }),
 };
 
-type Target = { hand: LiveHand; target: string };
+type Target = { hand: LiveHand; target: string; watchedRemotely?: boolean };
 
 export function ShellLive() {
   const [targets, setTargets] = useState<Target[]>([]);
@@ -51,8 +51,16 @@ export function ShellLive() {
     };
   }, []);
   if (!targets.length) return null;
+  const watched = targets.filter(
+    (t) => t.watchedRemotely && (t.hand === 'chrome' || t.hand === 'desktop'),
+  );
   return (
     <section className="shell-live" aria-label="Live view">
+      {watched.map((t) => (
+        <p key={`w-${t.hand}`} className="pc-hint" role="status">
+          Watching from your phone: {t.hand === 'chrome' ? 'your Chrome' : 'your desktop'}.
+        </p>
+      ))}
       {targets.map((t) => (
         <LiveView
           key={`${t.hand}/${t.target}`}

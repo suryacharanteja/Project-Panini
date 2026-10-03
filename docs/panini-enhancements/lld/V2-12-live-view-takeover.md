@@ -182,7 +182,22 @@ Verification:
 - Live in Admin (native sandbox browser running as `panini-sandbox`): the Live page streamed the agent's page and followed it to a new page. Take control showed "you have control". Tab and Enter from the card followed a link in the sandbox browser, and the frame showed the new page. Give back showed the look-again notice.
 - Pointer: frames captured during an agent click show the pointer on the link and the title "Click Learn more link".
 
-Not built in this item:
-- the `request_takeover` agent tool (the state machine supports it; the V2-05 tool and interrupt wiring remain);
-- remote grants and viewer presence for chrome/desktop (they belong with the remote transport, V2-14);
-- the live desktop run that moves the real mouse during a Notepad task.
+Follow-ups completed (2026-10-03, owner-approved):
+- **request_takeover** (`panini-core/capabilities/live/manifests/40-live.json`, `backend/hands/live_hand.py`; requires
+  `live` and `foreground`). It opens a durable `takeover` interrupt (the TakeoverCard on any surface), marks the hand
+  as requested, and waits up to 30 minutes. "Done" on the card, or taking and giving back in a live view, returns
+  "take a snapshot before acting" (the look-again rule applies). Declining or expiry returns a block, never "do it
+  yourself". Tests: `backend/tests/live/test_request_takeover.py` with the real interrupt service.
+- **Remote grants and presence** (`backend/live/remote_grants.py`, `backend/routes/live.py`). Per-hand grants are
+  stored in `live-remote-grants.json`: sandbox, managed and android on; chrome and desktop off. They are edited in
+  Admin → Live (`GET/PATCH /api/harness/live/grants`). Remote surfaces use `/api/remote/harness/live/...`, which
+  refuses every request until V2-14 registers `remote_verifier`; then it serves only granted hands. Remote viewers
+  are counted separately (`watchedRemotely`), and Admin and the shell show "Watching from your phone" for chrome and
+  desktop. Tests in `test_routes.py`.
+- **Live desktop run** (`scripts/panini-desktop-takeover-live.py`). It opens a fresh Paint and plays the person:
+  while PANINI's stroke held the left button, it moved the real cursor. PANINI paused with the person in control
+  within about 50 ms (no stop); two seconds later the person gave control back; PANINI looked again and finished
+  ("partial": drawings cannot be verified exactly). Activity: observed, proposed, paused, resumed; 4 desktop frames
+  reached the live hub. This run used `--scripted` (fixed planner answers) because the OpenAI account had no credits
+  (HTTP 429 `insufficient_quota` on the unscripted attempt); Paint, the native worker, the real mouse and the
+  takeover path were real. Run it without `--scripted` once credits are back to include the real planner.
