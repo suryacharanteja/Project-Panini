@@ -127,6 +127,18 @@ class Runs:
         )
         return float(row["usd"] or 0.0)
 
+    def close_parked_tree(self, task_id, state: str):
+        """Declining a lead also closes its waiting members, including resumed attempts."""
+        if state not in {"blocked", "interrupted"}:
+            raise ValueError("A waiting run tree can only be blocked or interrupted.")
+        self.store.execute(
+            "WITH RECURSIVE family(id) AS ("
+            "SELECT id FROM runs WHERE task_id=? UNION "
+            "SELECT r.id FROM runs r JOIN family f ON r.parent_run_id=f.id) "
+            "UPDATE runs SET state=?, updated=? WHERE state='parked' AND id IN (SELECT id FROM family)",
+            (task_id, state, self.clock()),
+        )
+
     def spent_today(self) -> float:
         midnight = datetime.fromtimestamp(self.clock()).replace(hour=0, minute=0, second=0, microsecond=0)
         return self.spent_since(midnight.timestamp())

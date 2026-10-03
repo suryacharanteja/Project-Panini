@@ -58,6 +58,7 @@ class Meter:
         self.started = clock()
         self.usd, self.steps, self.input_tokens, self.output_tokens = 0.0, 0, 0, 0
         self.daily_approved = False
+        self.pending_usd = lambda: self.usd
 
     def add_turn(self, model_name: str, usage) -> float:
         cost = turn_cost(model_name, usage)
@@ -76,7 +77,7 @@ class Meter:
         return None
 
     def over_daily(self) -> bool:
-        return not self.daily_approved and self.spent_today() + self.usd >= self.budget.daily_usd
+        return not self.daily_approved and self.spent_today() + self.pending_usd() >= self.budget.daily_usd
 
     def view(self) -> dict:
         return {

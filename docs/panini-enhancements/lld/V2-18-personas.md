@@ -160,6 +160,8 @@ Implemented:
 - Fresh-context delegation, explicit quarantined context sharing, sequential teams/reviewers, depth-one delegation and per-child budget allocation.
 - Teams stop when a member cannot finish and report the unfinished chain; a failed reviewer cannot be presented as a completed review.
 - Persona identity and budget retained in resume checkpoints; disabling Personas refuses old specialist resumes rather than escalating them to owner privileges.
+- Durable lead/member/reviewer continuation across approvals, with completed team results retained in the lead checkpoint and stable member receipt keys. Declining or abandoning a team closes its parked member attempts.
+- Cumulative cost, step and active-time budgets retained across attempts; run rows record only new own spending, and daily limits count recorded costs once. An over-budget model turn cannot dispatch its tools.
 - Assigned sandbox computer selection, Chrome/managed browser permission separation, attributed run principals and ledger receipts.
 - Admin persona editor, permission switches, defaults, effect-free identity preview and attributed conversation messages.
 
@@ -171,7 +173,8 @@ Remaining before LLD completion:
 
 - Full persona colour/name chips and voice presentation across the avatar and phone, including live voice switching qualification.
 - Spaces access/default-destination integration (V2-19), and channel permission integration when V2-17 exists.
-- Complete group continuation across a member's parked approval, including lead resumption and cost accounting across attempts.
 - Persona cases in the evaluation scorecard and a live research-to-writing team qualification.
+
+Continuation evidence: `backend/tests/agui/test_persona_resume.py` exercises the real HTTP/SSE, policy, ledger and SQLite checkpoint paths with scripted models and a local test hand. Teams, direct delegates and reviewers each pause twice on identical writes; completed research is not repeated, each approved write happens once, and every model turn is charged once. The stream runner is recreated between requests. Additional cases cover decline, flag rollback, archive, grant revocation and exhausted cost/time budgets. This qualifies the local continuation path, not a live-provider or remote-device deployment.
 
 `PANINI_PERSONAS` stays off by default. Existing remote enablement gates are unchanged; red-team work is in progress and aside.

@@ -151,7 +151,12 @@ class AguiRuns:
 
         service = interrupts.active()
         parked = next(
-            (r for r in self.h.runs.list(thread_id=thread, limit=5) if r["state"] == "parked"), None
+            (
+                r
+                for r in self.h.runs.list(thread_id=thread, limit=50)
+                if r["state"] == "parked" and r["mode"] != "subagent"
+            ),
+            None,
         )
         open_views = []
         if parked and service is not None:
@@ -189,8 +194,11 @@ class AguiRuns:
                 elif view.get("reason") == "client_tool":
                     self.client_results.setdefault(thread, {})[view["tool_call_id"]] = payload.get("result")
             if declined:
-                self.h.runs.close_parked(parked["task_id"], "blocked")
-                return {"kind": "declined", "message": "Okay, I did not do that. Nothing was changed."}
+                self.h.runs.close_parked_tree(parked["task_id"], "blocked")
+                return {
+                    "kind": "declined",
+                    "message": "Okay, I did not do that waiting step. Earlier completed work remains recorded.",
+                }
             checkpoint = self.h.runs.load_checkpoint(parked["id"]) or {}
             self.h.runs.close_parked(parked["task_id"], "resumed")
             return {
@@ -207,7 +215,7 @@ class AguiRuns:
             # A new message instead of an answer: the waiting step is dropped, nothing runs.
             for view in open_views:
                 service.cancel(view["id"], "The person sent a new message instead.")
-            self.h.runs.close_parked(parked["task_id"], "blocked")
+            self.h.runs.close_parked_tree(parked["task_id"], "blocked")
         return {
             "kind": "turn",
             "goal": text + untrusted_context(run),
@@ -234,6 +242,8 @@ class AguiRuns:
             if plan["checkpoint"] is not None:
                 plan["checkpoint"]["client_tools"] = plan["client_tools"]
             result = await agent.run(plan["goal"], session_id=thread, resume=plan["checkpoint"])
+            if (plan["checkpoint"] or {}).get("persona_calls"):
+                self.h.runs.close_parked_tree(plan["ledger_run"], "blocked")
             events = []
             if result.message and result.message not in said:
                 events += projector.text(result.message)

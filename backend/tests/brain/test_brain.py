@@ -272,7 +272,8 @@ def test_the_cost_budget_stops_a_run_plainly(tmp_path, one_brain, monkeypatch):
     model = Switchable([step, step, step], usage={"input_tokens": 100_000, "output_tokens": 0})
     h = make_harness(tmp_path, model)
     result = asyncio.run(h.agent(delegate=None, capabilities=()).run("loop"))
-    assert result.outcome == "partial" and "cost limit" in result.message and result.steps == 2
+    assert result.outcome == "partial" and "cost limit" in result.message and result.steps == 1
+    assert result.plan == []  # The over-budget turn's tools are never dispatched.
     assert h.runs.list()[0]["state"] == "partial"
 
 

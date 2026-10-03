@@ -183,7 +183,7 @@ class Harness:
             if approved:
                 self.tasks.resume(task_id, view.get("action_digest"))
             else:
-                self.runs.close_parked(task_id, "blocked")
+                self.runs.close_parked_tree(task_id, "blocked")
                 reason = {"expired": "The approval request expired."}.get(
                     view["status"], "You declined this step."
                 )
@@ -365,11 +365,10 @@ class Harness:
             surface="phone_app" if task.get("origin") == "phone" else "background",
         )
         agent.run_id = task["id"]
-        from .. import brain
 
         # V2-06: a run parked on an approval continues from its last checkpoint; the ledger replays any
         # step that already happened, and the approved action passes once.
-        parked_run = self.runs.resumable(task["id"]) if brain.enabled() else None
+        parked_run = self.runs.resumable(task["id"])
         checkpoint = self.runs.load_checkpoint(parked_run["id"]) if parked_run else None
         if parked_run:
             self.runs.close_parked(task["id"], "resumed")
@@ -382,6 +381,8 @@ class Harness:
                 f"Waiting for your approval: {parked.title}",
                 [f"interrupt:{parked.interrupt_id}"],
             )
+        if checkpoint and checkpoint.get("persona_calls"):
+            self.runs.close_parked_tree(task["id"], "blocked")
         outcome = result.outcome if result.outcome != "reply" else "verified_complete"
         if watch:
             if outcome in ("verified_complete", "partial"):

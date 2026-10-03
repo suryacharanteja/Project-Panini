@@ -403,6 +403,10 @@ class Agent:
         self.surface = surface
         self.budget_override = None
         self.delegated_usd = 0.0
+        self.persona_calls = {}
+        self.persona_call_id = None
+        self.persona_failed = False
+        self.specialist_tool_failed = False
         # private=False: the result goes to someone else (another agent), so the person's
         # memories and skills-from-memory stay out of the context and memory tools are off.
         self.private = private
@@ -730,7 +734,7 @@ class Agent:
 
         if (
             resume
-            and resume.get("persona_id", "panini") != "panini"
+            and (resume.get("persona_id", "panini") != "panini" or resume.get("persona_calls"))
             and not v2flags.enabled("PANINI_PERSONAS")
         ):
             return AgentResult(
@@ -744,7 +748,10 @@ class Agent:
             if resume.get("persona_budget"):
                 self.budget_override = brain.Budget(**resume["persona_budget"])
             self.delegated_usd = float(resume.get("delegated_usd", 0))
-        if v2flags.enabled("PANINI_PERSONAS") and not self.depth and self.private:
+            self.persona_calls = dict(resume.get("persona_calls") or {})
+            self.persona_failed = bool(resume.get("persona_failed", False))
+            self.specialist_tool_failed = bool(resume.get("specialist_tool_failed", False))
+        if v2flags.enabled("PANINI_PERSONAS") and not resume and not self.depth and self.private:
             from ..personas.routing import select, voice_probabilities
 
             self.thread_id = self.thread_id or session_id
@@ -809,13 +816,28 @@ class Agent:
         self.brain = None
         if one_brain:
             self._start_run(resume)
+            started -= float((resume or {}).get("budget_spent_seconds", 0))
+        if resume and self.registry is not None:
+            ctx = self.tool_context()
+            ctx.calls.update(resume.get("tool_calls") or {})
+            ctx.__dict__["occurrences"] = {
+                (entry["tool"], entry["args_digest"]): entry["count"]
+                for entry in resume.get("tool_occurrences", [])
+            }
         instructions = self.instructions(goal)
         result = None
         step = first - 1
         try:
             pending = list((resume or {}).get("pending") or [])
             if pending:
-                result = await self._finish_pending(pending, items, summary, first)
+                if self.brain:
+                    self._checkpoint(items, summary, first - 1, pending=pending)
+                stopped = await self._over_budget() if self.brain else None
+                result = (
+                    AgentResult("partial", stopped)
+                    if stopped
+                    else await self._finish_pending(pending, items, summary, first)
+                )
             if result is None and reflex and self.evidence and await self._jev_done():
                 message = report(self.outcomes[-1])[:4000] or "Done."
                 result = AgentResult("verified_complete", message)
@@ -845,6 +867,10 @@ class Agent:
                 record_usage(self.model, getattr(turn, "usage", None))
                 if self.brain:
                     self.brain["meter"].add_turn(self.brain["router"].name, getattr(turn, "usage", None))
+                    crossed = self.brain["meter"].exceeded()
+                    if crossed:
+                        result = AgentResult("partial", brain.STOP_MESSAGES[crossed])
+                        break
                 items.extend(turn.items)
                 if turn.text and self.observe:
                     self.observe("message", text=turn.text, persona_id=self.persona_id)
@@ -902,6 +928,12 @@ class Agent:
                     state = "failed" if isinstance(signal, Exception) else "interrupted"
                 self._finish_run(state, {"error": str(signal)[:300]})
             raise
+        if self.specialist_tool_failed and result.outcome in {"reply", "verified_complete"}:
+            result.outcome = "partial" if self.evidence else "blocked"
+            result.message = "The specialist could not finish its assigned tools. " + result.message
+        if self.persona_failed and result.outcome in {"reply", "verified_complete"}:
+            result.outcome = "partial"
+            result.message = "The team did not finish all assigned work. " + result.message
         result.plan, result.evidence, result.steps = self.plan, self.evidence[-50:], step
         registry = getattr(self, "registry", None)
         if registry is not None and not self.depth:
@@ -919,10 +951,17 @@ class Agent:
         round is checkpointed with the calls still to run, so a resume continues right there (V2-07)."""
         result = None
         for index, call in enumerate(calls):
+            ctx = self.tool_context() if self.registry is not None else None
+            counts = dict(ctx.calls) if ctx else {}
+            occurrences = dict(ctx.__dict__.get("occurrences", {})) if ctx else {}
             try:
                 output, final = await self._run_call(call["call_id"], call["name"], call["arguments"])
             except BaseException as signal:
                 if self.brain and getattr(signal, "interrupt_id", None):
+                    if ctx:
+                        ctx.calls.clear()
+                        ctx.calls.update(counts)
+                        ctx.__dict__["occurrences"] = occurrences
                     self._checkpoint(items, summary, step - 1, pending=calls[index:])
                 raise
             items.append(
@@ -948,6 +987,38 @@ class Agent:
         return result
 
     async def _run_call(self, call_id, name, arguments):
+        previous = getattr(self, "persona_call_id", None)
+        if not hasattr(self, "persona_calls"):
+            self.persona_calls = {}
+        self.persona_call_id = call_id
+        try:
+            outcomes_before = len(self.outcomes)
+            result = await self._dispatch_call(call_id, name, arguments)
+            if self.depth == 1 and self.persona_id != "panini" and name not in {"finish", "update_plan"}:
+                output = result[0]
+                self.specialist_tool_failed = bool(output.get("error")) or output.get("outcome") in {
+                    "blocked",
+                    "failed",
+                    "partial",
+                    "clarification",
+                    "cancelled",
+                    "unknown_effect",
+                }
+                if len(self.outcomes) > outcomes_before:
+                    self.specialist_tool_failed |= self.outcomes[-1].get("outcome") not in {
+                        "reply",
+                        "verified_complete",
+                    }
+            if name in {"run_team", "delegate_to_persona"}:
+                output = result[0]
+                if output.get("error") or output.get("outcome") not in {"reply", "verified_complete"}:
+                    self.persona_failed = True
+            self.persona_calls.pop(call_id, None)
+            return result
+        finally:
+            self.persona_call_id = previous
+
+    async def _dispatch_call(self, call_id, name, arguments):
         if self.observe:
             self.observe("tool.started", call_id=call_id, name=name, args=_arguments(arguments))
         if name.startswith("client_") and self.client_call is not None:
@@ -979,6 +1050,15 @@ class Agent:
         if resume and resume.get("persona_budget"):
             meter.usd = float(resume.get("budget_spent_usd", 0))
             meter.steps = int(resume.get("budget_spent_steps", 0))
+            meter.started -= float(resume.get("budget_spent_seconds", 0))
+            meter.input_tokens = int(resume.get("budget_input_tokens", 0))
+            meter.output_tokens = int(resume.get("budget_output_tokens", 0))
+        self.prior_own_usd = max(0, meter.usd - self.delegated_usd)
+        self.recorded_own_usd = 0.0
+        self.prior_tokens = (meter.input_tokens, meter.output_tokens)
+        meter.pending_usd = lambda: max(
+            0, meter.usd - self.delegated_usd - self.prior_own_usd - self.recorded_own_usd
+        )
         run_id = runs.start(
             mode="background" if self.background else ("subagent" if self.depth else "foreground"),
             principal={
@@ -1000,6 +1080,7 @@ class Agent:
 
     def _checkpoint(self, items, summary, step, pending=None):
         b = self.brain
+        ctx = self.tool_context() if self.registry is not None else None
         try:
             self.h.runs.checkpoint(
                 b["run"],
@@ -1010,7 +1091,18 @@ class Agent:
                     "persona_budget": b["meter"].budget.view(),
                     "budget_spent_usd": b["meter"].usd,
                     "budget_spent_steps": b["meter"].steps,
+                    "budget_spent_seconds": b["meter"].view()["seconds"],
+                    "budget_input_tokens": b["meter"].input_tokens,
+                    "budget_output_tokens": b["meter"].output_tokens,
                     "delegated_usd": self.delegated_usd,
+                    "persona_calls": self.persona_calls,
+                    "persona_failed": self.persona_failed,
+                    "specialist_tool_failed": self.specialist_tool_failed,
+                    "tool_calls": dict(ctx.calls) if ctx else {},
+                    "tool_occurrences": [
+                        {"tool": key[0], "args_digest": key[1], "count": count}
+                        for key, count in (ctx.__dict__.get("occurrences", {}) if ctx else {}).items()
+                    ],
                     "goal": self.goal,
                     "pending": pending or [],
                     "items": items,
@@ -1022,19 +1114,23 @@ class Agent:
                     "tier": b["router"].tier,
                 },
             )
-            self.h.runs.update(b["run"], tier=b["router"].tier, usage=self._usage_view())
+            usage = self._usage_view()
+            self.h.runs.update(b["run"], tier=b["router"].tier, usage=usage)
+            self.recorded_own_usd = usage["usd"]
         except Exception:  # noqa: BLE001 -- Checkpoints are an optimisation; the run continues.
             logger.warning("Run checkpoint failed", exc_info=True)
 
     def _finish_run(self, state, result):
         b = self.brain
         try:
+            usage = self._usage_view()
             self.h.runs.finish(
                 b["run"],
                 state,
                 {**result, "tier": b["router"].tier, "escalations": b["router"].escalations},
-                usage=self._usage_view(),
+                usage=usage,
             )
+            self.recorded_own_usd = usage["usd"]
         except Exception:  # noqa: BLE001 -- Recording the run must never change its outcome.
             logger.warning("Run record failed", exc_info=True)
 
@@ -1043,7 +1139,10 @@ class Agent:
         # Child run rows already record their spend. Keep aggregate spend for the lead's
         # budget, but store only its own spend in $.usd for the daily account total.
         usage["delegated_usd"] = round(self.delegated_usd, 6)
-        usage["usd"] = round(max(0, self.brain["meter"].usd - self.delegated_usd), 6)
+        usage["cumulative_usd"] = usage["usd"]
+        usage["usd"] = round(max(0, self.brain["meter"].usd - self.delegated_usd - self.prior_own_usd), 6)
+        usage["input_tokens"] -= self.prior_tokens[0]
+        usage["output_tokens"] -= self.prior_tokens[1]
         return usage
 
     async def _over_budget(self):
@@ -1057,7 +1156,7 @@ class Agent:
         if crossed:
             return STOP_MESSAGES[crossed]
         if meter.over_daily():
-            spent = meter.spent_today() + meter.usd
+            spent = meter.spent_today() + meter.pending_usd()
             if self.background or self.confirm is None:
                 return STOP_MESSAGES["daily"]
             if not await self.confirm(
@@ -1100,6 +1199,9 @@ class Agent:
     def _effects_verified(self):
         """Invariant I2 (V2-06): with the ledger on, every effect in the run is followed by evidence."""
         from .. import brain, ledger
+
+        if getattr(self, "persona_failed", False) or getattr(self, "specialist_tool_failed", False):
+            return False
 
         book = ledger.active()
         if not (brain.enabled() and book and self.run_id):

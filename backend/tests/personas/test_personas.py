@@ -223,7 +223,7 @@ async def test_team_stops_on_unfinished_member(harness, monkeypatch):
     lead = harness.agent(delegate=forbidden_delegate)
     called = []
 
-    async def blocked(lead, persona_id, task, share_context=False):
+    async def blocked(lead, persona_id, task, share_context=False, *, slot="delegate"):
         called.append(persona_id)
         return {"persona_id": persona_id, "outcome": "blocked", "message": "Missing permission"}
 
@@ -243,7 +243,7 @@ async def test_team_reports_reviewer_blocker(harness, monkeypatch):
     lead = harness.agent(delegate=forbidden_delegate)
     called = []
 
-    async def delegate(lead, persona_id, task, share_context=False):
+    async def delegate(lead, persona_id, task, share_context=False, *, slot="delegate"):
         called.append(persona_id)
         return {
             "persona_id": persona_id,
@@ -339,6 +339,37 @@ async def test_context_sharing_is_explicit_and_quarantined(harness):
     assert "PRIVATE_LEAD_CONTEXT" in request and "<untrusted" in request
     with pytest.raises(ValueError, match="boolean"):
         await delegate_to_persona(lead, "scout", "task", "false")
+
+
+def test_daily_spend_and_resume_record_only_new_own_cost(harness):
+    lead = harness.agent(delegate=forbidden_delegate)
+    lead._start_run(None)
+    meter = lead.brain["meter"]
+    from dataclasses import replace
+
+    meter.budget = replace(meter.budget, daily_usd=0.26)
+    meter.usd = 0.2
+    lead.delegated_usd = 0.1
+    member = harness.runs.start(
+        mode="subagent", principal={"kind": "persona", "client_id": "scout"}, parent_run_id=lead.brain["run"]
+    )
+    harness.runs.finish(member, "completed", {}, usage={"usd": 0.1})
+    lead._checkpoint([], "", 1)
+    assert harness.runs.spent_today() == pytest.approx(0.2)
+    assert not meter.over_daily()  # Recorded member and lead costs are not charged twice.
+    checkpoint = harness.runs.load_checkpoint(lead.brain["run"])
+    lead._finish_run("parked", {})
+    resumed = harness.agent(delegate=forbidden_delegate)
+    resumed.delegated_usd = checkpoint["delegated_usd"]
+    resumed.budget_override = meter.budget
+    resumed._start_run(checkpoint)
+    resumed.brain["meter"].usd += 0.05
+    assert not resumed.brain["meter"].over_daily()
+    resumed._checkpoint([], "", 1)
+    assert harness.runs.spent_today() == pytest.approx(0.25)
+    assert resumed._usage_view()["usd"] == pytest.approx(0.05)
+    resumed.brain["meter"].usd += 0.05
+    assert resumed.brain["meter"].over_daily()
 
 
 @pytest.mark.anyio

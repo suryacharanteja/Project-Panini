@@ -329,3 +329,5 @@ Dependencies: V2-06 (model router).
 ## Current development checkpoint
 
 V2-18 has a working backend and Admin implementation with tests and browser smoke; see its implementation-evidence section for remaining requirements. It is not marked Done. Full-program shipping is incomplete. No production deployment, signed installer, or Dot parity is certified by this checkpoint.
+
+The next increment implements durable specialist/team/reviewer approval continuation and spending accounting across attempts. Its local HTTP/SSE qualification uses scripted models and an isolated test hand. Cross-surface persona presentation, later integrations and live-provider evaluation remain outstanding.
