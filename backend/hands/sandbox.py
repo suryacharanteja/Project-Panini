@@ -218,6 +218,7 @@ class SandboxService:
         clock=time.time,
         runtime=None,
         native=None,
+        native_browser=None,
     ):
         self.store, self.clock = store, clock
         self.config = config or SandboxConfig()
@@ -226,6 +227,7 @@ class SandboxService:
         self._paused = paused
         self._runtime = runtime
         self._native = native
+        self._native_browser = native_browser
 
     # Native mode (ADR-0001 follow-up): with no container engine, shell and files run in a Windows AppContainer.
     @property
@@ -257,7 +259,40 @@ class SandboxService:
             return await asyncio.to_thread(
                 box.files_write, computer_id, parsed["path"], parsed["contents"], parsed.get("append", False)
             )
-        raise SandboxError("The browser needs a container engine (Docker or Podman); this sandbox is native.")
+        return await self.native_browser.action(computer_id, action, parsed)
+
+    async def _native_guarded(self, computer_id, action, parsed, kind, actor, cancel):
+        """Runs a native action, ending it if its permission is revoked, the owner pauses, or the run cancels."""
+        from .native_browser import NativeBrowserError
+        from .native_sandbox import NativeSandboxError
+
+        work = asyncio.ensure_future(self._native_action(computer_id, action, parsed))
+        try:
+            while not work.done():
+                await asyncio.wait({work}, timeout=0.05)
+                if work.done():
+                    break
+                try:
+                    self.allowed(computer_id, kind, actor)
+                except SandboxError:
+                    work.cancel()
+                    raise
+                if cancel is not None and cancel.is_set():
+                    work.cancel()
+                    raise SandboxError("Computer request was cancelled or timed out.")
+            result = work.result()
+        except (NativeSandboxError, NativeBrowserError) as exc:
+            raise SandboxError(str(exc)) from None
+        self.allowed(computer_id, kind, actor)
+        return result
+
+    @property
+    def native_browser(self):
+        if self._native_browser is None:
+            from .native_browser import NativeBrowser
+
+            self._native_browser = NativeBrowser(self.native.workspace)
+        return self._native_browser
 
     @property
     def runtime(self):
@@ -467,7 +502,7 @@ class SandboxService:
         except Exception:  # noqa: BLE001 -- Describing the runtime never breaks status.
             pass
         if self.native:
-            return {**base, "state": "running", "engine": "native", "tools": ["shell", "files"]}
+            return {**base, "state": "running", "engine": "native", "tools": ["shell", "files", "browser"]}
         if not self.configured:
             return {**base, "state": "not_configured"}
         try:
@@ -510,9 +545,9 @@ class SandboxService:
     async def stop(self, computer_id: str) -> dict:
         self.require(computer_id)
         if self.native:
-            return await self.status(
-                computer_id
-            )  # Native commands end with themselves; nothing keeps running.
+            # Commands end with themselves; the computer's throwaway browser is closed with its profile.
+            await self.native_browser.close(computer_id)
+            return await self.status(computer_id)
         if not self.configured:
             raise SandboxError("The sandbox is not set up.")
         await self._supervisor(f"/computers/{computer_id}/stop", {})
@@ -550,14 +585,7 @@ class SandboxService:
         kind = kind_of(action)
         self.allowed(computer_id, kind, actor)
         if self.native:
-            from .native_sandbox import NativeSandboxError
-
-            try:
-                result = await self._native_action(computer_id, action, parsed)
-            except NativeSandboxError as exc:
-                raise SandboxError(str(exc)) from None
-            self.allowed(computer_id, kind, actor)
-            return result
+            return await self._native_guarded(computer_id, action, parsed, kind, actor, cancel)
         stop = asyncio.Event()
 
         async def watch():

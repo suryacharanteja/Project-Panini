@@ -83,14 +83,12 @@ def _is_ip(text: str) -> bool:
 
 
 # Origins passed to Playwright as defence in depth for the isolated preset (never the boundary itself).
+_PRIVATE_HOSTS = ("localhost", "127.0.0.1", "[::1]", "10.*", "192.168.*", "172.16.*", "169.254.*")
+# A second layer under check_url: also stops clicks and redirects. Playwright matches the port too, so each host is
+# listed both without a port and with ":*" (a bare "http://127.0.0.1" does not match "http://127.0.0.1:8000").
 PRIVATE_ORIGINS = ";".join(
-    [
-        "http://localhost",
-        "https://localhost",
-        "http://127.0.0.1",
-        "http://10.*",
-        "http://192.168.*",
-        "http://172.16.*",
-        "http://169.254.*",
-    ]
+    f"{scheme}://{host}{port}"
+    for host in _PRIVATE_HOSTS
+    for scheme in ("http", "https")
+    for port in ("", ":*")
 )

@@ -423,9 +423,23 @@ class _FakeNative:
         return {"entries": [{"name": n} for n in self.files]}
 
 
+class _FakeBrowser:
+    async def action(self, computer, action, args):
+        return {"browser": computer, "action": action}
+
+    async def close(self, computer):
+        pass
+
+
 def test_native_mode_runs_shell_and_files_without_an_engine_and_keeps_permissions(tmp_path):
     store = Store(tmp_path / "s.sqlite3")
-    service = SandboxService(store, config=SimpleNamespace(), native=_FakeNative(), paused=lambda: False)
+    service = SandboxService(
+        store,
+        config=SimpleNamespace(),
+        native=_FakeNative(),
+        native_browser=_FakeBrowser(),
+        paused=lambda: False,
+    )
     service.ensure_row("panini")
     assert service.configured
     status = asyncio.run(service.status("panini"))
@@ -439,8 +453,8 @@ def test_native_mode_runs_shell_and_files_without_an_engine_and_keeps_permission
     assert result["exitCode"] == 0 and result["stdout"] == "panini:echo hi"
     asyncio.run(service.action("panini", "files_write", {"path": "a.txt", "contents": "x"}, "agent"))
     assert asyncio.run(service.action("panini", "files_read", {"path": "a.txt"}, "agent"))["contents"] == "x"
-    with pytest.raises(SandboxError, match="container engine"):
-        asyncio.run(service.action("panini", "navigate", {"url": "https://example.com"}, "agent"))
+    navigated = asyncio.run(service.action("panini", "navigate", {"url": "https://example.com"}, "agent"))
+    assert navigated == {"browser": "panini", "action": "navigate"}
 
 
 def test_native_mode_is_chosen_when_no_engine_is_installed(tmp_path, monkeypatch):
@@ -453,3 +467,79 @@ def test_native_mode_is_chosen_when_no_engine_is_installed(tmp_path, monkeypatch
     assert isinstance(service.native, native_sandbox.NativeSandbox)
     monkeypatch.setattr(sandbox_runtime, "detect", lambda *a, **k: ["docker"])
     assert SandboxService(Store(tmp_path / "t.sqlite3"), config=SimpleNamespace()).native is None
+
+
+def test_native_browser_maps_actions_and_rejects_stale_refs(tmp_path, monkeypatch):
+    from backend.hands import net_guard
+    from backend.hands.native_browser import NativeBrowser, NativeBrowserError
+
+    monkeypatch.setattr(net_guard, "resolve", lambda host: ["93.184.215.14"])
+
+    calls = []
+
+    class Session:
+        def __init__(self, preset):
+            self.preset = preset
+
+        async def call(self, tool, args):
+            calls.append((tool, args))
+            return {"content": [{"type": "text", "text": f"did {tool}"}]}
+
+        async def close(self):
+            calls.append(("close", {}))
+
+    browser = NativeBrowser(lambda c: tmp_path / c, session_factory=Session)
+    run = lambda action, args: asyncio.run(browser.action("panini", action, args))  # noqa: E731
+    run("navigate", {"url": "https://example.com"})
+    snap = run("snapshot", {})
+    assert snap == {"text": "did browser_snapshot", "snapshotId": 1}
+    run("click", {"ref": "e3", "snapshotId": 1})
+    with pytest.raises(NativeBrowserError):
+        run("click", {"ref": "e3", "snapshotId": 0})
+    with pytest.raises(NativeBrowserError, match="standard web ports"):
+        run("navigate", {"url": "http://127.0.0.1:8000/"})
+    run("scroll", {"deltaY": 1200})
+    assert [c[0] for c in calls] == [
+        "browser_navigate", "browser_snapshot", "browser_click", "browser_press_key", "browser_press_key",
+    ]  # fmt: skip
+    assert browser.sessions["panini"].preset.key == "isolated:sandbox-panini"
+    assert "--isolated" in browser.sessions["panini"].preset.flags
+    asyncio.run(browser.close("panini"))
+    assert calls[-1][0] == "close" and "panini" not in browser.sessions
+
+
+def test_revoking_permission_ends_a_native_action_in_flight(tmp_path):
+    class Slow(_FakeBrowser):
+        async def action(self, computer, action, args):
+            await asyncio.sleep(30)
+
+    service = SandboxService(
+        Store(tmp_path / "s.sqlite3"),
+        config=SimpleNamespace(),
+        native=_FakeNative(),
+        native_browser=Slow(),
+        paused=lambda: False,
+    )
+    service.ensure_row("panini")
+    service.patch_permissions("panini", {"enabled": True, "browser": True})
+
+    async def scenario():
+        task = asyncio.ensure_future(
+            service.action("panini", "navigate", {"url": "https://example.com"}, "agent")
+        )
+        await asyncio.sleep(0.1)
+        service.patch_permissions("panini", {"browser": False})
+        started = asyncio.get_running_loop().time()
+        with pytest.raises(SandboxError):
+            await task
+        return asyncio.get_running_loop().time() - started
+
+    assert asyncio.run(scenario()) < 1
+
+
+def test_private_origins_block_every_port():
+    from backend.hands.net_guard import PRIVATE_ORIGINS
+
+    origins = PRIVATE_ORIGINS.split(";")
+    for origin in ("http://127.0.0.1", "http://127.0.0.1:*", "https://localhost:*", "http://192.168.*:*"):
+        assert origin in origins

@@ -53,14 +53,21 @@ Three principles follow:
    - never builds images in the middle of a task: building is a setup step.
 3. **One-click setup in Admin → Computers:** tokens, engine, image build (first time), supervisor, health, with
    progress shown. The owner's click is the consent.
-4. **Nothing falls back to this PC unsandboxed.** If no engine is installed, shell and file tools run in the
-   native sandbox (5); browser tools say plainly that they need an engine. Work never runs on the host as the person.
+4. **Nothing falls back to this PC unsandboxed.** If no engine is installed, the native sandbox (5) takes over
+   shell, files and browser. Work never runs on the host as the person.
 5. **Native Windows sandbox, Codex style** (`backend/hands/native_sandbox.py`, amended 2026-10-03): used when
    `PANINI_SANDBOX_ENGINE=native`, or when `auto` finds no engine. Each computer gets its own AppContainer profile
    (Low integrity, no capabilities, so no network) and its own workspace folder, the only folder granted to it.
    Commands run with `cmd.exe` under a job object that ends the whole process tree at the timeout or when the
    command ends, caps per-process memory and the number of processes, and applies UI restrictions. The same
    permissions, pause and revocation checks apply as for container computers.
+   **Its browser** (`backend/hands/native_browser.py`, amended 2026-10-03, owner-approved "use both"): Chrome and
+   Firefox cannot run inside an AppContainer (their crash reporter and child-process pipes are denied), so each
+   native computer gets PANINI's isolated Playwright browser: a throwaway headless profile, web pages in Chromium's
+   own renderer sandbox, service workers off, `check_url` before every navigation, and Playwright's blocked-origins
+   list for clicks and redirects. That list now carries a `:*` form of every private host, because Playwright
+   matches ports and a bare `http://127.0.0.1` let `http://127.0.0.1:8000` through (this also fixes V2-08's
+   isolated preset). Closing the computer closes its browser and discards the profile.
 6. **Still a follow-up:** a hosted computer provider, behind the same interface.
 
 ## Consequences
@@ -82,3 +89,5 @@ Three principles follow:
 - Native: `backend/tests/hands/test_native_sandbox.py` (commands run at Low integrity in the workspace, exit codes,
   files round-trip, separate containers per computer, timeout ends the command, memory cap) and the native-mode
   service tests in `backend/tests/hands/test_sandbox.py`.
+- Native browser, live: page read and link click on the web, a local server refused, a stale ref refused, files
+  and commands in the container, and the browser closed on stop.
