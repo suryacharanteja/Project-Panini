@@ -175,6 +175,12 @@ def launch(argv: list[str], workspace: Path, *, memory_mb: int, allow_read: list
         if account is None:
             raise SystemExit("PANINI's sandbox account is not set up.")
         sandbox_user.grant(workspace)
+        # Files the account creates must stay readable by PANINI (the person), e.g. live-view frames.
+        own = wintypes.HANDLE()
+        _check(advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), 0x8, ctypes.byref(own)), "OpenToken")
+        person, _ = identities(own)
+        subprocess.run(["icacls", str(workspace), "/grant", f"*{person}:(OI)(CI)F", "/Q"],
+                       capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, check=True)  # fmt: skip
         for folder in allow_read:
             sandbox_user.grant(folder, "RX")
     else:

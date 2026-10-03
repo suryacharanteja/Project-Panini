@@ -104,3 +104,7 @@ Three principles follow:
   and commands in the container, and the browser closed on stop.
 - Box and take-over, live: the boxed browser loaded pages and produced frames; in Admin the owner took control,
   clicked a link in the live view (the sandbox browser went to the linked page) and handed back.
+- Sandbox account, live (2026-10-03, after the owner ran setup through the UAC prompt): the driver and Edge ran as
+  `panini-sandbox`, the person's Documents were access-denied to it, frames reached Admin, and the service check
+  (page read, link click, local server refused, stale ref refused, commands and files, browser closed on stop)
+  passed.

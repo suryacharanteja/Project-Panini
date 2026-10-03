@@ -56,9 +56,7 @@ class NativeBrowser:
         # Strongest first: PANINI's own Windows account (set up once by the owner), else a job-limited box.
         as_user = sandbox_user.credentials() is not None
         self.isolation = "sandbox-account" if as_user else "job-box"
-        argv = lowbox.command(
-            [node, str(entry_script())], artifacts / "box", integrity="medium", as_user=as_user
-        )
+        argv = lowbox.command([node, str(entry_script())], artifacts, integrity="medium", as_user=as_user)
         return {"command": argv[0], "args": argv[1:]}
 
     async def _call(self, computer, tool, args=None) -> str:

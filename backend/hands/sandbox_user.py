@@ -81,8 +81,36 @@ def remove() -> str:
     return f"Removed '{ACCOUNT}'; the native browser falls back to the job-limited box."
 
 
+def elevate(verb: str) -> str:
+    """Ask Windows to rerun this as administrator (the UAC prompt is the owner's consent) and wait for it."""
+    import os
+    import time
+
+    from ..extension_pairing import data_directory
+
+    result = data_directory() / "sandbox-account-result.txt"
+    result.unlink(missing_ok=True)
+    params = f'-m backend.hands.sandbox_user {verb} --result "{result}"'
+    started = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, os.getcwd(), 0)
+    if started <= 32:
+        return "Windows did not start the administrator step (the prompt was declined or failed)."
+    for _ in range(240):
+        if result.exists():
+            return result.read_text(encoding="utf-8")
+        time.sleep(0.5)
+    return "The administrator step did not finish in two minutes."
+
+
 if __name__ == "__main__":
     from ..config import ROOT
 
     verb = sys.argv[1] if len(sys.argv) > 1 else ""
-    print(setup(ROOT) if verb == "setup" else remove() if verb == "remove" else __doc__)
+    if verb not in ("setup", "remove"):
+        print(__doc__)
+    elif not ctypes.windll.shell32.IsUserAnAdmin():
+        print(elevate(verb))
+    else:
+        message = setup(ROOT) if verb == "setup" else remove()
+        if "--result" in sys.argv:
+            Path(sys.argv[sys.argv.index("--result") + 1]).write_text(message, encoding="utf-8")
+        print(message)
