@@ -4,11 +4,12 @@ Red-team work is **in progress** and is outside this development pass. Remote pr
 
 ## Implemented
 
-- Separate Home, Inbox, Ask, Live, Settings and Pair screen modules.
+- Separate Home, Inbox, Ask, Work, Live, Settings and Pair screen modules.
 - IndexedDB persistence of non-extractable device keys and Ask drafts.
 - Encrypted pairing/session client, serialized requests, bounded timeouts, and no automatic replay of effects after an ambiguous reply.
 - Restore-before-decide approval signing and stale-card checks.
 - Android install prompt, app manifest, share target, offline app shell and explicit notification permission.
+- Work shows recent background-task history, results and activity, with an exact-task Stop action. This is task history, not a full chat transcript.
 - Revocation clears the local pairing; live view stops polling while hidden and reports connection failures.
 
 ## Developer checks
@@ -37,6 +38,6 @@ For product use, the PWA needs a trusted HTTPS deployment/transport. An ordinary
 
 ## Qualification remaining
 
-Physical Android installation, lock-screen push, share-sheet routing, background lifecycle and device removal need device evidence. Passkey/verify approvals, thread history, photo/voice input and an APK are not implemented by this pass. Verify/local approvals remain unavailable on the phone until their verification path exists. No Android SDK or connected device was available during this pass.
+Physical Android installation, lock-screen push, share-sheet routing, background lifecycle and device removal need device evidence. Passkey/verify approvals, full conversation transcripts, photo/voice input and an APK are not implemented by this pass. Verify/local approvals remain unavailable on the phone until their verification path exists. No Android SDK or connected device was available during this pass.
 
 An APK wrapper can follow the PWA using Android Trusted Web Activity once a stable owned HTTPS origin and signing identity exist; it needs Digital Asset Links verification. See Google's [Android guide](https://developer.android.com/develop/ui/views/layout/webapps/guide-trusted-web-activities-version2).

@@ -138,3 +138,39 @@ def test_nothing_reaches_the_remote_routes_without_a_session(world):
         ).status_code
         == 403
     )
+
+
+def test_phone_reads_task_history_stops_exact_task_and_handles_missing_task(world):
+    from backend.harness.tasks import Tasks
+
+    app, devices, identity, _ = world
+    tasks = Tasks(devices.store)
+    app.state.harness.tasks = tasks
+    task = tasks.submit("Prepare my status", origin="phone")
+    other = tasks.submit("Keep this task", origin="user")
+
+    async def scenario():
+        phone = Phone(app, identity, paired(devices))
+        await phone.connect()
+        listing = await phone.call("GET", "/threads")
+        assert len(listing["body"]["threads"]) == 2
+        assert "lease_id" not in listing["body"]["threads"][0]
+        detail = await phone.call("GET", f"/threads/{task['id']}")
+        assert detail["body"]["thread"]["goal"] == "Prepare my status"
+        assert detail["body"]["events"]
+        stopped = await phone.call("POST", f"/threads/{task['id']}/stop")
+        assert stopped["body"]["thread"]["status"] == "cancelled"
+        assert tasks.get(other["id"])["status"] == "queued"
+        assert (await phone.call("GET", "/threads/missing"))["status"] == 404
+        assert (await phone.call("POST", "/threads/missing/stop"))["status"] == 404
+
+    asyncio.run(scenario())
+
+
+def test_task_history_requires_a_paired_session(world):
+    from fastapi.testclient import TestClient
+
+    app, _, _, _ = world
+    client = TestClient(app)
+    for method, path in [("GET", "/threads"), ("GET", "/threads/task"), ("POST", "/threads/task/stop")]:
+        assert client.request(method, f"/api/remote{path}").status_code == 403

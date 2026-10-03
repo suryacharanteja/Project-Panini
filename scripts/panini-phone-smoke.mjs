@@ -82,6 +82,13 @@ try {
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByRole('heading', { name: 'Ready', exact: true }).waitFor();
   if ((await control('/state')).asks.length !== 1) throw Error('Ask not received exactly once');
+  await page.getByRole('button', { name: 'Work', exact: true }).click();
+  await page.getByRole('button', { name: /Prepare my Android companion status/ }).click();
+  await page.getByRole('button', { name: 'Stop task', exact: true }).click();
+  await page.getByText('cancelled', { exact: true }).waitFor();
+  await page.screenshot({ path: 'artifacts/phone/android-work.png' });
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('heading', { name: 'Ready', exact: true }).waitFor();
   await page.reload();
   await page.getByRole('heading', { name: 'Ready', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Live', exact: true }).click();
@@ -133,7 +140,7 @@ try {
     throw Error('Revoked keys retained');
   if (errors.length) throw Error(errors.join('\n'));
   console.log(
-    'PASS encrypted pairing, persistent non-extractable keys, signed approval, Ask exactly once, reload, Live, Android share target, offline recovery and revocation in Android-sized Chromium',
+    'PASS encrypted pairing, persistent non-extractable keys, signed approval, Ask exactly once, task history/stop, reload, Live, Android share target, offline recovery and revocation in Android-sized Chromium',
   );
 } finally {
   await browser?.close();

@@ -9,6 +9,7 @@ const TABS = [
   ['home', 'Home'],
   ['inbox', 'Inbox'],
   ['ask', 'Ask'],
+  ['threads', 'Work'],
   ['live', 'Live'],
   ['settings', 'Settings'],
 ];

@@ -243,3 +243,18 @@ main[aria-busy='true'] {
     transition: none !important;
   }
 }
+nav {
+  flex-wrap: wrap;
+}
+nav button {
+  font-size: 12px;
+  min-width: 16%;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.screen pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 300px;
+  overflow-y: auto;
+}

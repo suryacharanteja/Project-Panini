@@ -194,3 +194,33 @@ async def share(payload: Share, request: Request):
 async def push_key(request: Request):
     fabric, _ = _fabric(request)
     return {"key": fabric.push_key}
+
+
+def _thread_view(task):
+    return {key: task.get(key) for key in ("id", "title", "goal", "status", "created", "result")}
+
+
+@router.get("/threads")
+async def threads(request: Request):
+    _fabric(request)
+    return {"threads": [_thread_view(task) for task in _harness(request).tasks.list(limit=50)]}
+
+
+@router.get("/threads/{task_id}")
+async def thread(task_id: str, request: Request):
+    _fabric(request)
+    tasks = _harness(request).tasks
+    try:
+        task = tasks.get(task_id)
+    except KeyError:
+        raise HTTPException(404, "This task is no longer available.") from None
+    return {"thread": _thread_view(task), "events": tasks.events(task_id=task_id, limit=100)}
+
+
+@router.post("/threads/{task_id}/stop")
+async def stop_thread(task_id: str, request: Request):
+    _fabric(request)
+    try:
+        return {"thread": _thread_view(_harness(request).tasks.cancel(task_id))}
+    except KeyError:
+        raise HTTPException(404, "This task is no longer available.") from None

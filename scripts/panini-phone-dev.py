@@ -54,11 +54,14 @@ async def main():
 
     store = Store(Path(tempfile.mkdtemp()) / "phone-dev.sqlite3")
     interrupts = Interrupts(store)
+    from backend.harness.tasks import Tasks
+
+    tasks = Tasks(store)
     asks = []
 
     def submit(goal, **kw):
         asks.append({"goal": goal, **{k: v for k, v in kw.items() if k in ("origin", "title")}})
-        return {"id": f"task-{len(asks)}", "title": kw.get("title", "")}
+        return tasks.submit(goal, **kw)
 
     app = FastAPI()
     app.include_router(remote_router)
@@ -69,7 +72,9 @@ async def main():
         notices=SimpleNamespace(
             list=lambda: [{"title": "Welcome", "body": "This is the phone app preview."}]
         ),
-        tasks=SimpleNamespace(submit=submit),
+        tasks=SimpleNamespace(
+            submit=submit, list=tasks.list, get=tasks.get, events=tasks.events, cancel=tasks.cancel
+        ),
     )
     policy.install(policy.Policy())
     fabric = Fabric(app, store, MemorySecrets(), settings_path=Path(tempfile.mkdtemp()) / "fabric.json")
