@@ -6,6 +6,7 @@ own runtime credential.
 """
 
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -645,6 +646,32 @@ def add_ledger(r, guard):
         h = harness(request)
         roots = h.store.all("SELECT day, last_seq, root_hash FROM ledger_roots ORDER BY day DESC LIMIT 7")
         return {**verify(h.store), "roots": roots}
+
+    @r.post("/artifacts/{artifact_id}/open-trace")
+    async def open_trace(artifact_id: str, request: Request):
+        """Open a browser trace in Playwright's trace viewer on this PC (V2-10)."""
+        guard(request)
+        import subprocess
+        import tempfile
+
+        from ..hands.playwright_mcp import BrowserDriverError, entry_script, node_executable
+
+        found = harness(request).artifacts.get(artifact_id)
+        if found is None or found[0].get("kind") != "trace":
+            raise HTTPException(404, "Unknown trace.")
+        node = node_executable()
+        try:
+            cli = entry_script().parents[2] / "cli.js"
+        except BrowserDriverError:
+            cli = None
+        if node is None or cli is None or not cli.exists():
+            raise HTTPException(503, "The Playwright trace viewer is not installed.")
+        path = Path(tempfile.gettempdir()) / f"panini-trace-{artifact_id}.zip"
+        path.write_bytes(found[1])
+        subprocess.Popen(
+            [node, str(cli), "show-trace", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        return {"opened": True}
 
     @r.get("/artifacts/{artifact_id}")
     async def artifact(artifact_id: str, request: Request):

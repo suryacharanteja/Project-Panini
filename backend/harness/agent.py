@@ -307,6 +307,8 @@ TOOL_GROUP_QUESTIONS = {
     "subagents": "Does this task contain several independent research questions that could be answered in parallel?",
     "agents": "Does this task ask to contact, consult or delegate to another named agent?",
     "new_skill": "Does the person ask to save, create or teach a reusable skill, procedure or workflow?",
+    "browser_devtools": "Does this task need a web page's console messages, network requests or page JavaScript?",
+    "browser_vision": "Does this task need clicking or dragging at screen coordinates on a web page (canvas, maps, drawing)?",
 }
 SELECT_THRESHOLD = (
     0.25  # Generous: showing an unneeded item costs tokens; hiding a needed one costs the task.
@@ -325,6 +327,13 @@ def report(outcome):
     lines = [outcome.get("message") or ""]
     lines += [f"- {r.get('title', '')} {r.get('url', '')}".rstrip() for r in outcome.get("results") or []]
     return "\n".join(line for line in lines if line.strip())
+
+
+def _browser_v2() -> bool:
+    """Playwright's browser vocabulary replaces the v1 browser tool and the browser capability (V2-10)."""
+    from .. import v2flags
+
+    return v2flags.value("PANINI_BROWSER_DRIVER") == "playwright" or v2flags.enabled("PANINI_CLAW_CDP")
 
 
 def _pending(call_id, name, arguments):
@@ -398,7 +407,8 @@ class Agent:
         # V2-07: observe(kind, **data) sees tool calls and messages (AG-UI); client tools run in the person's app
         # through client_call(call_id, name, arguments); durable runs keep run records without the flag.
         self.observe, self.client_tools, self.client_call, self.durable = None, [], None, False
-        self.only_tools = None  # V2-08: a focused agent sees only these tool names (for example managed_*).
+        self.only_tools = None  # V2-08: a focused agent sees only these tool names.
+        self.browser_preference = None  # V2-10: "managed" when the person asked for a separate browser.
 
     async def _select(self, goal, items):
         """One Jev call per task decides what the model needs to see: relevant skills,
@@ -486,6 +496,10 @@ class Agent:
         if tool_name == "use_connector":
             return not self.selection["servers"]
         group = next((g for g, names in TOOL_GROUPS.items() if tool_name in names), None)
+        registry = getattr(self, "registry", None)
+        if group is None and registry is not None and tool_name in registry.specs:
+            spec_group = registry.specs[tool_name].group  # Registry tools name their optional group.
+            group = spec_group if spec_group in TOOL_GROUP_QUESTIONS else None
         return group is not None and group not in self.selection["groups"]
 
     def tool_view(self):
@@ -529,6 +543,8 @@ class Agent:
 
     def tools(self):
         offered = self._offered_tools()
+        if _browser_v2() and getattr(self, "registry", None) is not None:
+            offered = [t for t in offered if t["name"] != "browser"]
         only = getattr(self, "only_tools", None)
         return offered if only is None else [t for t in offered if t["name"] in only]
 
@@ -739,6 +755,9 @@ class Agent:
                 self._finish_run(state, {"error": str(signal)[:300]})
             raise
         result.plan, result.evidence, result.steps = self.plan, self.evidence[-50:], step
+        registry = getattr(self, "registry", None)
+        if registry is not None and not self.depth:
+            await registry.run_finished(self.tool_context())
         if self.brain:
             self._finish_run(
                 _run_state(result.outcome), {"outcome": result.outcome, "message": result.message[:2000]}

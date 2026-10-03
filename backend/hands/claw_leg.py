@@ -55,8 +55,14 @@ class ClawLeg:
         kind = message.get("type")
         tab_id = message.get("tab_id")
         if kind == "cdp_event":
-            relay.on_event(
-                tab_id, message.get("session_id"), str(message.get("method", "")), message.get("params") or {}
+            # Scheduled, not immediate: a result frame resumes its waiting command on the next loop turn, and an
+            # event that followed it must not overtake the reply (Playwright relies on Chrome's ordering).
+            asyncio.get_running_loop().call_soon(
+                relay.on_event,
+                tab_id,
+                message.get("session_id"),
+                str(message.get("method", "")),
+                message.get("params") or {},
             )
         elif kind == "cdp_detached":
             relay.on_detached(tab_id, str(message.get("reason", "detached")))

@@ -98,7 +98,16 @@ class BrowserAdapter(UnavailableAdapter):
             deadline_seconds=280,
             max_steps=16,
         )
-        agent.only_tools = set(TOOLS) | {"update_plan", "finish"}
+        from ..hands.browser_tools import TOOLS as V2_TOOLS
+
+        agent.only_tools = {n for n, t in V2_TOOLS.items() if t.offered and t.group == "core"} | {
+            "browser_snapshot",
+            "browser_media",
+            "update_plan",
+            "finish",
+        }
+        agent.only_tools |= set(TOOLS)  # The V2-08 managed_* names, when that manifest is installed.
+        agent.browser_preference = "managed"
         agent.run_id = context.task.task_id
         result = await agent.run(
             "Use PANINI's own browser (the managed_* tools) for this; it is separate from the person's "

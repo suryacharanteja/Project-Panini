@@ -92,7 +92,11 @@ class AgentAdapter:
         def emit(kind, message, **detail):
             context.emit("running", message, agent_event=kind, **detail)
 
-        capabilities = [name for name in ("search", "browser", "desktop", "code") if name in self.adapters]
+        from ..harness.agent import _browser_v2
+
+        # V2-10: with Playwright's vocabulary the brain drives browser tools itself; no browser capability loop.
+        browsers = () if _browser_v2() and self.harness.registry is not None else ("browser",)
+        capabilities = [name for name in ("search", *browsers, "desktop", "code") if name in self.adapters]
 
         async def confirm(summary, detail):
             try:

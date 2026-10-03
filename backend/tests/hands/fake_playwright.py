@@ -29,11 +29,36 @@ TOOLS = [
         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}},
     },
     {"name": "browser_close", "inputSchema": {"type": "object", "properties": {}}},
+    {
+        "name": "browser_evaluate",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"function": {"type": "string"}, "target": {"type": "string"}},
+        },
+    },
+    {
+        "name": "browser_highlight",
+        "inputSchema": {"type": "object", "properties": {"target": {"type": "string"}}},
+    },
+    {"name": "browser_hide_highlight", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "browser_take_screenshot", "inputSchema": {"type": "object", "properties": {}}},
+    {
+        "name": "browser_file_upload",
+        "inputSchema": {"type": "object", "properties": {"paths": {"type": "array"}}},
+    },
+    {"name": "browser_network_requests", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "browser_start_tracing", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "browser_stop_tracing", "inputSchema": {"type": "object", "properties": {}}},
 ]
+FIELDS = {
+    "e2": {"type": "text", "autocomplete": "name"},
+    "e3": {"type": "password", "autocomplete": "current-password"},
+    "e5": {"type": "text", "autocomplete": "one-time-code"},
+}
 if os.environ.get("FAKE_EXTRA_TOOL"):
     TOOLS.append({"name": "browser_surprise", "inputSchema": {"type": "object"}})
 
-SNAPSHOT = '- heading "Jev browser demo" [ref=e1]\n- textbox "Your name" [ref=e2]\n- textbox "Password" [ref=e3]\n- button "Buy now" [ref=e4]'
+SNAPSHOT = '- heading "Jev browser demo" [ref=e1]\n- textbox "Your name" [ref=e2]\n- textbox "Password" [ref=e3]\n- button "Buy now" [ref=e4]\n- textbox "Verification" [ref=e5]'
 
 
 def main():
@@ -54,7 +79,15 @@ def main():
             name, args = message["params"]["name"], message["params"].get("arguments", {})
             if args.get("target") == "crash" or args.get("url") == "https://crash.test/":
                 os._exit(3)
-            if name == "browser_snapshot" and args.get("probe_env"):
+            if name == "browser_evaluate" and "el.tagName" in args.get("function", ""):
+                field = FIELDS.get(args.get("target"), {})
+                text = "### Result\n" + json.dumps({"tag": "INPUT", "name": "", "id": "", **field})
+            elif name == "browser_evaluate":
+                state = {"found": True, "playing": False, "ad_showing": False, "ad_skippable_now": False}
+                text = "### Result\n" + json.dumps(state)
+            elif name == "browser_network_requests":
+                text = "### Result\n- GET https://shop.example/api\n  - authorization: Bearer secret-token\n  - accept: application/json"
+            elif name == "browser_snapshot" and args.get("probe_env"):
                 text = json.dumps(sorted(os.environ))
             elif name in ("browser_snapshot", "browser_navigate", "browser_click"):
                 text = f"### Page state\n{SNAPSHOT}\n(called {name} {json.dumps(args, sort_keys=True)})"

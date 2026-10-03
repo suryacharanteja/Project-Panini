@@ -160,6 +160,18 @@ class Registry:
             result[manifest.id] = entry
         return result
 
+    async def run_finished(self, ctx):
+        """Tell hands that keep per-run state (browser traces) that the run ended."""
+        seen = set()
+        for hand in self.hands.values():
+            if id(hand) in seen or not hasattr(hand, "run_finished"):
+                continue
+            seen.add(id(hand))
+            try:
+                await hand.run_finished(ctx)
+            except Exception:  # noqa: BLE001 -- Wrapping up a run never changes its result.
+                logger.warning("run_finished failed for %s", type(hand).__name__, exc_info=True)
+
     # Calling ---------------------------------------------------------------
     def resolve(self, name: str, args: dict) -> ToolSpec:
         """A meta tool's concrete target, which policy and receipts act on."""

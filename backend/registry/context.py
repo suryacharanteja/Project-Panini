@@ -32,6 +32,7 @@ class ToolView:
             "ledger": self.ledger,
             "managed_browser": self.managed_browser,
             "claw_cdp": self.claw_cdp,
+            "browser_v2": self.managed_browser or self.claw_cdp,
         }
         return all(checks[r] for r in requires)
 

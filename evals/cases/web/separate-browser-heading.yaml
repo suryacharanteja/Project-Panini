@@ -4,7 +4,7 @@ modes:
 - live
 needs:
 - openai
-turn: Use a separate browser to open https://example.com and tell me the page's main heading.
+turn: Use a separate browser to open https://example.com and tell me the page title.
 files: {}
 expect:
   outcome_in:

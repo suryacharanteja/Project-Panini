@@ -105,8 +105,13 @@ class DirectChromeLeg:
                         else:
                             future.set_result(message.get("result", {}))
                 elif self.relay is not None:
-                    self.relay.on_event(
-                        tab_id, message.get("sessionId"), message["method"], message.get("params", {})
+                    # Scheduled like the reply to an earlier response, so Playwright sees them in Chrome's order.
+                    asyncio.get_running_loop().call_soon(
+                        self.relay.on_event,
+                        tab_id,
+                        message.get("sessionId"),
+                        message["method"],
+                        message.get("params", {}),
                     )
         except Exception:  # noqa: BLE001 -- The socket closed: the tab detached.
             pass

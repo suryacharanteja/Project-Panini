@@ -55,6 +55,12 @@ class PolicyHook(Hooks):
             detail = json.dumps(
                 {k: v for k, v in args.items() if k not in decision.redactions}, ensure_ascii=False
             )
+            hand = getattr(getattr(getattr(ctx, "agent", None), "registry", None), "hands", {}).get(spec.name)
+            if hasattr(hand, "preview"):
+                try:  # The hand shows what it is about to touch (a highlighted screenshot for browsers).
+                    detail = (await hand.preview(ctx, spec, args)) + "\n" + detail
+                except Exception:  # noqa: BLE001 -- A failed preview never blocks asking.
+                    pass
             title = f"{spec.title} ({decision.effect.value.replace('_', ' ')})"
             if decision.reasons:
                 title += " — " + "; ".join(decision.reasons)[:160]

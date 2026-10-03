@@ -261,7 +261,7 @@ def test_the_hand_is_off_without_the_playwright_driver(monkeypatch):
     assert asyncio.run(h.readiness()).state == "unavailable"
 
 
-def test_managed_tools_are_offered_only_with_the_playwright_driver(monkeypatch, tmp_path):
+def test_browser_tools_are_offered_only_with_the_playwright_driver(monkeypatch, tmp_path):
     from panini_cli.agent.model import ScriptedModel
 
     from backend.harness.runtime import Harness
@@ -275,14 +275,22 @@ def test_managed_tools_are_offered_only_with_the_playwright_driver(monkeypatch, 
         skills=Skills(user_root=tmp_path / "s"),
     )
     agent = h.agent(delegate=None, capabilities=())
-    assert not any(t["name"].startswith("managed_") for t in agent.tools())
+    names = {t["name"] for t in agent.tools()}
+    assert "browser_click" not in names and "browser" in names  # v1 tool only
     monkeypatch.setenv("PANINI_BROWSER_DRIVER", "playwright")
     names = {t["name"] for t in agent.tools()}
-    assert {"managed_navigate", "managed_click", "managed_verify_text"} <= names
-    agent.only_tools = {"managed_snapshot", "finish"}
-    assert {t["name"] for t in agent.tools()} == {"managed_snapshot", "finish"}
+    assert {"browser_navigate", "browser_click", "browser_verify_text_visible", "browser_select"} <= names
+    assert "browser" not in names  # V2-10: the v1 direct tool steps aside.
+    assert not names & {
+        "browser_start_tracing",
+        "browser_close",
+        "browser_cookie_list",
+        "browser_run_code_unsafe",
+    }
+    agent.only_tools = {"browser_snapshot", "finish"}
+    assert {t["name"] for t in agent.tools()} == {"browser_snapshot", "finish"}
     background = h.agent(delegate=None, capabilities=(), background=True)
-    assert not any(t["name"].startswith("managed_") for t in background.tools())
+    assert not any(t["name"].startswith("browser_") for t in background.tools())
     h.store.close()
 
 
@@ -362,8 +370,8 @@ def test_the_separate_browser_runs_on_playwright_through_a_focused_agent(tmp_pat
     monkeypatch.setenv("PANINI_V2_REGISTRY", "true")
     monkeypatch.setenv("PANINI_BROWSER_DRIVER", "playwright")
     steps = [
-        {"calls": [{"name": "managed_navigate", "arguments": {"url": "https://example.com/"}}]},
-        {"calls": [{"name": "managed_verify_text", "arguments": {"text": "Jev browser demo"}}]},
+        {"calls": [{"name": "browser_navigate", "arguments": {"url": "https://example.com/"}}]},
+        {"calls": [{"name": "browser_verify_text_visible", "arguments": {"text": "Jev browser demo"}}]},
         {
             "calls": [
                 {"name": "finish", "arguments": {"outcome": "verified_complete", "message": "Opened it."}}

@@ -1,6 +1,6 @@
 import { ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
-import { harness, useResource } from '../api';
+import { api, harness, useResource } from '../api';
 import { Badge, Card, Empty, inputClass, Page } from '../components/ui';
 
 type Receipt = {
@@ -15,7 +15,7 @@ type Receipt = {
   args_view: Record<string, unknown>;
   result_view: string | null;
   decision: { action: string; level: string; reasons: string[] } | null;
-  evidence: { kind: string; summary: string }[];
+  evidence: { kind: string; summary: string; artifact_id?: string }[];
   entries?: { seq: number; kind: string; hash: string }[];
 };
 
@@ -103,6 +103,20 @@ export function ReceiptsPage() {
                   {detail.data.evidence.map((e, i) => (
                     <div key={i}>
                       Evidence: <Badge tone="ok">{e.kind}</Badge> {e.summary}
+                      {e.kind === 'trace' && e.artifact_id && (
+                        <button
+                          type="button"
+                          className="ml-2 underline text-copper-light"
+                          onClick={() =>
+                            void api(harness(`/artifacts/${e.artifact_id}/open-trace`), {
+                              method: 'POST',
+                              body: {},
+                            })
+                          }
+                        >
+                          Open trace
+                        </button>
+                      )}
                     </div>
                   ))}
                   <div className="mono text-faint">

@@ -19,6 +19,12 @@ def operation_key(run_id: str, tool: str, args_digest: str, occurrence: int) -> 
     return chain.digest([run_id, tool, args_digest, occurrence])
 
 
+# V2-10: the page as it looks after an action is an observation. It confirms typing and selecting, but a
+# submit, purchase, message or deletion needs an assertion (browser_verify_*), a file hash or a postcondition.
+WEAK_EVIDENCE = {"page"}
+OBSERVATION_ENOUGH = {"input"}
+
+
 class Ledger:
     def __init__(self, store, clock=time.time, roots_file=None):
         self.store, self.clock, self.roots_file = store, clock, roots_file
@@ -115,7 +121,7 @@ class Ledger:
             "details_digest": chain.digest(details),
         }
         if isinstance(details, dict):
-            for key in ("receipt_sha256", "exit_code", "verifier"):
+            for key in ("receipt_sha256", "exit_code", "verifier", "artifact_id"):
                 if key in details:
                     item[key] = details[key]
         row = self.store.one("SELECT evidence FROM receipts WHERE id=?", (receipt_id,))
@@ -196,11 +202,14 @@ class Ledger:
         rows = self.store.all(
             "SELECT effect, evidence, outcome FROM receipts WHERE run_id=? ORDER BY started_at", (run_id,)
         )
-        last_effect, verified_after = None, False
+        last_effect, effect, verified_after = None, None, False
         for index, row in enumerate(rows):
+            items = json.loads(row["evidence"])
+            strong = any(i.get("kind") not in WEAK_EVIDENCE for i in items)
             if row["effect"] not in {"observe", "navigate"} and row["outcome"] == "ok":
-                last_effect, verified_after = index, bool(json.loads(row["evidence"]))
-            elif last_effect is not None and json.loads(row["evidence"]):
+                last_effect, effect = index, row["effect"]
+                verified_after = strong or (bool(items) and effect in OBSERVATION_ENOUGH)
+            elif last_effect is not None and items and (strong or effect in OBSERVATION_ENOUGH):
                 verified_after = True
         return last_effect is None or verified_after
 
