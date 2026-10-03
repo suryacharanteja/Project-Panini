@@ -7,6 +7,7 @@ import io
 import json
 import math
 import os
+import time
 from pathlib import Path
 from typing import ClassVar, Literal
 
@@ -200,6 +201,30 @@ async def jev_confirms_visual(instruction, goal, assessment, state):
         return probability(answer["answers"]["satisfied"]["probability"]) >= 0.6
     except Exception:  # noqa: BLE001 -- Keep the conservative vision assessment.
         return True
+
+
+TAKEOVER_TTL_S = 30 * 60
+
+
+async def _held_by_person(context, activity, state) -> bool:
+    """V2-12: moving the mouse takes control instead of stopping the task. Waits until the person gives it back
+    (live view, Admin or the phone), or until Stop. Returns False when live view is off (the v1 stop stays)."""
+    from .. import live
+
+    if not live.enabled():
+        return False
+    takeover = live.takeover()
+    takeover.take("desktop", "pc")
+    activity("paused", "You have control. PANINI is waiting; press Give back when you are done.", state)
+    deadline = time.monotonic() + TAKEOVER_TTL_S
+    while takeover.state("desktop", "pc").holder == "human":
+        context.check()  # Stop still works while you hold control.
+        if time.monotonic() > deadline:
+            raise Fault("TAKEOVER_EXPIRED", "You still have control; I stopped.")
+        await asyncio.sleep(0.5)
+    takeover.gate("desktop", "pc", observe=True)  # The fresh observation that follows satisfies the rule.
+    activity("resumed", "Thanks. Looking at the window again before continuing.", state)
+    return True
 
 
 async def parse_action(rules, payload, schema, *, image):
@@ -574,6 +599,19 @@ async def _run_visual(adapter, context, instruction, target, overlay):
             return ""
 
     def activity(phase, message, state, action=None):
+        from .. import live
+
+        if live.enabled() and state.get("capture", {}).get("image_base64"):
+            # The desktop's frames in the live view (V2-12), at action rate; full captures stay broker-side.
+            try:
+                live.hub().publish(
+                    getattr(context.task, "task_id", None), "desktop", "pc",
+                    base64.b64decode(state["capture"]["image_base64"]),
+                    {"title": target.get("label", ""), "width": state["capture"].get("width", 0),
+                     "height": state["capture"].get("height", 0)},
+                )  # fmt: skip
+            except Exception:  # noqa: BLE001 -- Live view never breaks an action.
+                pass
         emit_activity = getattr(context, "computer_activity", None)
         if emit_activity is None:
             return
@@ -892,7 +930,17 @@ async def _run_visual(adapter, context, instruction, target, overlay):
         if action.kind in {"draw", "drag"}:
             # Paced gestures outlast an ordinary request; the broker allows them up to a minute.
             request["timeout_ms"] = 58000
-        result = await adapter.pipe.call(request)
+        try:
+            result = await adapter.pipe.call(request)
+        except Fault as exc:
+            if exc.code != "USER_INPUT_ACTIVE" or not await _held_by_person(context, activity, fresh):
+                raise
+            # You moved the mouse: you had control, and handed it back. Look again before anything else.
+            recent.append(
+                {"interrupted": summary, "reason": "The person took control; re-plan from the new view."}
+            )
+            state = await observe()
+            continue
         context.check()
         if not result.get("after"):
             return Outcome(

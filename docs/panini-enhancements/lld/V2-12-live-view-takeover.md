@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 2 · P1 · M (4–5 days) |
 | Depends on | V2-07 (cards), V2-08 (Playwright sessions), V2-11 (sandbox) |
 | Flag | `PANINI_LIVE_VIEW` (default `false`) |
-| Status | Not started |
+| Status | Done (2026-10-03) |
 
 ## 1. Outcome
 
@@ -162,3 +162,27 @@ Flag on in development after step 4. Rollback: flag off; v1 thumbnails remain.
 
 - Should desktop takeover pause only the desktop hand or the whole run? Recommendation: only the hand; other
   hands (search, managed browser) may continue if the plan allows.
+
+## 11. As built (2026-10-03)
+
+| Part | Where | Notes |
+| --- | --- | --- |
+| Hub | `backend/live/hub.py` | Newest frame per (hand, target), never queued; viewer counts; a 5 s grace before sources stop; pull sources (`register_poller`) run only while watched; polling viewers (`touch`) count as watching. Viewers are woken on their own event loop, so frames may be published from any thread. |
+| Takeover | `backend/live/control.py` | OpenBot's fields (holder, requested, transitioning, resumeSnapshotRequired, request). `gate()` blocks agent calls while you hold a hand and refuses effects after hand-back until an observe tool ran. Listeners mirror the state into hands (OpenBot's own `/control`). |
+| Routes | `backend/routes/live.py` | `/api/harness/live` and `/api/panini/harness/live`: list, SSE stream (≤ 4 fps), `latest.jpg` (with URL, title and size headers), control, take / release, owner input. Ingest at `/api/live/ingest/<token>` from loopback only, with a per-session token; `console.py` treats it as a non-console route. |
+| Browser frames and pointer | `panini-core/capabilities/browser/playwright/init-live.cjs`, `playwright_mcp.py` | Loaded with `--init-page` in sessions that have a live identity (managed, your Chrome, a native sandbox computer's browser). It asks PANINI every second whether anyone watches and starts or stops `page.screencast` (960×600, quality 60, ≤ 4 fps). `showActions` draws the pointer and the action title (`PANINI_BROWSER_SHOW_ACTIONS`). The token and backend address go through the sidecar environment (and through the box's allow-list). |
+| Sandbox | `backend/hands/sandbox.py` | Container computers: `GET /screenshot` every 2 s while watched. Native computers stream through their browser's screencast. Owner input maps to `human_*`. Admin, the live view and the agent all share one takeover state. |
+| Managed browser | `backend/hands/browser_v2.py` | Every agent tool on chrome/managed passes the gate. Owner input on the managed browser uses coordinate and key tools the agent is never offered. Your Chrome takes input on the PC itself (remote input stays off). |
+| Desktop | `backend/capabilities/desktop_visual.py`, `backend/panini/coordinator.py` | Action frames go to the hub. With live view on, `USER_INPUT_ACTIVE` (you moved the mouse) takes control instead of stopping: the task waits (Stop still works; 30 min TTL ends it), then looks again. Saying "carry on" (and similar) gives back every hand you hold. With live view off, the v1 stop remains. |
+| Cards | `panini-core/apps/shared-ui/live.tsx`, Admin `pages/Live.tsx`, shell `ShellLive.tsx` | One `LiveView` card: frames, URL and title, live indicator, Take / Give back, tap-to-click scaled to page coordinates, wheel, typing and keys. Pluggable transport: SSE in browsers; the shell bridges through its main process (`live` operation, path allow-list, bearer token). |
+
+Verification:
+- Unit and route tests: `backend/tests/live/` (hub, takeover, routes, desktop takeover, "carry on"), plus takeover tests in `test_sandbox.py` and `test_browser_v2.py`.
+- Integration (local, real browser): `backend/tests/live/test_screencast.py`: no frames while unwatched, ≤ 4 fps while watched, frames stop after the grace period.
+- Live in Admin (native sandbox browser running as `panini-sandbox`): the Live page streamed the agent's page and followed it to a new page. Take control showed "you have control". Tab and Enter from the card followed a link in the sandbox browser, and the frame showed the new page. Give back showed the look-again notice.
+- Pointer: frames captured during an agent click show the pointer on the link and the title "Click Learn more link".
+
+Not built in this item:
+- the `request_takeover` agent tool (the state machine supports it; the V2-05 tool and interrupt wiring remain);
+- remote grants and viewer presence for chrome/desktop (they belong with the remote transport, V2-14);
+- the live desktop run that moves the real mouse during a Notepad task.

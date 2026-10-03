@@ -6,6 +6,7 @@ import { ToastProvider } from './components/ui';
 import { AgentsPage, ConnectorsPage, SkillsPage } from './pages/Build';
 import { CapabilitiesPage } from './pages/Capabilities';
 import { ComputersPage } from './pages/Computers';
+import { LivePage } from './pages/Live';
 import { ConversationsPage } from './pages/Conversations';
 import { PermissionsPage } from './pages/Permissions';
 import { ReceiptsPage } from './pages/Receipts';
@@ -42,6 +43,7 @@ const routeTree = root.addChildren([
   page('/build/agents', AgentsPage),
   page('/build/capabilities', CapabilitiesPage),
   page('/build/computers', ComputersPage),
+  page('/build/live', LivePage),
   page('/build/permissions', PermissionsPage),
   page('/memory', MemoryPage),
   page('/capabilities/$name', CapabilityPage),

@@ -14,6 +14,7 @@ ledger, policy pause and host file rules. One rule set, carried over one to one:
 """
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -26,6 +27,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from .. import live
 from ..core_contracts import Readiness, ToolResult
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
@@ -228,7 +230,6 @@ class SandboxService:
         self._runtime = runtime
         self._native = native
         self._native_browser = native_browser
-        self._holders: dict[str, str] = {}  # Native computers the owner has taken over.
 
     # Native mode (ADR-0001 follow-up): with no container engine, shell and files run in a Windows AppContainer.
     @property
@@ -261,6 +262,39 @@ class SandboxService:
                 box.files_write, computer_id, parsed["path"], parsed["contents"], parsed.get("append", False)
             )
         return await self.native_browser.action(computer_id, action, parsed)
+
+    async def live_frame(self, computer_id: str):
+        """Live view source for container computers (1 frame / 2 s while watched). Native computers stream
+        through their browser's screencast instead, so this returns None for them."""
+        if self.native:
+            return None
+        shot = await self.action(computer_id, "screenshot", {}, "owner")
+        if not isinstance(shot, dict) or not shot.get("base64"):
+            return None
+        meta = {"url": shot.get("url", ""), "width": shot.get("width", 0), "height": shot.get("height", 0)}
+        return base64.b64decode(shot["base64"]), meta
+
+    async def live_input(self, computer_id: str, action: str, args: dict) -> dict:
+        """Owner input from the live view while the owner holds the computer (click, type, key, scroll)."""
+        result = await self.action(computer_id, f"human_{action}", args, "owner")
+        return result if isinstance(result, dict) else {"result": result}
+
+    def register_live(self) -> None:
+        from .. import live
+        from ..routes import live as live_routes
+
+        live.hub().register_poller("sandbox", self.live_frame, 2.0)
+
+        async def follow(hand, target, view):
+            # Take / give back from the live view also moves the computer's own control (OpenBot's API).
+            if hand == "sandbox" and not self.native:
+                try:
+                    await self.control(target, "take" if view["holder"] == "human" else "release")
+                except SandboxError:
+                    pass
+
+        live.takeover().listen(follow)
+        live_routes.input_handlers["sandbox"] = self.live_input
 
     async def frame(self, computer_id: str) -> bytes:
         """The owner's live view of a native computer's browser (PNG)."""
@@ -521,7 +555,7 @@ class SandboxService:
                 "state": "running",
                 "engine": "native",
                 "tools": ["shell", "files", "browser"],
-                "control": {"holder": self._holders.get(computer_id, "agent")},
+                "control": live.takeover().state("sandbox", computer_id).view(),
                 "browserOpen": computer_id in self.native_browser.sessions,
                 "browserIsolation": getattr(self.native_browser, "isolation", "none"),
             }
@@ -569,7 +603,7 @@ class SandboxService:
         if self.native:
             # Commands end with themselves; the computer's throwaway browser is closed with its profile.
             await self.native_browser.close(computer_id)
-            self._holders.pop(computer_id, None)
+            live.takeover().release("sandbox", computer_id, notify=False)
             return await self.status(computer_id)
         if not self.configured:
             raise SandboxError("The sandbox is not set up.")
@@ -581,12 +615,12 @@ class SandboxService:
         if verb not in ("take", "release"):
             raise SandboxError("Use take or release.")
         self.require(computer_id)
+        if verb == "take":
+            self.allowed(computer_id, "browser", "owner")
+        # One takeover state for every surface (Admin, the live view, the phone): V2-12.
+        takeover = live.takeover()
+        (takeover.take if verb == "take" else takeover.release)("sandbox", computer_id, notify=False)
         if self.native:
-            if verb == "take":
-                self.allowed(computer_id, "browser", "owner")
-                self._holders[computer_id] = "human"
-            else:
-                self._holders.pop(computer_id, None)
             return await self.status(computer_id)
         if not self.configured:
             raise SandboxError("The sandbox is not set up.")
@@ -614,11 +648,14 @@ class SandboxService:
             raise SandboxError("Human controls are owner-only.")
         kind = kind_of(action)
         self.allowed(computer_id, kind, actor)
-        if self.native:
-            if kind == "browser" and actor == "agent" and self._holders.get(computer_id) == "human":
-                raise SandboxError(
-                    "The owner has taken control of this browser; wait until they hand it back."
+        if actor == "agent":
+            try:
+                live.takeover().gate(
+                    "sandbox", computer_id, observe=action in ("read", "snapshot", "screenshot")
                 )
+            except live.ControlBlocked as exc:
+                raise SandboxError(str(exc)) from None
+        if self.native:
             return await self._native_guarded(computer_id, action, parsed, kind, actor, cancel)
         stop = asyncio.Event()
 

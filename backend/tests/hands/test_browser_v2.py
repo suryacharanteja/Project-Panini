@@ -366,3 +366,17 @@ def test_the_trace_viewer_cli_is_available():
         timeout=60,
     )
     assert result.returncode == 0 and "trace" in result.stdout.lower()
+
+
+def test_taking_over_the_managed_browser_pauses_the_agent_until_it_looks_again(world):
+    from backend import live
+
+    call(world, "browser_snapshot", {})
+    live.takeover().take("managed", "default")
+    paused = call(world, "browser_snapshot", {})
+    assert paused.outcome == "blocked" and "You have control of PANINI's browser" in paused.content
+    live.takeover().release("managed", "default")
+    acting = call(world, "browser_click", {"element": "Buy now button", "target": "e4"})
+    assert acting.outcome == "blocked" and "Look at it again" in acting.content
+    assert call(world, "browser_snapshot", {}).outcome == "ok"
+    assert call(world, "browser_click", {"element": "Buy now button", "target": "e4"}).outcome == "ok"

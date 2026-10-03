@@ -366,7 +366,9 @@ function launch(executable: string, args: string[], env: NodeJS.ProcessEnv) {
     failRuntime(`A PANINI companion could not start (${executable}): ${error.message}`),
   );
   child.on('exit', (code, signal) => {
-    failRuntime(`A PANINI companion stopped (${executable}; exit ${code ?? signal}). Quit and reopen PANINI.`);
+    failRuntime(
+      `A PANINI companion stopped (${executable}; exit ${code ?? signal}). Quit and reopen PANINI.`,
+    );
   });
 }
 async function startRuntime() {
@@ -393,7 +395,9 @@ async function startRuntime() {
     for (const name of ['OPENAI_API_KEY', 'AI_GATEWAY_API_KEY'])
       if (typeof saved[name] === 'string') process.env[name] = saved[name];
   }
-  const native = app.isPackaged ? join(root, 'desktop') : join(root, 'panini-core/capabilities/desktop');
+  const native = app.isPackaged
+    ? join(root, 'desktop')
+    : join(root, 'panini-core/capabilities/desktop');
   const exe = (name: string) =>
     app.isPackaged
       ? join(native, name === 'Worker' ? 'worker' : 'broker', `Panini.Desktop.${name}.exe`)
@@ -507,7 +511,10 @@ async function startRuntime() {
       if (debugLease) console.log(`[lease] renewed rev=${revision} in ${Date.now() - started}ms`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      if (debugLease) console.log(`[lease] renew failed rev=${revision} after ${Date.now() - started}ms: ${detail}`);
+      if (debugLease)
+        console.log(
+          `[lease] renew failed rev=${revision} after ${Date.now() - started}ms: ${detail}`,
+        );
       // The backend reports the lease already ended: nothing left to retry.
       const ended = /disconnected|LEASE_EXPIRED|LEASE_REQUIRED|not found/i.test(detail);
       renewFailures += 1;
@@ -729,6 +736,36 @@ function ipc() {
         typeof input?.page === 'string' && /^\/[a-z/-]*$/.test(input.page) ? input.page : '/';
       await shell.openExternal(consoleLink(page));
       return;
+    }
+    if (operation === 'live') {
+      // Live view (V2-12): the renderer has no token, so main relays only well-formed live paths.
+      const path = String(input.path || '');
+      if (
+        !/^\/harness\/live(\/(chrome|managed|sandbox|desktop|android)\/[\w.-]{1,64}(\/(control(\/(take|release))?|input\/(click|type|key|scroll)|latest\.jpg))?)?$/.test(
+          path,
+        )
+      )
+        throw new Error('Unsupported live path.');
+      if (input.action === 'frame') {
+        const response = await fetch(`${client.base}/api/panini${path}/latest.jpg`, {
+          headers: {
+            Authorization: `Bearer ${client.token}`,
+            'X-Panini-Instance': client.instance,
+          },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!response.ok) return null;
+        const h = response.headers;
+        return {
+          seq: Number(h.get('x-live-seq') || 0),
+          url: decodeURIComponent(h.get('x-live-url') || ''),
+          title: decodeURIComponent(h.get('x-live-title') || ''),
+          width: Number(h.get('x-live-width') || 0),
+          height: Number(h.get('x-live-height') || 0),
+          frame: Buffer.from(await response.arrayBuffer()).toString('base64'),
+        };
+      }
+      return input.action === 'post' ? client.call(path, input.body || {}) : client.call(path);
     }
     if (operation === 'execution-viewer') {
       await executionViewer.open();

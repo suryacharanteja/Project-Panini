@@ -26,6 +26,7 @@ import {
   Smartphone,
   Sparkles,
   Timer,
+  Eye,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { admin, harness, useResource } from '../api';
@@ -64,6 +65,7 @@ export const NAV: Section[] = [
         deva: 'शक्ति',
       },
       { to: '/build/computers', label: 'Computers', icon: <Box size={16} />, deva: 'यन्त्र' },
+      { to: '/build/live', label: 'Live', icon: <Eye size={16} />, deva: 'दृश्य' },
       { to: '/memory', label: 'Memory', icon: <Brain size={16} />, deva: 'स्मृति' },
     ],
   },

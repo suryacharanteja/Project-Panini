@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import secrets
 import time
 from collections import deque
@@ -34,6 +35,25 @@ def identifier():
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+CARRY_ON = re.compile(
+    r"^\s*(ok(ay)?[, ]+)?(carry on|continue|go ahead|you can continue|resume|your turn|give it back|"
+    r"take it back|back to you|i'?m done|done)[.! ]*$",
+    re.IGNORECASE,
+)
+
+
+def hand_back(text: str) -> str | None:
+    """V2-12: "carry on" while you hold a hand gives control back to PANINI (it looks again before acting)."""
+    from .. import live
+
+    if not live.enabled() or not CARRY_ON.match(text or ""):
+        return None
+    held = live.takeover().holding()
+    for entry in held:
+        live.takeover().release(entry["hand"], entry["target"])
+    return "Thanks, carrying on." if held else None
 
 
 @dataclass
@@ -517,6 +537,9 @@ class Coordinator:
         control = control_intent(payload.text)
         if control:
             return await self.end(s) if control == "end" else await self.stop(s)
+        handed_back = hand_back(payload.text)
+        if handed_back:
+            return {"status": "resumed", "message": handed_back}
         # Barge-in: while a task runs, the person is never told "I'm busy". Jev decides whether
         # they want it stopped, are asking what is happening, or are giving a new instruction,
         # which replaces the running task (as in any live voice assistant).

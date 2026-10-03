@@ -5,6 +5,7 @@ import { ExecutionPanel } from './ExecutionPanel';
 import { ToolCard, type ToolCall } from '../../../shared-ui';
 import '../../../shared-ui/tokens.css';
 import { ComputerUsePanel, PanelBoundary } from './ComputerUsePanel';
+import { ShellLive } from './ShellLive';
 import { Avatar, type AvatarState, levelMeter } from './avatar/Avatar';
 import { avatarStateFor } from './avatar/state';
 import { Backdrop, Capabilities, Engine, Lexicon, StageTitle } from './Stage';
@@ -689,6 +690,9 @@ function App() {
             )}
             <PanelBoundary>
               <ComputerUsePanel events={computerEvents} phase={phase} />
+            </PanelBoundary>
+            <PanelBoundary>
+              <ShellLive />
             </PanelBoundary>
             {phase === 'completed' && executionTask.current && (
               <div className="rate" role="group" aria-label="Rate this result">

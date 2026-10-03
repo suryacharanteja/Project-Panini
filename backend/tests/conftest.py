@@ -28,3 +28,12 @@ def reset_v2_services():
     policy._policy = None
     ledger._ledger = ledger._artifacts = None
     interrupts._service = None
+
+
+@pytest.fixture(autouse=True)
+def _fresh_live_state(monkeypatch):
+    """Live view frames and takeover state (V2-12) are process-wide; each test starts clean."""
+    from backend import live
+
+    monkeypatch.setattr(live, "_hub", None)
+    monkeypatch.setattr(live, "_takeover", None)

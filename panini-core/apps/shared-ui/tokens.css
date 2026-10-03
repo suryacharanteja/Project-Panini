@@ -106,3 +106,23 @@
   font-size: 11px;
   color: var(--pc-faint);
 }
+
+/* Live view (V2-12) */
+.pc-live-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pc-live-frame {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--pc-border);
+  border-radius: 6px;
+  margin: 6px 0;
+}
+.pc-live-input {
+  cursor: crosshair;
+}
+.pc-live-error {
+  color: var(--pc-error);
+}

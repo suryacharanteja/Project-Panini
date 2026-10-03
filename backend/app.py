@@ -20,6 +20,7 @@ from .panini.contracts import Fault
 from .panini.settings import Settings
 from .routes import admin, agui, browser, comparison, harness, panini, speech, voice
 from .routes import console as console_routes
+from .routes import live as live_routes
 from .work import CapacityError, WorkPool
 
 
@@ -140,6 +141,9 @@ def create_app(
     app.include_router(admin.router)
     app.include_router(agui.console_router)
     app.include_router(agui.shell_router)
+    app.include_router(live_routes.console_router)
+    app.include_router(live_routes.shell_router)
+    app.include_router(live_routes.ingest_router)
 
     @app.exception_handler(Fault)
     async def panini_error(request: Request, error: Fault):

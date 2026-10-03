@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 SIDECAR = ROOT / "panini-core/capabilities/browser/playwright"
 VERSION = "1.63.0"
 CATALOGUE = SIDECAR / f"tools-{VERSION}.json"
+INIT_LIVE = SIDECAR / "init-live.cjs"
 ENV_ALLOW = {
     "SYSTEMROOT",
     "SYSTEMDRIVE",
@@ -97,6 +98,7 @@ class Preset:
     key: str
     flags: list[str] = field(default_factory=list)
     effect_tools: frozenset[str] = frozenset()  # Tools whose interrupted call may already have acted.
+    live: tuple[str, str] | None = None  # (hand, target) for live view (V2-12), when this session has one.
 
     def args(self) -> list[str]:
         return list(self.flags)
@@ -129,10 +131,10 @@ def managed_preset(data_dir: Path, artifacts: Path, *, browser="msedge", headles
     ]
     if headless:
         flags.append("--headless")
-    return Preset("managed", flags, EFFECT_TOOLS)
+    return Preset("managed", flags, EFFECT_TOOLS, live=("managed", "default"))
 
 
-def isolated_preset(run_id: str, artifacts: Path, *, browser="msedge") -> Preset:
+def isolated_preset(run_id: str, artifacts: Path, *, browser="msedge", live=None) -> Preset:
     from .net_guard import PRIVATE_ORIGINS
 
     out = artifacts / "playwright" / "isolated" / run_id
@@ -154,7 +156,7 @@ def isolated_preset(run_id: str, artifacts: Path, *, browser="msedge") -> Preset
         "--codegen",
         "none",
     ]
-    return Preset(f"isolated:{run_id}", flags, EFFECT_TOOLS)
+    return Preset(f"isolated:{run_id}", flags, EFFECT_TOOLS, live=live)
 
 
 def chrome_preset(relay, artifacts: Path, *, caps="pdf,devtools,testing") -> Preset:
@@ -179,7 +181,7 @@ def chrome_preset(relay, artifacts: Path, *, caps="pdf,devtools,testing") -> Pre
         "--timeout-action",
         "8000",
     ]
-    return Preset(f"chrome:{relay.token[:12]}", flags, EFFECT_TOOLS)
+    return Preset(f"chrome:{relay.token[:12]}", flags, EFFECT_TOOLS, live=("chrome", "attached"))
 
 
 # Playwright tools that can change something; a crash during one of them is an unknown effect.
@@ -219,6 +221,24 @@ class PlaywrightSession:
         self.started_once = False
         self.last_used = clock()
         self.reason = ""
+        self.live_token = None
+
+    def _live(self, env: dict, args: list[str]) -> tuple[dict, list[str]]:
+        """Live view (V2-12): the init-page hook, a per-session ingest token and the backend address."""
+        from .. import live
+
+        if self.preset.live is None or not live.enabled():
+            return env, args
+        if self.live_token:
+            live.hub().revoke(self.live_token)
+        self.live_token = live.hub().ingest_token(*self.preset.live)
+        env = {
+            **env,
+            "PANINI_LIVE_URL": f"http://127.0.0.1:{os.getenv('BACKEND_PORT', '8000')}",
+            "PANINI_LIVE_TOKEN": self.live_token,
+            "PANINI_BROWSER_SHOW_ACTIONS": os.getenv("PANINI_BROWSER_SHOW_ACTIONS", "on"),
+        }
+        return env, [*args, "--init-page", str(INIT_LIVE)]
 
     @property
     def healthy(self) -> bool:
@@ -246,9 +266,10 @@ class PlaywrightSession:
         if self.started_once:
             self.restarts.append(self.clock())
         command, args = self._command()
+        env, args = self._live(self.env if self.env is not None else clean_env(), args)
         client = McpStdio(f"Browser driver ({self.preset.key})", BrowserDriverError)
         try:
-            await client.spawn(command, args, env=self.env if self.env is not None else clean_env())
+            await client.spawn(command, args, env=env)
             await client.initialize(timeout=60)
             listed = await client.request("tools/list", {}, timeout=60)
         except (OSError, McpError, BrowserDriverError) as exc:
@@ -312,6 +333,11 @@ class PlaywrightSession:
                 pass
         await self.client.close(grace_s=5)
         self.client = None
+        if self.live_token:
+            from .. import live
+
+            live.hub().revoke(self.live_token)
+            self.live_token = None
 
 
 class PlaywrightPool:

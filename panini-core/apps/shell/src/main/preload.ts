@@ -19,6 +19,7 @@ const methods = [
   'credentials',
   'execution-viewer',
   'execution-copy',
+  'live',
 ];
 contextBridge.exposeInMainWorld(
   'panini',

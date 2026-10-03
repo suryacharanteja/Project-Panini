@@ -31,7 +31,7 @@ class NativeBrowser:
     def session(self, computer: str) -> PlaywrightSession:
         if computer not in self.sessions:
             artifacts = Path(self.workspace_of(computer)) / "browser"
-            preset = isolated_preset(f"sandbox-{computer}", artifacts)
+            preset = isolated_preset(f"sandbox-{computer}", artifacts, live=("sandbox", computer))
             preset.flags.append(
                 "--sandbox"
             )  # Chromium's renderer sandbox, explicitly (never Playwright's default).

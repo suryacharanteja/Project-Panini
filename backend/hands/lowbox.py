@@ -153,7 +153,8 @@ def environment(workspace: Path) -> dict:
     home = workspace / "home"
     keep = ("SystemRoot", "SystemDrive", "windir", "PATH", "PATHEXT", "ComSpec", "NUMBER_OF_PROCESSORS",
             "PROCESSOR_ARCHITECTURE", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "CommonProgramFiles",
-            "ProgramData", "PLAYWRIGHT_BROWSERS_PATH")  # fmt: skip
+            "ProgramData", "PLAYWRIGHT_BROWSERS_PATH",
+            "PANINI_LIVE_URL", "PANINI_LIVE_TOKEN", "PANINI_BROWSER_SHOW_ACTIONS")  # fmt: skip
     env = {k: os.environ[k] for k in keep if k in os.environ}
     for name, sub in (("TEMP", "tmp"), ("TMP", "tmp"), ("USERPROFILE", ""), ("HOME", ""),
                       ("LOCALAPPDATA", "AppData/Local"), ("APPDATA", "AppData/Roaming")):  # fmt: skip

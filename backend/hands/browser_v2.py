@@ -55,6 +55,36 @@ class BrowserHand:
         self.page_url: dict[str, str] = {}
         self.modal: dict[str, str] = {}
         self.tracing: dict[str, str] = {}  # run → browser with a trace running
+        from ..routes import live as live_routes
+
+        live_routes.input_handlers["managed"] = self.owner_input  # V2-12: remote input to PANINI's browser.
+
+    @staticmethod
+    def live_target(browser) -> tuple[str, str] | None:
+        """The live-view hand and target for a browser (the isolated per-run browser has none)."""
+        return {"chrome": ("chrome", "attached"), "managed": ("managed", "default")}.get(browser)
+
+    async def owner_input(self, target: str, action: str, args: dict) -> dict:
+        """The owner's click, typing, keys and wheel in PANINI's browser while they hold it (V2-12 §5.4).
+        Coordinate tools are offered to the owner only, never to the agent."""
+        session = self.managed.session()
+        if action == "click":
+            x, y = int(args.get("x", -1)), int(args.get("y", -1))
+            if not (0 <= x <= 16000 and 0 <= y <= 16000):
+                raise ValueError("x and y must be page coordinates.")
+            call = ("browser_mouse_click_xy", {"x": x, "y": y, "element": "owner"})
+        elif action == "type":
+            text = str(args.get("text", ""))[:2000]
+            for char in text:
+                await session.call("browser_press_key", {"key": char})
+            return {"typed": len(text)}
+        elif action == "key":
+            call = ("browser_press_key", {"key": str(args.get("key", ""))[:100]})
+        else:
+            delta = max(-10000, min(10000, int(args.get("deltaY", 0))))
+            call = ("browser_mouse_wheel", {"deltaX": 0, "deltaY": delta})
+        result = await session.call(*call)
+        return {"ok": not (result or {}).get("isError")}
 
     # Browsers ------------------------------------------------------------------
     @staticmethod
@@ -128,6 +158,14 @@ class BrowserHand:
             }[browser]
             return ToolResult("blocked", f"{name} is not allowed in {where}.")
         key = self.key(browser, ctx)
+        target = self.live_target(browser)
+        if target is not None:
+            from .. import live
+
+            try:
+                live.takeover().gate(*target, observe=tool.effect == "observe")
+            except live.ControlBlocked as exc:
+                return ToolResult("blocked", str(exc))
         refusal = self._untrusted(ctx, browser, name)
         if refusal:
             return ToolResult("blocked", refusal)

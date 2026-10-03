@@ -91,6 +91,7 @@ class Harness:
         from ..hands.sandbox import DEFAULT_COMPUTER, SandboxService
 
         self.sandbox = SandboxService(self.store)  # V2-11 sandbox computers (OpenBot on Docker).
+        self.sandbox.register_live()  # V2-12: its frames and owner input in the live view.
         self.sandbox.ensure_row(DEFAULT_COMPUTER)
         self.threads = Threads(self.store, self.sessions)
 

@@ -18,7 +18,8 @@ OPEN_PATHS = {"/api/health", "/health", "/api/extension/pair", "/a2a", "/.well-k
 
 
 def console_route(path):
-    return path not in OPEN_PATHS and not path.startswith("/api/panini/")
+    # Live frame sources (V2-12) present their own per-session token and must come from loopback.
+    return path not in OPEN_PATHS and not path.startswith(("/api/panini/", "/api/live/ingest/"))
 
 
 class ConsoleBoundary:

@@ -574,7 +574,7 @@ def test_owner_take_over_of_a_native_browser_pauses_the_agent_until_hand_back(tm
     assert asyncio.run(service.frame("panini")).startswith(b"PNG")
     status = asyncio.run(service.control("panini", "take"))
     assert status["control"]["holder"] == "human"
-    with pytest.raises(SandboxError, match="taken control"):
+    with pytest.raises(SandboxError, match="You have control"):
         asyncio.run(service.action("panini", "navigate", navigate, "agent"))
     with pytest.raises(SandboxError, match="owner-only"):
         asyncio.run(service.action("panini", "human_click", {"x": 1, "y": 2}, "agent"))
@@ -582,5 +582,9 @@ def test_owner_take_over_of_a_native_browser_pauses_the_agent_until_hand_back(tm
         asyncio.run(service.action("panini", "human_click", {"x": 1, "y": 2}, "owner"))["action"]
         == "human_click"
     )
-    assert asyncio.run(service.control("panini", "release"))["control"]["holder"] == "agent"
+    released = asyncio.run(service.control("panini", "release"))["control"]
+    assert released["holder"] == "agent" and released["resumeSnapshotRequired"]
+    with pytest.raises(SandboxError, match="Look at it again"):
+        asyncio.run(service.action("panini", "navigate", navigate, "agent"))
+    asyncio.run(service.action("panini", "snapshot", {}, "agent"))  # Looking again clears it.
     asyncio.run(service.action("panini", "navigate", navigate, "agent"))
