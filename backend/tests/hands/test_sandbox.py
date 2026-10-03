@@ -424,8 +424,15 @@ class _FakeNative:
 
 
 class _FakeBrowser:
+    def __init__(self):
+        self.sessions = {}
+
     async def action(self, computer, action, args):
+        self.sessions[computer] = True
         return {"browser": computer, "action": action}
+
+    async def frame(self, computer):
+        return b"PNG frame"
 
     async def close(self, computer):
         pass
@@ -478,8 +485,8 @@ def test_native_browser_maps_actions_and_rejects_stale_refs(tmp_path, monkeypatc
     calls = []
 
     class Session:
-        def __init__(self, preset):
-            self.preset = preset
+        def __init__(self, preset, **options):
+            self.preset, self.options = preset, options
 
         async def call(self, tool, args):
             calls.append((tool, args))
@@ -504,6 +511,11 @@ def test_native_browser_maps_actions_and_rejects_stale_refs(tmp_path, monkeypatc
     ]  # fmt: skip
     assert browser.sessions["panini"].preset.key == "isolated:sandbox-panini"
     assert "--isolated" in browser.sessions["panini"].preset.flags
+    flags = browser.sessions["panini"].preset.flags
+    assert "--sandbox" in flags and flags[flags.index("--caps") + 1] == "pdf,vision"
+    options = browser.sessions["panini"].options
+    if options:  # Node is installed: the driver starts inside the box.
+        assert options["args"][:2] == ["-m", "backend.hands.lowbox"] and "--integrity" in options["args"]
     asyncio.run(browser.close("panini"))
     assert calls[-1][0] == "close" and "panini" not in browser.sessions
 
@@ -543,3 +555,32 @@ def test_private_origins_block_every_port():
     origins = PRIVATE_ORIGINS.split(";")
     for origin in ("http://127.0.0.1", "http://127.0.0.1:*", "https://localhost:*", "http://192.168.*:*"):
         assert origin in origins
+
+
+def test_owner_take_over_of_a_native_browser_pauses_the_agent_until_hand_back(tmp_path):
+    service = SandboxService(
+        Store(tmp_path / "s.sqlite3"),
+        config=SimpleNamespace(),
+        native=_FakeNative(),
+        native_browser=_FakeBrowser(),
+        paused=lambda: False,
+    )
+    service.ensure_row("panini")
+    with pytest.raises(SandboxError):
+        asyncio.run(service.frame("panini"))  # browser permission is off
+    service.patch_permissions("panini", {"enabled": True, "browser": True})
+    navigate = {"url": "https://example.com"}
+    asyncio.run(service.action("panini", "navigate", navigate, "agent"))
+    assert asyncio.run(service.frame("panini")).startswith(b"PNG")
+    status = asyncio.run(service.control("panini", "take"))
+    assert status["control"]["holder"] == "human"
+    with pytest.raises(SandboxError, match="taken control"):
+        asyncio.run(service.action("panini", "navigate", navigate, "agent"))
+    with pytest.raises(SandboxError, match="owner-only"):
+        asyncio.run(service.action("panini", "human_click", {"x": 1, "y": 2}, "agent"))
+    assert (
+        asyncio.run(service.action("panini", "human_click", {"x": 1, "y": 2}, "owner"))["action"]
+        == "human_click"
+    )
+    assert asyncio.run(service.control("panini", "release"))["control"]["holder"] == "agent"
+    asyncio.run(service.action("panini", "navigate", navigate, "agent"))

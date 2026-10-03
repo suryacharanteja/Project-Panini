@@ -804,6 +804,18 @@ def add_computers(r, guard):
 
         return await owner(request, computer_id, "permissions", apply)
 
+    @r.get("/computers/{computer_id}/frame")
+    async def computer_frame(request: Request, computer_id: str):
+        """The owner's live view (native computers); viewing is not an action, so no receipt."""
+        from fastapi.responses import Response
+
+        guard(request)
+        try:
+            data = await service(request).frame(computer_id)
+        except SandboxError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return Response(data, media_type="image/png", headers={"Cache-Control": "no-store"})
+
     @r.post("/computers/{computer_id}/control/{verb}")
     async def computer_control(computer_id: str, verb: str, request: Request):
         guard(request)

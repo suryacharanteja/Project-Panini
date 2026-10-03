@@ -61,13 +61,24 @@ Three principles follow:
    Commands run with `cmd.exe` under a job object that ends the whole process tree at the timeout or when the
    command ends, caps per-process memory and the number of processes, and applies UI restrictions. The same
    permissions, pause and revocation checks apply as for container computers.
-   **Its browser** (`backend/hands/native_browser.py`, amended 2026-10-03, owner-approved "use both"): Chrome and
-   Firefox cannot run inside an AppContainer (their crash reporter and child-process pipes are denied), so each
-   native computer gets PANINI's isolated Playwright browser: a throwaway headless profile, web pages in Chromium's
-   own renderer sandbox, service workers off, `check_url` before every navigation, and Playwright's blocked-origins
-   list for clicks and redirects. That list now carries a `:*` form of every private host, because Playwright
-   matches ports and a bare `http://127.0.0.1` let `http://127.0.0.1:8000` through (this also fixes V2-08's
-   isolated preset). Closing the computer closes its browser and discards the profile.
+   **Its browser** (`native_browser.py`, `lowbox.py`, `sandbox_user.py`; amended 2026-10-03). Browsers cannot run
+   inside an AppContainer (their crash-reporter and child-process pipes are denied) or at Low integrity with
+   Chromium's own sandbox on (it needs a Medium parent). So the browser keeps Chromium's renderer sandbox (`--sandbox`,
+   explicit) and gets two outer layers, strongest available first:
+   - **Sandbox account** (Codex's elevated pattern): PANINI's driver and browser run as `panini-sandbox`, a hidden
+     standard local user created once by the owner (`python -m backend.hands.sandbox_user setup`, as administrator).
+     Its random password lives only in the DPAPI store and reaches Windows through `CreateProcessWithLogonW`, never
+     a command line. The person's profile and files are closed to it.
+   - **Job box** (no setup): a restricted token with Administrators deny-only and no privileges, a private home,
+     temp and app-data folder, and a job object that ends the driver and every browser process with PANINI (verified:
+     killing the launcher ended all 12 processes) and caps memory and processes.
+   Pages are checked by `check_url` before navigation and by Playwright's blocked-origins list (every private host
+   with and without `:*`, because Playwright matches ports) for clicks and redirects. Stopping the computer closes
+   the browser and its throwaway profile.
+   **Live view and take-over:** Admin → Computers shows the native browser's frames (`GET /computers/{id}/frame`,
+   owner only, browser permission required). "Take control" pauses the agent's browser tools; the owner's clicks,
+   wheel, typing and keys go to the page through coordinate tools the agent is never offered; "Hand back" resumes it.
+
 6. **Still a follow-up:** a hosted computer provider, behind the same interface.
 
 ## Consequences
@@ -91,3 +102,5 @@ Three principles follow:
   service tests in `backend/tests/hands/test_sandbox.py`.
 - Native browser, live: page read and link click on the web, a local server refused, a stale ref refused, files
   and commands in the container, and the browser closed on stop.
+- Box and take-over, live: the boxed browser loaded pages and produced frames; in Admin the owner took control,
+  clicked a link in the live view (the sandbox browser went to the linked page) and handed back.

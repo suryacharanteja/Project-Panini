@@ -1,5 +1,5 @@
 import { Box, Play, Square, TerminalSquare } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, harness, useResource } from '../api';
 import { Badge, Button, Card, Empty, inputClass, Page, Switch, useAction } from '../components/ui';
 
@@ -10,6 +10,8 @@ type Computer = {
   state: 'not_configured' | 'stopped' | 'running' | 'unavailable';
   permissions: Permissions;
   control?: { holder: string; request?: { id: string; status: string } };
+  engine?: string;
+  browserOpen?: boolean;
   error?: string;
 };
 
@@ -25,6 +27,70 @@ const SWITCHES: { key: keyof Permissions; label: string; help: string }[] = [
   { key: 'files', label: 'Files', help: 'Read and write files in its workspace folder.' },
   { key: 'shell', label: 'Shell', help: 'Run commands inside the sandbox (never on this PC).' },
 ];
+
+/** Live view of a native computer's browser; while the owner holds control, clicks and keys go to the page. */
+function LiveView({ id, holding }: { id: string; holding: boolean }) {
+  const [tick, setTick] = useState(0);
+  const [text, setText] = useState('');
+  const [failed, setFailed] = useState(false);
+  const path = (p: string) => harness(`/computers/${encodeURIComponent(id)}${p}`);
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((t) => t + 1), holding ? 700 : 2000);
+    return () => window.clearInterval(timer);
+  }, [holding]);
+  const send = (action: string, body: unknown) =>
+    api(path(`/actions/${action}`), { body }).then(() => setTick((t) => t + 1));
+  return (
+    <div className="grid gap-2">
+      {failed ? (
+        <p className="text-xs text-faint">The browser shows here once PANINI opens a page.</p>
+      ) : null}
+      <img
+        src={`${path('/frame')}?t=${tick}`}
+        alt={`Live view of ${id}'s browser`}
+        className={`w-full rounded-md border border-line ${holding ? 'cursor-crosshair' : ''}`}
+        onLoad={() => setFailed(false)}
+        onError={() => setFailed(true)}
+        hidden={failed}
+        onClick={(event) => {
+          if (!holding) return;
+          const img = event.currentTarget;
+          const x = Math.round((event.nativeEvent.offsetX / img.clientWidth) * img.naturalWidth);
+          const y = Math.round((event.nativeEvent.offsetY / img.clientHeight) * img.naturalHeight);
+          void send('human_click', { x, y });
+        }}
+        onWheel={(event) =>
+          holding && void send('human_scroll', { deltaY: Math.round(event.deltaY) })
+        }
+      />
+      {holding && (
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void send('human_type', { text }).then(() => setText(''));
+          }}
+        >
+          <input
+            className={inputClass}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Type into the page"
+            aria-label="Type into the sandbox page"
+          />
+          <Button type="submit" disabled={!text}>
+            Type
+          </Button>
+          {['Enter', 'Tab', 'Backspace', 'Escape'].map((key) => (
+            <Button key={key} onClick={() => void send('human_key', { key })}>
+              {key}
+            </Button>
+          ))}
+        </form>
+      )}
+    </div>
+  );
+}
 
 function ComputerCard({ computer, reload }: { computer: Computer; reload: () => void }) {
   const { busy, run } = useAction();
@@ -88,6 +154,9 @@ function ComputerCard({ computer, reload }: { computer: Computer; reload: () => 
             </Button>
             <Button onClick={() => act('release', '/control/release')}>Hand back</Button>
           </div>
+          {computer.engine === 'native' && computer.permissions.browser && (
+            <LiveView id={id} holding={computer.control?.holder === 'human'} />
+          )}
           <form
             className="flex gap-2"
             onSubmit={async (event) => {

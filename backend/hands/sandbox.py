@@ -228,6 +228,7 @@ class SandboxService:
         self._runtime = runtime
         self._native = native
         self._native_browser = native_browser
+        self._holders: dict[str, str] = {}  # Native computers the owner has taken over.
 
     # Native mode (ADR-0001 follow-up): with no container engine, shell and files run in a Windows AppContainer.
     @property
@@ -260,6 +261,19 @@ class SandboxService:
                 box.files_write, computer_id, parsed["path"], parsed["contents"], parsed.get("append", False)
             )
         return await self.native_browser.action(computer_id, action, parsed)
+
+    async def frame(self, computer_id: str) -> bytes:
+        """The owner's live view of a native computer's browser (PNG)."""
+        self.require(computer_id)
+        if not self.native:
+            raise SandboxError("Live frames for container computers come with V2-12.")
+        self.allowed(computer_id, "browser", "owner")
+        from .native_browser import NativeBrowserError
+
+        try:
+            return await self.native_browser.frame(computer_id)
+        except NativeBrowserError as exc:
+            raise SandboxError(str(exc)) from None
 
     async def _native_guarded(self, computer_id, action, parsed, kind, actor, cancel):
         """Runs a native action, ending it if its permission is revoked, the owner pauses, or the run cancels."""
@@ -502,7 +516,15 @@ class SandboxService:
         except Exception:  # noqa: BLE001 -- Describing the runtime never breaks status.
             pass
         if self.native:
-            return {**base, "state": "running", "engine": "native", "tools": ["shell", "files", "browser"]}
+            return {
+                **base,
+                "state": "running",
+                "engine": "native",
+                "tools": ["shell", "files", "browser"],
+                "control": {"holder": self._holders.get(computer_id, "agent")},
+                "browserOpen": computer_id in self.native_browser.sessions,
+                "browserIsolation": getattr(self.native_browser, "isolation", "none"),
+            }
         if not self.configured:
             return {**base, "state": "not_configured"}
         try:
@@ -547,6 +569,7 @@ class SandboxService:
         if self.native:
             # Commands end with themselves; the computer's throwaway browser is closed with its profile.
             await self.native_browser.close(computer_id)
+            self._holders.pop(computer_id, None)
             return await self.status(computer_id)
         if not self.configured:
             raise SandboxError("The sandbox is not set up.")
@@ -558,6 +581,13 @@ class SandboxService:
         if verb not in ("take", "release"):
             raise SandboxError("Use take or release.")
         self.require(computer_id)
+        if self.native:
+            if verb == "take":
+                self.allowed(computer_id, "browser", "owner")
+                self._holders[computer_id] = "human"
+            else:
+                self._holders.pop(computer_id, None)
+            return await self.status(computer_id)
         if not self.configured:
             raise SandboxError("The sandbox is not set up.")
         if verb == "take":
@@ -585,6 +615,10 @@ class SandboxService:
         kind = kind_of(action)
         self.allowed(computer_id, kind, actor)
         if self.native:
+            if kind == "browser" and actor == "agent" and self._holders.get(computer_id) == "human":
+                raise SandboxError(
+                    "The owner has taken control of this browser; wait until they hand it back."
+                )
             return await self._native_guarded(computer_id, action, parsed, kind, actor, cancel)
         stop = asyncio.Event()
 
