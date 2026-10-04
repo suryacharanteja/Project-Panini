@@ -27,12 +27,12 @@ class SpacesHand:
         try:
             if not h.personas.allows(persona, spec):
                 return ToolResult("blocked", "Persona lacks this permission.")
-            if spec.name in {"pages_create", "pages_edit"}:
+            if spec.name in {"pages_create", "pages_edit", "pages_move", "pages_delete"}:
                 from .reviews import review
 
                 if not ctx.agent or not ctx.agent.durable:
                     return ToolResult("blocked", "Use a durable conversation to review page drafts.")
-                operation = {"kind": "create" if spec.name == "pages_create" else "edit", **args}
+                operation = {"kind": spec.name.removeprefix("pages_"), **args}
                 operation.pop("review", None)
                 if spec.name == "pages_create" and not operation.get("space_id"):
                     operation["space_id"] = h.personas.get(persona).get("default_space_id")
@@ -58,7 +58,11 @@ class SpacesHand:
                 if spec.name == "spaces_list":
                     data = {"spaces": h.spaces.spaces(persona)}
                 elif spec.name == "pages_list":
-                    data = {"pages": h.spaces.pages(args["space_id"], persona)}
+                    data = {
+                        "pages": h.spaces.search(args["query"], persona, args["space_id"])
+                        if args.get("query")
+                        else h.spaces.pages(args["space_id"], persona)
+                    }
                 elif spec.name == "pages_read":
                     data = h.spaces.read(args["page_id"], persona)
                 elif spec.name == "pages_search":

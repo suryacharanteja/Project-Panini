@@ -261,11 +261,14 @@ await cp(
 const driver = join(runtime, 'panini-core/capabilities/browser/playwright');
 const playwrightCore = join(driver, 'node_modules/playwright-core');
 await mkdir(playwrightCore, { recursive: true });
-for (const name of ['package.json', 'init-overlay.js', 'tools-1.63.0.json'])
+for (const name of ['package.json', 'init-overlay.js', 'tools-1.63.0.json', 'page-pdf.mjs'])
   await copyFile(
     join(root, 'panini-core/capabilities/browser/playwright', name),
     join(driver, name),
   );
+await cp(join(root, 'node_modules/marked'), join(driver, 'node_modules/marked'), {
+  recursive: true,
+});
 for (const name of [
   'package.json',
   'browsers.json',
@@ -289,6 +292,9 @@ await mkdir(join(licenses, 'npm'), { recursive: true });
 for (const [source, name] of [
   ['node_modules/playwright-core/LICENSE', 'playwright-core-LICENSE.txt'],
   ['node_modules/playwright-core/NOTICE', 'playwright-core-NOTICE.txt'],
+  ['node_modules/marked/LICENSE.md', 'marked-LICENSE.txt'],
+  ['node_modules/dompurify/LICENSE', 'dompurify-LICENSE.txt'],
+  ['node_modules/dompurify/LICENSE-MPL', 'dompurify-LICENSE-MPL.txt'],
 ])
   await copyFile(join(root, source), join(licenses, 'npm', name));
 for (const [source, name] of [

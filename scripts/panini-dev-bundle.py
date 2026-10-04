@@ -40,6 +40,13 @@ def main():
         "admin-desktop.png",
         "admin-mobile.png",
         "final-targeted.log",
+        "live-citation.json",
+        "export.pdf",
+    ]
+    licenses = [
+        ("node_modules/marked/LICENSE.md", "marked-LICENSE.txt"),
+        ("node_modules/dompurify/LICENSE", "dompurify-LICENSE.txt"),
+        ("node_modules/dompurify/LICENSE-MPL", "dompurify-LICENSE-MPL.txt"),
     ]
     if any(not (evidence / name).is_file() for name in included):
         parser.error("Build and verify the surfaces before packaging their evidence.")
@@ -82,6 +89,8 @@ def main():
                     bundle.write(path, path.relative_to(ROOT).as_posix())
         for name in included:
             bundle.write(evidence / name, "evidence/" + name)
+        for source, name in licenses:
+            bundle.write(ROOT / source, "licenses/" + name)
         for path in sorted((ROOT / "docs/panini-enhancements").rglob("*.md")):
             bundle.write(path, path.relative_to(ROOT).as_posix())
     checksum = hashlib.sha256(output.read_bytes()).hexdigest()

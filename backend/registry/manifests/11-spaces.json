@@ -18,16 +18,10 @@
         "required": []
       },
       "effect": "observe",
-      "requires": [
-        "private",
-        "spaces"
-      ],
+      "requires": ["private", "spaces"],
       "background": true,
       "order": 260,
-      "taints": [
-        "page",
-        "sensitive_local"
-      ]
+      "taints": ["page", "sensitive_local"]
     },
     {
       "name": "pages_list",
@@ -40,23 +34,19 @@
         "properties": {
           "space_id": {
             "type": "string"
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 500
           }
         },
-        "required": [
-          "space_id"
-        ]
+        "required": ["space_id"]
       },
       "effect": "observe",
-      "requires": [
-        "private",
-        "spaces"
-      ],
+      "requires": ["private", "spaces"],
       "background": true,
       "order": 261,
-      "taints": [
-        "page",
-        "sensitive_local"
-      ]
+      "taints": ["page", "sensitive_local"]
     },
     {
       "name": "pages_read",
@@ -71,19 +61,11 @@
             "type": "string"
           }
         },
-        "required": [
-          "page_id"
-        ]
+        "required": ["page_id"]
       },
       "effect": "observe",
-      "taints": [
-        "page",
-        "sensitive_local"
-      ],
-      "requires": [
-        "private",
-        "spaces"
-      ],
+      "taints": ["page", "sensitive_local"],
+      "requires": ["private", "spaces"],
       "background": true,
       "order": 262
     },
@@ -104,19 +86,11 @@
             "type": "string"
           }
         },
-        "required": [
-          "query"
-        ]
+        "required": ["query"]
       },
       "effect": "observe",
-      "taints": [
-        "page",
-        "sensitive_local"
-      ],
-      "requires": [
-        "private",
-        "spaces"
-      ],
+      "taints": ["page", "sensitive_local"],
+      "requires": ["private", "spaces"],
       "background": true,
       "order": 263
     },
@@ -133,10 +107,7 @@
             "type": "string"
           },
           "parent_id": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "title": {
             "type": "string",
@@ -149,33 +120,21 @@
           },
           "review": {
             "type": "boolean",
-            "enum": [
-              true
-            ]
+            "enum": [true]
           }
         },
-        "required": [
-          "title",
-          "content"
-        ]
+        "required": ["title", "content"]
       },
       "effect": "local_write",
-      "requires": [
-        "private",
-        "foreground",
-        "spaces"
-      ],
+      "requires": ["private", "foreground", "spaces"],
       "order": 264,
-      "taints": [
-        "page",
-        "sensitive_local"
-      ]
+      "taints": ["page", "sensitive_local"]
     },
     {
       "name": "pages_edit",
       "hand": "spaces",
       "title": "Draft page edit",
-      "description": "Propose replacement Markdown and optional title for an existing page. Read it first and supply its exact expected_revision. Human review is required; concurrent changes refuse the save.",
+      "description": "Propose replacement Markdown or one exact text patch {find,replace}, never both. The find text must occur exactly once. Read first and supply expected_revision. Human review is required.",
       "input_schema": {
         "type": "object",
         "additionalProperties": false,
@@ -195,25 +154,81 @@
           "content": {
             "type": "string",
             "maxLength": 20000
+          },
+          "patch": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "find": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000
+              },
+              "replace": {
+                "type": "string",
+                "maxLength": 20000
+              }
+            },
+            "required": ["find", "replace"]
           }
         },
-        "required": [
-          "page_id",
-          "expected_revision",
-          "content"
-        ]
+        "required": ["page_id", "expected_revision"]
       },
       "effect": "local_write",
-      "requires": [
-        "private",
-        "foreground",
-        "spaces"
-      ],
+      "requires": ["private", "foreground", "spaces"],
       "order": 265,
-      "taints": [
-        "page",
-        "sensitive_local"
-      ]
+      "taints": ["page", "sensitive_local"]
+    },
+    {
+      "name": "pages_move",
+      "hand": "spaces",
+      "title": "Move page",
+      "description": "Propose moving a page under a parent in the same space (null means top level). Requires human review and the exact revision.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "page_id": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "parent_id": {
+            "type": ["string", "null"]
+          }
+        },
+        "required": ["page_id", "expected_revision", "parent_id"]
+      },
+      "effect": "local_write",
+      "requires": ["private", "foreground", "spaces"],
+      "order": 266,
+      "taints": ["page", "sensitive_local"]
+    },
+    {
+      "name": "pages_delete",
+      "hand": "spaces",
+      "title": "Trash page",
+      "description": "Propose moving a page to trash. Requires human review and the exact revision; active subpages must be moved first.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "page_id": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": ["page_id", "expected_revision"]
+      },
+      "effect": "local_write",
+      "requires": ["private", "foreground", "spaces"],
+      "order": 267,
+      "taints": ["page", "sensitive_local"]
     }
   ]
 }

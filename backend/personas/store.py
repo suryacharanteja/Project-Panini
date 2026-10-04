@@ -51,7 +51,16 @@ PERMISSIONS = {
     ),
     "spaces_write": (
         "spaces",
-        ("space_create", "page_create", "page_update", "page_delete", "pages_create", "pages_edit"),
+        (
+            "space_create",
+            "page_create",
+            "page_update",
+            "page_delete",
+            "pages_create",
+            "pages_edit",
+            "pages_move",
+            "pages_delete",
+        ),
     ),
     "memory_read": ("memory", ("recall",)),
     "memory_write": ("memory", ("remember", "forget")),
@@ -150,6 +159,7 @@ class Personas:
             "model_tier": None,
             **self.validate(values),
         }
+        self._default_space(persona_id, data.get("default_space_id"))
         if self.store.one("SELECT id FROM personas WHERE id=?", (persona_id,)):
             raise ValueError("That persona ID already exists.")
         if self.store.one(
@@ -169,6 +179,7 @@ class Personas:
     def update(self, persona_id, **values):
         self.get(persona_id)
         values = self.validate(values)
+        self._default_space(persona_id, values.get("default_space_id"))
         if "name" in values and self.store.one(
             "SELECT id FROM personas WHERE id!=? AND lower(name)=lower(?) AND archived=0",
             (persona_id, values["name"]),
@@ -183,6 +194,16 @@ class Personas:
             )
             self.policy.bump()
         return self.get(persona_id)
+
+    def _default_space(self, persona_id, space_id):
+        if not space_id:
+            return
+        if not self.store.one("SELECT id FROM spaces WHERE id=?", (space_id,)):
+            raise ValueError("Default space does not exist.")
+        if persona_id != "panini" and not self.store.one(
+            "SELECT 1 FROM space_access WHERE space_id=? AND persona_id=?", (space_id, persona_id)
+        ):
+            raise ValueError("Grant this persona access before choosing its default space.")
 
     def archive(self, persona_id):
         if persona_id == "panini":

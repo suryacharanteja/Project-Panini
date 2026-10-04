@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { CardBoundary } from './boundary';
+const MarkdownPreview = lazy(() =>
+  import('./MarkdownPreview').then((module) => ({ default: module.MarkdownPreview })),
+);
 import { resultState, STATE_LABEL, toolDetail, toolLabel, toText, type ToolState } from './text';
 
 /** Inline cards for agent conversations (V2-07): tool calls, approvals, questions, choices, take-overs. */
@@ -81,6 +84,7 @@ function InterruptCardBody({
     ? String(preview.content)
     : toText(preview?.detail ?? preview?.effect ?? preview, 1500);
   const [reviewContent, setReviewContent] = useState(pageDraft ? String(preview?.content) : '');
+  const [rendered, setRendered] = useState(false);
   const decide = async (approved: boolean) => {
     setBusy(true);
     setError('');
@@ -103,6 +107,32 @@ function InterruptCardBody({
         <Chip state="attention" />
       </header>
       <p>{toText(interrupt.message, 1000)}</p>
+      {pageDraft && (
+        <details onToggle={(event) => setRendered(event.currentTarget.open)}>
+          <summary>Rendered draft</summary>
+          {rendered && (
+            <Suspense fallback={<p role="status">Rendering draft…</p>}>
+              <MarkdownPreview content={reviewContent} />
+            </Suspense>
+          )}
+        </details>
+      )}
+      {pageDraft && typeof preview?.previous_content === 'string' && (
+        <details>
+          <summary>
+            Previous revision{preview.previous_truncated ? ' (first 20,000 characters)' : ''}
+          </summary>
+          <pre className="pc-preview">{preview.previous_content}</pre>
+        </details>
+      )}
+      {pageDraft && typeof preview?.diff === 'string' && (
+        <details>
+          <summary>
+            Changes{preview.diff_truncated ? ' (shortened; full text is available above)' : ''}
+          </summary>
+          <pre className="pc-preview">{preview.diff}</pre>
+        </details>
+      )}
       {pageDraft && onReview ? (
         <textarea
           aria-label="Review page draft"

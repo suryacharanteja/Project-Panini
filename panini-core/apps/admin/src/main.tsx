@@ -50,6 +50,8 @@ const routeTree = root.addChildren([
   page('/receipts', ReceiptsPage),
   page('/projects', ProjectsPage),
   page('/spaces', SpacesRoute),
+  page('/spaces/$spaceId', SpacesRoute),
+  page('/spaces/$spaceId/pages/$pageId', SpacesRoute),
   page('/build/skills', SkillsPage),
   page('/build/connectors', ConnectorsPage),
   page('/build/automations', AutomationsPage),

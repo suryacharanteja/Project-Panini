@@ -1,6 +1,7 @@
 import { Download, RefreshCw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { ago, api, harness, useResource, when } from '../api';
+import { SaveToSpace } from './spaces/SaveToSpace';
 import {
   Badge,
   Button,
@@ -246,6 +247,10 @@ export function RunsPage() {
                     {detail.data.result.outcome}
                   </Badge>
                   <p className="mt-2 whitespace-pre-wrap">{detail.data.result.message}</p>
+                  {detail.data.status === 'completed' &&
+                    detail.data.result.outcome === 'verified_complete' && (
+                      <SaveToSpace kind="task" sourceId={detail.data.id} />
+                    )}
                 </div>
               )}
               <ol className="derive relative ml-2 border-l border-copper/30 pl-5">

@@ -5,6 +5,8 @@ import time
 from contextlib import contextmanager
 from uuid import uuid4
 
+from ..harness.memory import _pack, _unpack, embed
+
 
 class SpacesError(ValueError):
     def __init__(self, code, message, status=422):
@@ -71,7 +73,7 @@ class Spaces:
             raise SpacesError("OWNER_ACCESS", "The owner always has access.")
         with self.transaction():
             self.authorize(space_id)
-            if self.personas:
+            if self.personas and allowed:
                 self._persona(persona_id)
             if allowed:
                 self.store.execute("INSERT OR IGNORE INTO space_access VALUES(?,?)", (space_id, persona_id))
@@ -79,6 +81,13 @@ class Spaces:
                 self.store.execute(
                     "DELETE FROM space_access WHERE space_id=? AND persona_id=?", (space_id, persona_id)
                 )
+                if self.personas:
+                    self.store.execute(
+                        "UPDATE personas SET default_space_id=NULL WHERE id=? AND default_space_id=?",
+                        (persona_id, space_id),
+                    )
+            if self.personas:
+                self.personas.policy.bump()
 
     def read(self, page_id, persona_id="panini", *, deleted=False):
         row = self.store.one("SELECT * FROM pages WHERE id=?", (page_id,))
@@ -87,6 +96,7 @@ class Spaces:
         self.authorize(row["space_id"], persona_id)
         if row["deleted_at"] is not None and not deleted:
             raise SpacesError("PAGE_NOT_FOUND", "Page is in the trash.", 404)
+        row["url"] = f"/spaces/{row['space_id']}/pages/{row['id']}"
         return row
 
     def pages(self, space_id, persona_id="panini", *, deleted=False):
@@ -119,6 +129,10 @@ class Spaces:
             parent_id = parent["parent_id"]
 
     def _snapshot(self, row):
+        self.store.execute(
+            "INSERT OR REPLACE INTO page_vectors VALUES(?,?,?)",
+            (row["id"], row["revision"], _pack(embed(row["title"] + "\n" + row["content"]))),
+        )
         self.store.execute(
             "INSERT INTO page_revisions VALUES(?,?,?,?,?,?,?)",
             (
@@ -200,6 +214,17 @@ class Spaces:
             "SELECT * FROM page_revisions WHERE page_id=? ORDER BY revision DESC", (page_id,)
         )
 
+    def restore_revision(self, page_id, expected_revision, revision):
+        with self.transaction():
+            self.read(page_id)
+            old = self.store.one(
+                "SELECT * FROM page_revisions WHERE page_id=? AND revision=?", (page_id, revision)
+            )
+            if not old:
+                raise SpacesError("REVISION_NOT_FOUND", "This revision is no longer retained.", 404)
+            # Restore text as a new revision; never silently resurrect or move a page.
+            return self.edit(page_id, expected_revision, title=old["title"], content=old["content"])
+
     def search(self, query, persona_id="panini", space_id=None):
         self._text(query, 500, "Search")
         words = re.findall(r"\w+", query, re.UNICODE)[:30]
@@ -213,12 +238,35 @@ class Spaces:
             return []
         match = " AND ".join('"' + word + '"' for word in words)
         placeholders = ",".join("?" for _ in allowed)
-        return self.store.all(
+        matches = self.store.all(
             "SELECT p.id,p.space_id,p.title,p.revision,snippet(pages_fts,1,'','', ' … ',32) AS excerpt "
             "FROM pages_fts JOIN pages p ON p.rowid=pages_fts.rowid WHERE pages_fts MATCH ? "
             f"AND p.deleted_at IS NULL AND p.space_id IN ({placeholders}) ORDER BY rank,p.id LIMIT 50",
             (match, *allowed),
         )
+        if matches or any(word in {"OR", "AND", "NOT", "NEAR"} for word in words):
+            for row in matches:
+                row["url"] = f"/spaces/{row['space_id']}/pages/{row['id']}"
+            return matches
+        # Typo-tolerant fallback stays local and filters space access before scoring. FTS
+        # covers the full library; hashed fallback considers the latest 2,000 active pages.
+        target = embed(query)
+        candidates = self.store.all(
+            "SELECT p.id,p.space_id,p.title,p.revision,substr(p.content,1,500) AS excerpt,v.vector "
+            "FROM pages p JOIN page_vectors v ON v.page_id=p.id AND v.revision=p.revision "
+            f"WHERE p.deleted_at IS NULL AND p.space_id IN ({placeholders}) ORDER BY p.updated DESC LIMIT 2000",
+            tuple(allowed),
+        )
+        scored = []
+        for candidate in candidates:
+            score = sum(a * b for a, b in zip(target, _unpack(candidate.pop("vector")), strict=True))
+            if score > 0.2:
+                scored.append((score, candidate))
+        scored.sort(key=lambda entry: (-entry[0], entry[1]["id"]))
+        result = [row for _, row in scored[:50]]
+        for row in result:
+            row["url"] = f"/spaces/{row['space_id']}/pages/{row['id']}"
+        return result
 
     def thread(self, page_id, persona_id="panini"):
         if not self.threads:

@@ -244,3 +244,16 @@ def test_ten_thousand_entries_verify_quickly(ledger, store):
     started = time.monotonic()
     assert verify(store)["entries"] == 10000
     assert time.monotonic() - started < 2.0
+
+
+def test_nested_receipt_rolls_back_with_its_owner_transaction(ledger, store):
+    from backend.spaces import Spaces
+
+    with pytest.raises(RuntimeError), Spaces(store).transaction():
+        receipt = ledger.begin(
+            run_id="nested", tool="t", capability="c", hand="h", args={}, effect="destroy", principal={}
+        )
+        ledger.end(receipt["id"], outcome="ok")
+        raise RuntimeError("Outer mutation failed")
+    assert store.one("SELECT count(*) AS n FROM receipts")["n"] == 0
+    assert verify(store)["entries"] == 0

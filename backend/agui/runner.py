@@ -168,6 +168,18 @@ class AguiRuns:
                 if v["run_id"] == parked["task_id"] and v["thread_id"] == thread
             ]
         if run.resume:
+            # A page decision may have committed before its response was lost. Recover only
+            # durable page reviews belonging to this parked run; other approvals stay one-shot.
+            if parked and service is not None and not open_views:
+                reviews = self.h.store.all(
+                    "SELECT interrupt_id FROM page_reviews WHERE run_id=?", (parked["task_id"],)
+                )
+                open_views = [service.get(row["interrupt_id"], include_secret=True) for row in reviews]
+                open_views = [
+                    view
+                    for view in open_views
+                    if view and view["status"] == "resolved" and view["thread_id"] == thread
+                ]
             if not parked or not open_views:
                 raise Fault("INTERRUPT_UNKNOWN", "This conversation is not waiting for an answer.", 409)
             entries = check_resume(run, {v["id"] for v in open_views})
@@ -176,6 +188,14 @@ class AguiRuns:
                 entry = entries[view["id"]]
                 meta = entry.metadata or {}
                 payload = entry.payload if isinstance(entry.payload, dict) else {}
+                if view["status"] == "resolved":
+                    import secrets
+
+                    if (
+                        not secrets.compare_digest(str(meta.get("nonce", "")), view["nonce"])
+                        or meta.get("actionDigest") != view["action_digest"]
+                    ):
+                        raise Fault("INTERRUPT_CHANGED", "The request changed. Review it again.", 409)
                 decided = service.resolve(
                     view["id"],
                     nonce=meta.get("nonce", ""),

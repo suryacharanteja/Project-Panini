@@ -11,6 +11,7 @@ import {
 import '../../../shared-ui/tokens.css';
 import { connectThread, newId, runAgent, stopThread } from '../agui';
 import { Button, Card, Empty, inputClass, Page } from '../components/ui';
+import { SaveToSpace } from './spaces/SaveToSpace';
 
 const THREAD_KEY = 'panini.conversation.thread';
 
@@ -46,10 +47,16 @@ function reducer(state: Conversation, action: Action): Conversation {
 }
 
 /** Talk to PANINI over AG-UI from the console: tool calls, plan and approvals stream in as cards (V2-07). */
-export function ConversationsPage({ initialThread }: { initialThread?: string } = {}) {
+export function ConversationsPage({
+  initialThread,
+  initialDraft,
+}: { initialThread?: string; initialDraft?: string } = {}) {
   const [thread, setThread] = useState(() => initialThread || savedThread() || newId());
   const [state, dispatch] = useReducer(reducer, undefined, emptyConversation);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(initialDraft || '');
+  useEffect(() => {
+    if (initialDraft) setDraft(initialDraft);
+  }, [initialDraft]);
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement | null>(null);
 
@@ -214,6 +221,15 @@ export function ConversationsPage({ initialThread }: { initialThread?: string } 
             </Button>
           )}
         </form>
+        {!state.running && state.entries.length > 0 && (
+          <div className="mt-4">
+            <SaveToSpace
+              key={`${thread}:${state.entries.length}`}
+              kind="conversation"
+              sourceId={thread}
+            />
+          </div>
+        )}
       </Card>
     </Page>
   );

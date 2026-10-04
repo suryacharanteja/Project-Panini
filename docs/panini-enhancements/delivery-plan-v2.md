@@ -330,4 +330,10 @@ Dependencies: V2-06 (model router).
 
 V2-18 has a working backend and Admin implementation with tests and browser smoke; see its implementation-evidence section for remaining requirements. It is not marked Done. Full-program shipping is incomplete. No production deployment, signed installer, or Dot parity is certified by this checkpoint.
 
+V2-19 now integrates PDF/Markdown export, validated saved receipts/results/conversations, library
+moves/history/access/outline controls and reviewed agent operations. Full repository gates passed
+with 798 backend tests, final browser smoke passed, and one live gpt-4.1 page citation passed.
+See [Spaces qualification](qualification-spaces-2026-10-04.md) for evidence and remaining
+cross-LLD/surface integrations. Red-team remains disabled and deferred.
+
 The next increment implements durable specialist/team/reviewer approval continuation and spending accounting across attempts. Its local HTTP/SSE qualification uses scripted models and an isolated test hand. Cross-surface persona presentation, later integrations and live-provider evaluation remain outstanding.

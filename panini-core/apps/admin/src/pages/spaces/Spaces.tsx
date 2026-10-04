@@ -1,276 +1,20 @@
-import { EditorContent, useEditor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import { Markdown } from '@tiptap/markdown';
-import { TableKit } from '@tiptap/extension-table';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from '@tanstack/react-router';
 import { api, harness, useResource } from '../../api';
 import { Button, Card, inputClass, Page } from '../../components/ui';
-import { Autosave, type Draft, type SaveState } from './autosave';
-import { ConversationsPage } from '../Conversations';
-import './editor.css';
-
-type Space = { id: string; name: string };
-type Document = Draft & { id: string; space_id: string; parent_id: string | null };
+import { PageDocument } from './PageDocument';
+import { SpaceLibrary } from './SpaceLibrary';
+import type { Document, PageSummary, Space } from './types';
 const base = harness('/spaces');
 
-function DocumentEditor({ page }: { page: Document }) {
-  const key = `panini.page.draft.${page.id}`;
-  const recovered = (() => {
-    try {
-      const value = JSON.parse(localStorage.getItem(key) ?? 'null');
-      return value &&
-        typeof value.title === 'string' &&
-        typeof value.content === 'string' &&
-        Number.isInteger(value.revision)
-        ? (value as Draft)
-        : null;
-    } catch {
-      return null;
-    }
-  })();
-  const [title, setTitle] = useState(recovered?.title ?? page.title);
-  const [content, setContent] = useState(recovered?.content ?? page.content);
-  const [source, setSource] = useState(false);
-  const [thread, setThread] = useState('');
-  const [slash, setSlash] = useState(false);
-  const [state, setState] = useState<SaveState>(
-    recovered ? (recovered.revision === page.revision ? 'unsaved' : 'conflict') : 'saved',
-  );
-  const [message, setMessage] = useState(recovered ? 'Recovered your local draft.' : '');
-  const latest = useRef({ title, content });
-  latest.current = { title, content };
-  const queue = useRef<Autosave | null>(null);
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        link: { openOnClick: false, protocols: ['https', 'http', 'mailto'] },
-      }),
-      Markdown,
-      TableKit,
-      TaskList,
-      TaskItem.configure({ nested: true }),
-    ],
-    content,
-    contentType: 'markdown',
-    editorProps: {
-      attributes: { class: 'panini-document min-h-80 p-5 outline-none' },
-      handleKeyDown: (_view, event) => {
-        if (event.key === '/') {
-          setSlash(true);
-          event.preventDefault();
-          return true;
-        }
-        if (event.key === 'Escape') setSlash(false);
-        return false;
-      },
-    },
-    onUpdate: ({ editor }) => {
-      const next = editor.getMarkdown();
-      setContent(next);
-      queue.current?.edit({ ...latest.current, content: next, revision: page.revision });
-    },
-  });
-  useEffect(() => {
-    const autosave = new Autosave(
-      recovered?.revision ?? page.revision,
-      (draft) =>
-        api<Document>(`${base}/pages/${page.id}`, {
-          method: 'PATCH',
-          body: { expected_revision: draft.revision, title: draft.title, content: draft.content },
-        }),
-      (draft) => {
-        try {
-          draft ? localStorage.setItem(key, JSON.stringify(draft)) : localStorage.removeItem(key);
-        } catch {
-          setMessage(
-            'Local draft storage is unavailable. Keep this page open and copy your draft before leaving.',
-          );
-        }
-      },
-      setState,
-    );
-    queue.current = autosave;
-    if (recovered && recovered.revision === page.revision) autosave.edit(recovered);
-    return () => {
-      autosave.stop();
-      queue.current = null;
-    };
-  }, [page.id]);
-
-  async function rebase() {
-    try {
-      const current = await api<Document>(`${base}/pages/${page.id}`);
-      setMessage(
-        `Server revision ${current.revision}:\n${current.content}\n\nYour draft remains in the editor. Merge it here, then press Save again.`,
-      );
-      // Explicit confirmation is needed before a conflicting draft can overwrite the new revision.
-      if (
-        window.confirm(
-          `Replace revision ${current.revision} with your current draft? Cancel to merge first.`,
-        )
-      ) {
-        queue.current?.rebase(current.revision);
-        queue.current?.edit({ ...latest.current, revision: current.revision });
-        await queue.current?.flush();
-      }
-    } catch (error) {
-      setMessage((error as Error).message);
-    }
-  }
-  return (
-    <div className="grid gap-4">
-      <Card>
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          <span role="status" className="text-sm text-muted">
-            {state}
-          </span>
-          <Button
-            onClick={() => {
-              queue.current?.edit({ ...latest.current, revision: page.revision });
-              void queue.current?.flush();
-            }}
-          >
-            Save
-          </Button>
-          <Button onClick={() => setSource(!source)}>{source ? 'Rich text' : 'Markdown'}</Button>
-          <a className="text-sm text-copper" href={`${base}/pages/${page.id}/markdown`}>
-            Export Markdown
-          </a>
-          <Button
-            onClick={() =>
-              void api<{ thread_id: string }>(`${base}/pages/${page.id}/conversation`, {
-                method: 'POST',
-              })
-                .then((result) => setThread(result.thread_id))
-                .catch((error) => setMessage(error.message))
-            }
-          >
-            Discuss page
-          </Button>
-          {state === 'conflict' && <Button onClick={() => void rebase()}>Review conflict</Button>}
-        </div>
-        <input
-          aria-label="Page title"
-          className={`${inputClass} mb-4`}
-          value={title}
-          maxLength={240}
-          onChange={(e) => {
-            setTitle(e.target.value);
-            queue.current?.edit({
-              ...latest.current,
-              title: e.target.value,
-              revision: page.revision,
-            });
-          }}
-        />
-        {message && (
-          <pre
-            className="whitespace-pre-wrap text-sm text-muted mb-4 max-h-64 overflow-auto"
-            role="status"
-          >
-            {message}
-          </pre>
-        )}
-        {source ? (
-          <textarea
-            aria-label="Markdown content"
-            className={`${inputClass} min-h-80 font-mono`}
-            value={content}
-            maxLength={200000}
-            onChange={(e) => {
-              setContent(e.target.value);
-              editor?.commands.setContent(e.target.value, {
-                contentType: 'markdown',
-                emitUpdate: false,
-              });
-              queue.current?.edit({
-                ...latest.current,
-                content: e.target.value,
-                revision: page.revision,
-              });
-            }}
-          />
-        ) : (
-          <>
-            <div className="flex flex-wrap gap-2 mb-3">
-              <Button onClick={() => editor?.chain().focus().toggleBold().run()}>Bold</Button>
-              <Button onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}>
-                Heading
-              </Button>
-              <Button onClick={() => editor?.chain().focus().toggleTaskList().run()}>Tasks</Button>
-              <Button
-                onClick={() =>
-                  editor
-                    ?.chain()
-                    .focus()
-                    .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-                    .run()
-                }
-              >
-                Table
-              </Button>
-            </div>
-            <EditorContent editor={editor} />
-            {slash && (
-              <div
-                role="menu"
-                aria-label="Insert block"
-                className="flex flex-wrap gap-2 p-3 border border-zinc-3 rounded-lg"
-              >
-                <Button
-                  onClick={() => {
-                    editor?.chain().focus().toggleHeading({ level: 2 }).run();
-                    setSlash(false);
-                  }}
-                >
-                  Insert heading
-                </Button>
-                <Button
-                  onClick={() => {
-                    editor?.chain().focus().toggleTaskList().run();
-                    setSlash(false);
-                  }}
-                >
-                  Insert task list
-                </Button>
-                <Button
-                  onClick={() => {
-                    editor
-                      ?.chain()
-                      .focus()
-                      .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-                      .run();
-                    setSlash(false);
-                  }}
-                >
-                  Insert table
-                </Button>
-                <Button
-                  onClick={() => {
-                    editor?.commands.insertContent('/');
-                    setSlash(false);
-                  }}
-                >
-                  Insert /
-                </Button>
-              </div>
-            )}
-          </>
-        )}
-      </Card>
-      {thread && <ConversationsPage key={thread} initialThread={thread} />}
-    </div>
-  );
-}
-
 export function SpacesPage() {
+  const params = useParams({ strict: false }) as { spaceId?: string; pageId?: string };
+  const navigate = useNavigate();
   const spaces = useResource<{ spaces: Space[] }>(base);
-  const [spaceId, setSpaceId] = useState('');
+  const [spaceId, setSpaceId] = useState(params.spaceId || '');
   const [trash, setTrash] = useState(false);
   const [query, setQuery] = useState('');
-  const pages = useResource<{ pages: Document[] }>(
+  const pages = useResource<{ pages: PageSummary[] }>(
     spaceId
       ? query.trim()
         ? `${base}/search?space_id=${spaceId}&q=${encodeURIComponent(query)}`
@@ -279,6 +23,55 @@ export function SpacesPage() {
   );
   const [page, setPage] = useState<Document | null>(null);
   const [error, setError] = useState('');
+  const [grid, setGrid] = useState(false);
+  const [parent, setParent] = useState('');
+  const [access, setAccess] = useState<{ persona_id: string }[] | null>(null);
+  const [persona, setPersona] = useState('');
+  useEffect(() => {
+    if (!params.spaceId) return;
+    let alive = true;
+    setSpaceId(params.spaceId);
+    if (params.pageId)
+      void api<Document>(`${base}/pages/${params.pageId}`)
+        .then((document) => {
+          if (!alive) return;
+          if (document.space_id !== params.spaceId)
+            throw new Error('This page is in another space.');
+          setPage(document);
+        })
+        .catch((error) => {
+          if (alive) setError(error.message);
+        });
+    return () => {
+      alive = false;
+    };
+  }, [params.spaceId, params.pageId]);
+  async function move() {
+    if (!page) return;
+    try {
+      if (localStorage.getItem(`panini.page.draft.${page.id}`))
+        throw new Error('Save your draft before moving this page.');
+      const current = await api<Document>(`${base}/pages/${page.id}`);
+      const moved = await api<Document>(`${base}/pages/${page.id}`, {
+        method: 'PATCH',
+        body: { expected_revision: current.revision, move: true, parent_id: parent || null },
+      });
+      setPage(moved);
+      pages.reload();
+    } catch (error) {
+      setError((error as Error).message);
+    }
+  }
+  async function permissions(personaId?: string, allowed?: boolean) {
+    try {
+      if (personaId)
+        await api(`${base}/access/${spaceId}`, { body: { persona_id: personaId, allowed } });
+      const result = await api<{ personas: { persona_id: string }[] }>(`${base}/access/${spaceId}`);
+      setAccess(result.personas);
+    } catch (error) {
+      setError((error as Error).message);
+    }
+  }
   async function createSpace() {
     const name = window.prompt('Space name');
     if (!name?.trim()) return;
@@ -305,7 +98,12 @@ export function SpacesPage() {
   }
   async function open(id: string) {
     try {
-      setPage(await api<Document>(`${base}/pages/${id}`));
+      const document = await api<Document>(`${base}/pages/${id}`);
+      setPage(document);
+      void navigate({
+        to: '/spaces/$spaceId/pages/$pageId',
+        params: { spaceId: document.space_id, pageId: id },
+      });
     } catch (e) {
       setError((e as Error).message);
     }
@@ -328,16 +126,27 @@ export function SpacesPage() {
       setError((error as Error).message);
     }
   }
-  function depth(doc: Document) {
-    let count = 0,
-      parent = doc.parent_id;
-    const seen = new Set<string>();
-    while (parent && !seen.has(parent) && count < 12) {
-      seen.add(parent);
-      count++;
-      parent = pages.data?.pages.find((p) => p.id === parent)?.parent_id ?? null;
+  async function destroyPage(id: string) {
+    try {
+      const current = await api<Document>(`${base}/pages/${id}?deleted=true`);
+      const confirmation = window.prompt(
+        `Permanently delete this page and its revisions? Type the exact title: ${current.title}`,
+      );
+      if (confirmation === null) return;
+      const request = await api<{ id: string; nonce: string; action_digest: string }>(
+        `${base}/pages/${id}/destroy-request`,
+        { body: { expected_revision: current.revision, confirmation } },
+      );
+      const approved = window.confirm(
+        `Permanently delete ${current.title}? This cannot be undone. Earlier conversation quotes and receipts remain in their original records.`,
+      );
+      await api(`${base}/destroy/${request.id}/confirm`, {
+        body: { nonce: request.nonce, action_digest: request.action_digest, approved },
+      });
+      pages.reload();
+    } catch (error) {
+      setError((error as Error).message);
     }
-    return count;
   }
   return (
     <Page title="Spaces" eyebrow="Your notebook">
@@ -347,6 +156,10 @@ export function SpacesPage() {
         </p>
       )}
       <div className="flex flex-wrap gap-3 mb-5">
+        <Button onClick={() => setGrid(!grid)}>{grid ? 'List view' : 'Grid view'}</Button>
+        <Button disabled={!spaceId} onClick={() => void permissions()}>
+          Space access
+        </Button>
         <Button onClick={() => void createSpace()}>New space</Button>
         <select
           aria-label="Space"
@@ -355,6 +168,11 @@ export function SpacesPage() {
           onChange={(e) => {
             setSpaceId(e.target.value);
             setPage(null);
+            setAccess(null);
+            void navigate({
+              to: e.target.value ? '/spaces/$spaceId' : '/spaces',
+              params: { spaceId: e.target.value },
+            });
           }}
         >
           <option value="">Choose a space</option>
@@ -389,38 +207,76 @@ export function SpacesPage() {
           disabled={!spaceId || trash}
         />
       </div>
-      <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
-        <Card>
-          <nav aria-label="Pages" className="grid gap-2">
-            {pages.data?.pages.map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center gap-1"
-                style={{ paddingLeft: depth(p) * 12 }}
-              >
-                <button
-                  className="text-left text-sm p-2 rounded hover:bg-zinc-3"
-                  onClick={() => !trash && void open(p.id)}
-                  disabled={trash}
-                >
-                  {p.title}
-                </button>
-                <button
-                  className="ml-auto text-xs text-muted"
-                  aria-label={`${trash ? 'Restore' : 'Trash'} ${p.title}`}
-                  onClick={() => void lifecycle(p.id, trash)}
-                >
-                  {trash ? 'Restore' : 'Trash'}
-                </button>
-              </div>
-            ))}
-            {spaceId && !pages.data?.pages.length && (
-              <p className="text-muted text-sm">No pages yet.</p>
-            )}
-          </nav>
+      {access && (
+        <Card title="Space access">
+          <p className="text-sm text-muted mb-3">
+            The owner always has access. Grant access by persona ID; revoked personas lose access
+            immediately.
+          </p>
+          <p className="text-sm text-muted mb-3 break-all">Space ID: {spaceId}</p>
+          <div className="flex flex-wrap gap-2">
+            <input
+              aria-label="Persona ID"
+              className={inputClass}
+              value={persona}
+              onChange={(event) => setPersona(event.target.value)}
+            />
+            <Button
+              disabled={!persona.trim()}
+              onClick={() => void permissions(persona.trim(), true)}
+            >
+              Grant access
+            </Button>
+            <Button onClick={() => setAccess(null)}>Close access</Button>
+          </div>
+          {access.map((item) => (
+            <div key={item.persona_id} className="flex gap-3 mt-2">
+              <span>{item.persona_id}</span>
+              <Button onClick={() => void permissions(item.persona_id, false)}>
+                Revoke access
+              </Button>
+            </div>
+          ))}
         </Card>
+      )}
+      {page && (
+        <div className="flex flex-wrap gap-2 mb-4 mt-4">
+          <select
+            aria-label="Move under page"
+            className={inputClass}
+            value={parent}
+            onChange={(event) => setParent(event.target.value)}
+          >
+            <option value="">Top level</option>
+            {pages.data?.pages
+              .filter((item) => item.id !== page.id)
+              .map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.title}
+                </option>
+              ))}
+          </select>
+          <Button onClick={() => void move()}>Move page</Button>
+        </div>
+      )}
+      <div
+        className={
+          grid
+            ? 'grid gap-5 lg:grid-cols-[minmax(280px,400px)_1fr]'
+            : 'grid gap-5 lg:grid-cols-[240px_1fr]'
+        }
+      >
+        <SpaceLibrary
+          pages={pages.data?.pages || []}
+          spaceId={spaceId}
+          trash={trash}
+          grid={grid}
+          onOpen={open}
+          onLifecycle={lifecycle}
+          onDestroy={destroyPage}
+        />
         {page ? (
-          <DocumentEditor key={page.id} page={page} />
+          <PageDocument key={`${page.id}:${page.revision}`} page={page} />
         ) : (
           <Card>
             <p className="text-muted">Choose a page to start writing.</p>

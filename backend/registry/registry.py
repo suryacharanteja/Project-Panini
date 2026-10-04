@@ -113,6 +113,13 @@ class Registry:
         tools = []
         for spec in self.tools(view):
             tool = json.loads(json.dumps(spec.model_tool()))
+            if spec.capability == "spaces" and spec.strict:
+                schema = tool["parameters"]
+                required = set(schema.get("required", []))
+                for key, value in schema.get("properties", {}).items():
+                    if key not in required:
+                        schema["properties"][key] = {"anyOf": [value, {"type": "null"}]}
+                schema["required"] = list(schema.get("properties", {}))
             if spec.name == "use_capability" and capabilities is not None:
                 tool["parameters"]["properties"]["capability"]["enum"] = list(capabilities)
             tools.append(tool)
@@ -211,6 +218,14 @@ class Registry:
         if name not in self.specs or name not in self.hands:
             return _refused("This tool is unavailable in this task.")
         spec = self.specs[name]
+        if spec.capability == "spaces" and isinstance(args, dict):
+            required = set(spec.input_schema.get("required", []))
+            properties = spec.input_schema.get("properties", {})
+            args = {
+                key: value
+                for key, value in args.items()
+                if value is not None or key in required or key not in properties
+            }
         if spec.owner_only and ctx.principal.kind != "owner":
             return _refused("This tool is reserved for the owner.")
         problem = self.validate(spec, args)

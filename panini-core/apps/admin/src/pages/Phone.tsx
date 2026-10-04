@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SaveToSpace } from './spaces/SaveToSpace';
 import { api, harness, useResource } from '../api';
 import { Badge, Button, Card, Empty, Field, inputClass, Page, useAction } from '../components/ui';
 
@@ -225,6 +226,7 @@ export function PhonePage() {
                   <p>{c.reason}</p>
                   {c.summary && <p className="text-sm text-faint">{c.summary}</p>}
                   {c.receipt_id && <p className="text-xs text-faint">Receipt {c.receipt_id}</p>}
+                  {c.receipt_id && <SaveToSpace kind="receipt" sourceId={c.receipt_id} />}
                 </div>
               ))
             )}

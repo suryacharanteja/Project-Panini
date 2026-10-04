@@ -2,6 +2,7 @@ import { ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { api, harness, useResource } from '../api';
 import { Badge, Card, Empty, inputClass, Page } from '../components/ui';
+import { SaveToSpace } from './spaces/SaveToSpace';
 
 type Receipt = {
   id: string;
@@ -31,7 +32,9 @@ const OUTCOME_TONE: Record<string, 'ok' | 'warn' | 'error' | 'neutral'> = {
 /** Every tool call PANINI made: decision, effect, outcome, evidence — hash-chained (V2-04). */
 export function ReceiptsPage() {
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get('receipt'),
+  );
   const list = useResource<{ receipts: Receipt[] }>(
     harness(`/receipts?limit=200${query ? `&q=${encodeURIComponent(query)}` : ''}`),
     10000,
@@ -91,6 +94,9 @@ export function ReceiptsPage() {
               {open === r.id && detail.data && (
                 <div className="mb-2 ml-2 grid gap-2 rounded-md border border-line p-3 text-xs">
                   <div className="text-faint">Run {detail.data.run_id}</div>
+                  {detail.data.outcome !== 'pending' && (
+                    <SaveToSpace kind="receipt" sourceId={detail.data.id} />
+                  )}
                   <pre className="mono overflow-x-auto whitespace-pre-wrap text-muted">
                     {JSON.stringify(detail.data.args_view, null, 2)}
                   </pre>

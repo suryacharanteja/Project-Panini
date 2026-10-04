@@ -59,6 +59,28 @@ def test_real_sse_page_review_resume_restores_runner(tmp_path, monkeypatch):
                     },
                 }
             ]
+            # The decision commits, but its response never reaches the client. The parked
+            # checkpoint must resume using the same proof and decision, after a restart.
+            from backend import interrupts
+
+            h.interrupts.resolve(
+                interrupt["id"],
+                nonce=interrupt["metadata"]["nonce"],
+                action_digest=interrupt["metadata"]["actionDigest"],
+                status="resolved",
+                payload=resume[0]["payload"],
+                decided_by=interrupts.decided_by("agui", "tap"),
+            )
+            bad = [{**resume[0], "metadata": {**resume[0]["metadata"], "nonce": "wrong"}}]
+            rejected = events(
+                client.post(
+                    "/api/agui/agents/panini/run",
+                    headers=HEADERS,
+                    json=body(run="bad", messages=[], resume=bad),
+                )
+            )
+            assert rejected[-1]["code"] == "INTERRUPT_CHANGED"
+            assert h.spaces.pages(space["id"]) == []
             second = events(
                 client.post(
                     "/api/agui/agents/panini/run",

@@ -93,3 +93,48 @@ def test_permission_revocation_and_pause_refuse_save(h):
     with pytest.raises(SpacesError, match="paused"):
         draft(h, op, "writer")
     assert not h.spaces.pages(s["id"])
+
+
+def test_reviewed_move_delete_are_cas_and_replay_safe(h):
+    space = h.spaces.create_space("Move qualification")
+    parent = h.spaces.create(space["id"], "Parent")
+    page = h.spaces.create(space["id"], "Page", "Text kept")
+    operation = {"kind": "move", "page_id": page["id"], "expected_revision": 1, "parent_id": parent["id"]}
+    with pytest.raises(Parked) as pending:
+        draft(h, operation, call="move")
+    assert h.spaces.read(page["id"])["parent_id"] is None
+    decide(h, pending.value.interrupt_id)
+    moved = draft(h, operation, call="move")
+    assert moved["page"]["parent_id"] == parent["id"]
+    assert draft(h, operation, call="move") == moved
+    operation = {"kind": "delete", "page_id": page["id"], "expected_revision": 2}
+    with pytest.raises(Parked) as pending:
+        draft(h, operation, call="trash")
+    decide(h, pending.value.interrupt_id)
+    deleted = draft(h, operation, call="trash")
+    assert deleted["page"]["deleted_at"] and deleted["page"]["content"] == "Text kept"
+    assert draft(h, operation, call="trash") == deleted
+
+
+def test_exact_patch_review_and_replay_never_applies_twice(h):
+    space = h.spaces.create_space("Patches")
+    page = h.spaces.create(space["id"], "Plan", "Launch on Friday.")
+    operation = {
+        "kind": "edit",
+        "page_id": page["id"],
+        "expected_revision": 1,
+        "patch": {"find": "Friday", "replace": "Monday"},
+    }
+    with pytest.raises(Parked) as pending:
+        draft(h, operation)
+    preview = h.interrupts.get(pending.value.interrupt_id)["preview"]
+    assert preview["content"] == "Launch on Monday." and preview["previous_content"] == "Launch on Friday."
+    assert "-Launch on Friday." in preview["diff"] and "+Launch on Monday." in preview["diff"]
+    decide(h, pending.value.interrupt_id)
+    saved = draft(h, operation)
+    assert saved["page"]["content"] == "Launch on Monday."
+    assert draft(h, operation) == saved
+    assert h.spaces.read(page["id"])["revision"] == 2
+    invalid = {**operation, "expected_revision": 2, "patch": {"find": "missing", "replace": "no"}}
+    with pytest.raises(SpacesError, match="exactly once"):
+        draft(h, invalid, call="invalid")

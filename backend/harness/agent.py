@@ -629,6 +629,7 @@ class Agent:
                 for t in tools
                 if not self._hidden(t["name"])
                 and not (t["name"] == "run_subagents" and not self.capabilities)
+                and not (t["name"] == "use_capability" and not self.capabilities)
             ] + self._client_model_tools()
         tools = []
         for tool in TOOLS:
@@ -942,7 +943,7 @@ class Agent:
             await registry.run_finished(self.tool_context())
         if self.brain:
             self._finish_run(
-                _run_state(result.outcome), {"outcome": result.outcome, "message": result.message[:2000]}
+                _run_state(result.outcome), {"outcome": result.outcome, "message": result.message}
             )
         if session_id:
             self.h.sessions.save(session_id, items, summary=summary, title=goal[:80])

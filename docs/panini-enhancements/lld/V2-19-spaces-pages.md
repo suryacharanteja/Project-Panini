@@ -45,7 +45,7 @@ No document workspace. Results live in tasks, notices and the agent inbox; proje
 | --- | --- |
 | `backend/spaces/store.py` | Spaces, pages, revisions, CAS, soft delete, FTS |
 | `backend/spaces/tools.py` | Agent tools |
-| `backend/spaces/export.py` | Markdown export; PDF through the managed Playwright session (`browser_pdf_save` on a rendered page) |
+| `backend/spaces/export.py` | Stored-source saving; PDF through a fresh isolated Playwright print context |
 | `backend/routes/spaces.py` | Console API |
 | `backend/harness/migrations/0016_spaces.sql` | Tables (0014 is already used by calls) |
 | Admin `src/pages/spaces/` | `SpaceLibrary`, `SpaceWorkspace`, `PageDocument`, `PageOutline`, editor folder (ported) |
@@ -116,8 +116,8 @@ selection").
 
 ### 5.8 Integrations
 
-- Result and receipt cards: **Save to Space** → `pages_create(review=false)` into the persona's default Space
-  with source links.
+- Result and receipt cards: **Save to Space** uses the owner console's validated stored-source endpoint,
+  with an explicit destination and source links. Agent-created pages always require review.
 - Call receipts (V2-16/20) and channel threads can be saved as pages.
 - Teach-by-demo skills (V2-22) store their human-readable description as a page.
 
@@ -148,7 +148,7 @@ Ported from OpenDots and extended:
 
 - [x] Create, edit with conflicts, nest, search, soft delete and restore work in Admin.
 - [x] "Show me the draft before saving" produces a review card; approve saves once; decline saves nothing.
-- [ ] PANINI cites a page found by `pages_search` in an answer.
+- [x] PANINI cites a page found by `pages_search` in an answer (one live gpt-4.1 synthetic case).
 
 ## 9. Rollout and rollback
 
@@ -168,12 +168,17 @@ before every model entry. Page context and search/read results carry quarantined
 Admin has a lazy-loaded Tiptap 3.31.4 editor, Markdown mode, tables/tasks, insertion menu, autosave,
 local draft recovery, search, nested creation, trash/restore, page discussions and Markdown export.
 
-`npm test`: 783 backend tests passed; all other repository gates passed. Real browser smoke exercises
-the built Admin against a throwaway database and real AG-UI/interrupt code with a scripted model,
-including owner-edited review, recovery/conflict cases, search and trash/restore. It makes no provider
-calls. Evidence: `artifacts/spaces/release-check.log`, `artifacts/spaces/browser-smoke.log`.
+The next integrated increment delivers validated result/receipt/history saving and rejection tests,
+isolated PDF export, grid/outline, moves, history restoration, access controls, reviewed move/delete,
+owner destroy, validated default destinations and resolved-decision recovery while a run is parked.
+The editor modules are separated into PageDocument, SpaceLibrary, PageOutline and shared types.
 
-Still open: result/receipt/history Save-to-Space integration and its rejection tests, PDF export,
-library grid/outline and move/history/access controls, reviewed move/delete tools, owner destroy,
-validated default destinations, recovery after an already-resolved decision loses its SSE response,
-and live page-search/citation qualification. This local increment does not complete V2-19.
+`npm test`: **798 backend** tests passed; all other repository gates passed. Final browser smoke
+uses the built Admin, throwaway database and real AG-UI/interrupt code with a scripted model; it
+also verifies moves, history restoration, owner destroy and real PDF export. A separate live
+gpt-4.1 run searched and cited a synthetic page correctly. The PDF and responsive screenshots were
+visually inspected. Evidence and limits: [qualification](../qualification-spaces-2026-10-04.md).
+
+Still open: dedicated Android PWA notebook actions, channel/teach-by-demo integrations, additional
+crash-window and live-provider qualification, installed-runtime and production release gates.
+This is a local development increment; V2-19 and the full LLD program remain in progress.

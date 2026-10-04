@@ -5,6 +5,7 @@ state after its last finished tool round, compressed; a parked or interrupted ba
 and the ledger (V2-04) replays any step that already happened.
 """
 
+import hashlib
 import json
 import time
 import zlib
@@ -13,6 +14,7 @@ from uuid import uuid4
 
 MAX_CHECKPOINT = 512 * 1024
 OUTPUT_CHARS = 2000
+MAX_RESULT_CHARS = 1_000_000
 STATES = {"running", "parked", "resumed", "completed", "partial", "blocked", "failed", "interrupted"}
 
 
@@ -75,13 +77,24 @@ class Runs:
     def finish(self, run_id, state: str, result: dict, usage: dict | None = None):
         if state not in STATES:
             raise ValueError(f"Unknown run state {state!r}")
+        encoded = json.dumps(result, ensure_ascii=False, default=str)
+        if len(encoded) > MAX_RESULT_CHARS:
+            encoded = json.dumps(
+                {
+                    "outcome": str(result.get("outcome", "partial"))[:100],
+                    "message": str(result.get("message", ""))[:16000],
+                    "result_truncated": True,
+                    "source_sha256": hashlib.sha256(encoded.encode()).hexdigest(),
+                },
+                ensure_ascii=False,
+            )
         self.store.execute(
             "UPDATE runs SET state=?, result=?, updated=?"
             + (", usage=?" if usage is not None else "")
             + " WHERE id=?",
             (
                 state,
-                json.dumps(result, ensure_ascii=False, default=str)[:20000],
+                encoded,
                 self.clock(),
                 *([json.dumps(usage)] if usage is not None else []),
                 run_id,

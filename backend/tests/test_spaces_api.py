@@ -47,3 +47,32 @@ def test_owner_boundary_flag_cas_and_export(client, monkeypatch):
         == 404
     )
     assert h.spaces.read(p["id"])["content"] == "new"
+
+
+def test_owner_destroy_requires_local_proof_cas_and_trash(client, monkeypatch):
+    c, h = client
+    monkeypatch.setenv("PANINI_V2_INTERRUPTS", "true")
+    space = h.spaces.create_space("Trash")
+    page = h.spaces.create(space["id"], "Exact title", "Retained")
+    path = BASE + "/pages/" + page["id"]
+    payload = {"expected_revision": 1, "confirmation": "Exact title"}
+    assert c.post(path + "/destroy-request", json=payload).status_code == 401
+    assert c.post(path + "/destroy-request", headers=HEADERS, json=payload).status_code == 409
+    h.spaces.edit(page["id"], 1, trash=True)
+    payload["expected_revision"] = 2
+    request = c.post(path + "/destroy-request", headers=HEADERS, json=payload)
+    assert request.status_code == 200, request.text
+    view = request.json()
+    proof = {"nonce": view["nonce"], "action_digest": view["action_digest"], "approved": True}
+    confirm = BASE + "/destroy/" + view["id"] + "/confirm"
+    assert c.post(confirm, headers=HEADERS, json={**proof, "nonce": "wrong"}).status_code == 409
+    result = c.post(confirm, headers=HEADERS, json=proof)
+    assert result.status_code == 200, result.text
+    assert result.json()["deleted"] is True
+    assert c.post(confirm, headers=HEADERS, json=proof).json() == result.json()
+    assert h.ledger.receipt(result.json()["receipt_id"])["effect"] == "destroy"
+    from backend.ledger.chain import verify
+
+    assert verify(h.store)["ok"]
+    assert h.store.one("SELECT id FROM pages WHERE id=?", (page["id"],)) is None
+    assert h.store.one("SELECT page_id FROM page_revisions WHERE page_id=?", (page["id"],)) is None

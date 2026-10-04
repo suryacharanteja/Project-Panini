@@ -14,6 +14,7 @@ type Persona = {
   voice?: string | null;
   computer_id?: string | null;
   model_tier?: string | null;
+  default_space_id?: string | null;
 };
 type Catalog = {
   personas: Persona[];
@@ -47,6 +48,7 @@ export function PersonasPage() {
           memory_write: Boolean(memory_write),
           voice: editing.voice || null,
           model_tier: editing.model_tier || null,
+          default_space_id: editing.default_space_id || null,
           ...(isNew && !editing.computer_id ? {} : { computer_id: editing.computer_id || null }),
         };
         if (isNew) await api(admin('/personas'), { body: { id, values } });
@@ -279,6 +281,14 @@ export function PersonasPage() {
                   maxLength={41}
                   value={editing.computer_id || ''}
                   onChange={(e) => edit({ computer_id: e.target.value || null })}
+                />
+              </Field>
+              <Field label="Default Space ID">
+                <input
+                  className={inputClass}
+                  value={editing.default_space_id || ''}
+                  onChange={(event) => edit({ default_space_id: event.target.value || null })}
+                  placeholder="Grant access in Spaces, then paste its ID"
                 />
               </Field>
               {editing.id !== 'panini' && (
