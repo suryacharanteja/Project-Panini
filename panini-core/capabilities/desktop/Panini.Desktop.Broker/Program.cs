@@ -19,6 +19,7 @@ var seen = new ConcurrentDictionary<string, long>();
 var permits = new SemaphoreSlim(4);
 var inputPermit = new SemaphoreSlim(1);
 var snapshots = new ConcurrentDictionary<string, (string Target, string Task, long Expires, JsonNode Frame)>();
+var fineSnapshots = new FineSnapshots();
 // An ordinary request may not outlive 12 seconds. Only a drawing or dragging gesture, which is deliberately
 // paced so applications register a continuous line, may run for up to a minute.
 const long ShortWindowMs = 12000, GestureWindowMs = 60000;
@@ -75,6 +76,7 @@ async Task Handle(NamedPipeServerStream pipe)
             foreach (var entry in stopped.Where(entry => entry.Value < now)) stopped.TryRemove(entry.Key, out _);
             foreach (var entry in snapshots.Where(entry => entry.Value.Expires < now)) snapshots.TryRemove(entry.Key, out _);
             var task = request["task_id"]?.GetValue<string>() ?? id;
+            request["task_id"] = task;
             var op = request["op"]!.GetValue<string>();
             JsonNode response;
             if (op == "overlay")
@@ -84,6 +86,7 @@ async Task Handle(NamedPipeServerStream pipe)
             }
             else if (op == "stop")
             {
+                fineSnapshots.Stop(task);
                 foreach (var entry in snapshots.Where(entry => entry.Value.Task == task)) snapshots.TryRemove(entry.Key, out _);
                 stopped[task] = now + 360000;
                 overlay?.Stop();
@@ -94,7 +97,7 @@ async Task Handle(NamedPipeServerStream pipe)
             else
             {
                 await permits.WaitAsync(limit.Token);
-                var mutates = op is "action" or "visual_action" or "launch";
+                var mutates = op is "action" or "fine_action" or "visual_action" or "launch";
                 var ownsInput = false;
                 try
                 {
@@ -118,7 +121,21 @@ async Task Handle(NamedPipeServerStream pipe)
                             // The overlay replaces the brief static flash the worker would otherwise show.
                             if (visual) request["feedback"] = false;
                         }
+                        if (op == "fine_action")
+                        {
+                            try { request = fineSnapshots.Bind(request); }
+                            catch (InvalidOperationException ex)
+                            {
+                                response = new JsonObject { ["ok"] = false, ["error"] = ex.Message };
+                                await Reply(response);
+                                return;
+                            }
+                        }
                         response = await Run(request, task, deadline, limit.Token, gesture || kind is "click" or "double_click");
+                        if (op == "snapshot" && response["ok"]?.GetValue<bool>() == true)
+                            response = stopped.ContainsKey(task)
+                                ? new JsonObject { ["ok"] = false, ["error"] = "SNAPSHOT_EXPIRED" }
+                                : new JsonObject { ["ok"] = true, ["result"] = fineSnapshots.Publish(request, response["result"]!) };
                         if (overlay is not null && (visual || op == "visual_state")) overlay.Set("thinking", "");
                         if (response["ok"]?.GetValue<bool>() == true && (op is "visual_state" or "visual_action"))
                         {
@@ -137,11 +154,15 @@ async Task Handle(NamedPipeServerStream pipe)
                 }
                 finally { if (ownsInput) inputPermit.Release(); permits.Release(); }
             }
-            var output = Encoding.UTF8.GetBytes(response.ToJsonString());
+            await Reply(response);
+            async Task Reply(JsonNode value)
+            {
+            var output = Encoding.UTF8.GetBytes(value.ToJsonString());
             if (output.Length > 4194304) throw new InvalidOperationException("Result too large");
             await pipe.WriteAsync(BitConverter.GetBytes(output.Length), limit.Token);
             await pipe.WriteAsync(output, limit.Token);
             await pipe.FlushAsync(limit.Token);
+            }
         }
         catch (Exception) { /* Connection failure is an unknown outcome, never success. */ }
     }

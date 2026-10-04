@@ -207,7 +207,7 @@ internal static class GroundedInput
         }
     }
 
-    public static void Click(IntPtr window, AutomationElement element, Action validate, int clickCount = 1)
+    public static void Click(IntPtr window, AutomationElement element, Action validate, int clickCount = 1, Action<int, int>? boundsHit = null)
     {
         var observedBounds = element.Current.BoundingRectangle;
         Point point;
@@ -241,6 +241,7 @@ internal static class GroundedInput
                 throw new InvalidOperationException("ELEMENT_CHANGED");
             if (GetAncestor(WindowFromPoint(new NativePoint { X = x, Y = y }), 2) != window)
                 throw new InvalidOperationException("TARGET_OCCLUDED");
+            if (boundsHit is not null) { boundsHit(x, y); return; }
             var hit = AutomationElement.FromPoint(new Point(x, y));
             for (var i = 0; hit is not null && i < 64; i++, hit = TreeWalker.RawViewWalker.GetParent(hit))
             {
@@ -249,7 +250,8 @@ internal static class GroundedInput
             }
             throw new InvalidOperationException("ELEMENT_OCCLUDED");
         }
-        Send(events.ToArray(), [MouseEvent(4)], ClickCheck);
+        if (boundsHit is null) Send(events.ToArray(), [MouseEvent(4)], ClickCheck);
+        else Pointer(new[] { (x, y) }, count == 2 ? "double_click" : "click", "left", 0, 0, ClickCheck);
     }
 
     public static void Move(int x, int y, Action validate)
@@ -296,18 +298,24 @@ internal static class GroundedInput
         }
     }
 
+    public static void TypeDocument(AutomationElement element, string text, Action validate)
+    {
+        if (text.Any(char.IsControl)) throw new InvalidOperationException("USE_REVIEWED_KEY_STEPS");
+        if (element.Current.ControlType != ControlType.Edit && element.Current.ControlType != ControlType.Document)
+            throw new InvalidOperationException("TEXT_TARGET_NOT_EDITABLE");
+        Unicode(text, () =>
+        {
+            validate();
+            if (element.Current.IsPassword || !element.Current.HasKeyboardFocus) throw new InvalidOperationException("FOCUS_CHANGED");
+        });
+    }
+
     public static void PressKey(string key, Action validate)
     {
         if (string.IsNullOrWhiteSpace(key) || key.Length > 32) throw new InvalidOperationException("KEY_UNSUPPORTED");
-        var map = new Dictionary<string, ushort>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["Enter"] = 0x0D, ["Return"] = 0x0D, ["Tab"] = 0x09, ["Escape"] = 0x1B,
-            ["Space"] = 0x20, ["Backspace"] = 0x08, ["Delete"] = 0x2E,
-            ["Up"] = 0x26, ["Down"] = 0x28, ["Left"] = 0x25, ["Right"] = 0x27,
-        };
-        if (!map.TryGetValue(key, out var vk) && !(key.Length == 1 && char.IsLetterOrDigit(key[0])))
+        var parts = key.Split('+');
+        if (parts[..^1].Any(p => p.ToUpperInvariant() is not ("CTRL" or "SHIFT" or "ALT" or "WIN")))
             throw new InvalidOperationException("KEY_UNSUPPORTED");
-        if (vk == 0) vk = (ushort)char.ToUpperInvariant(key[0]);
-        Send(new[] { Key(vk, 0, 0), Key(vk, 0, 2) }, new[] { Key(vk, 0, 2) }, () => { EnsureIdle(); validate(); });
+        Chord(parts, validate);
     }
 }

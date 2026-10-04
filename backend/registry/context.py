@@ -25,6 +25,7 @@ class ToolView:
     spaces: bool = False
     android: bool = False
     teach: bool = False
+    desktop_fine: bool = False
 
     def satisfies(self, requires) -> bool:
         checks = {
@@ -43,6 +44,7 @@ class ToolView:
             "spaces": self.spaces,
             "android": self.android,
             "teach": self.teach,
+            "desktop_fine": self.desktop_fine,
         }
         return all(checks[r] for r in requires)
 

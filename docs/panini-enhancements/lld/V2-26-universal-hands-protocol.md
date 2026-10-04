@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 6 · P2 · L (2 weeks) |
 | Depends on | V2-10 (browser vocabulary), V2-21 (Android tree); desktop worker |
 | Flag | `PANINI_DESKTOP_TOOLS` = `coarse` (default) · `fine` |
-| Status | In progress: shared grammar and role mapping built; fine Windows hand and comparison gate pending |
+| Status | In progress: shared grammar and fine Windows registry hand built; macros, sandbox normalization and comparison gate pending |
 
 ## 1. Outcome
 
@@ -137,9 +137,15 @@ the macro): success ≥ coarse, fewer model calls per task, p50 latency ≤ coar
 
 ## 8. Acceptance criteria
 
-- [ ] Desktop snapshot works in Win32, WPF and WinUI apps (including where `FromPoint` fails).
+- [x] Desktop snapshot works in Win32, WPF and WinUI apps (including where `FromPoint` fails).
 - [ ] Fine tools meet the evaluation gate on the desktop golden tasks.
 - [ ] One grammar across web, Windows, Android and sandbox (shared parser tests).
+
+The [Windows checkpoint report](../qualification-desktop-fine-2026-10-05.md) records genuine Win32 and
+WPF fixture runs, plus installed Notepad with Win32/XAML providers. Fine pointer actions use bounded tree
+hit-testing, bypassing UIA `FromPoint`. The Notepad task types, asserts and saves a disposable file; its
+contents are checked on disk. These runs do not establish the coarse-planner comparison gate. Dedicated
+draw/open macros, combined type-and-submit, desktop recording and remaining hand normalizers are pending.
 
 ## 9. Rollout and rollback
 

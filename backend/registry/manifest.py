@@ -29,6 +29,7 @@ REQUIREMENTS = {
     "spaces",
     "android",
     "teach",
+    "desktop_fine",
 }
 
 

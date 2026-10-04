@@ -115,6 +115,9 @@ class Harness:
         from ..teach.service import Teach
 
         self.teach = Teach(self)
+        from ..hands.desktop_fine import DesktopFine
+
+        self.desktop_fine = DesktopFine(self)
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
         agent = Agent(
@@ -135,6 +138,7 @@ class Harness:
                 "PANINI_SPACES",
                 "PANINI_ANDROID",
                 "PANINI_TEACH",
+                "PANINI_DESKTOP_TOOLS",
             )
         ):
             agent.registry = self.registry
@@ -334,6 +338,7 @@ class Harness:
             await start
         await self.outbound.close()
         await self.teach.close()
+        await self.desktop_fine.close()
         await self.android.driver.close()
         await self.channels.stop()
         await self.mobile.disable(save=False)

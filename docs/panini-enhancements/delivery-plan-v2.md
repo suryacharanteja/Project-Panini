@@ -310,11 +310,11 @@ Dependencies: V2-06 (run engine), V2-14 (webhook ingress), V2-18 (personas); V2-
 
 ### V2-26: Universal hands protocol (one snapshot/ref vocabulary)
 
-Implementation register: **Not started**. [Source LLD](lld/V2-26-universal-hands-protocol.md).
+Implementation register: **In progress**. [Source LLD](lld/V2-26-universal-hands-protocol.md).
 
 Dependencies: V2-10 (browser vocabulary), V2-21 (Android tree); desktop worker.
 
-- [ ] Desktop snapshot works in Win32, WPF and WinUI apps (including where `FromPoint` fails).
+- [x] Desktop snapshot works in Win32, WPF and WinUI apps (including where `FromPoint` fails).
 - [ ] Fine tools meet the evaluation gate on the desktop golden tasks.
 - [ ] One grammar across web, Windows, Android and sandbox (shared parser tests).
 
@@ -346,3 +346,8 @@ remaining implementation/infrastructure. Full release promotion now checks every
 against the exact clean source commit before the existing signing and clean-VM gates.
 
 The next increment implements durable specialist/team/reviewer approval continuation and spending accounting across attempts. Its local HTTP/SSE qualification uses scripted models and an isolated test hand. Cross-surface persona presentation, later integrations and live-provider evaluation remain outstanding.
+
+The Windows foundation increment adds opaque broker refs, hierarchical UIA snapshots and concrete-policy
+registry actions. Win32 and WPF fixtures and installed WinUI Notepad pass; see
+[Windows qualification](qualification-desktop-fine-2026-10-05.md). Macros, desktop recording, other hand
+normalizers and the coarse/fine comparison remain pending. Coarse remains the default.

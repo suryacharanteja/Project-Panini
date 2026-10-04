@@ -34,16 +34,17 @@ class PolicyHook(Hooks):
             or ctx.principal.kind == "persona"
             or ctx.principal.surface in SURFACES
             or (spec is not None and spec.capability == "android")
+            or (spec is not None and spec.capability == "desktop_fine")
             or bool(getattr(ctx, "teach_replay", False))
         )
 
     async def before(self, ctx, spec, args):
-        if spec.capability == "android":
-            ctx.android_policy = None
+        if spec.capability in {"android", "desktop_fine"}:
+            setattr(ctx, "desktop_policy" if spec.capability == "desktop_fine" else "android_policy", None)
             ctx.decision = None
             if spec.effect.value != "observe":
-                # The Android hand grounds the exact package, field and label from a fresh phone tree
-                # before asking once. A ref-only generic approval cannot authorize a changed target.
+                # The hand grounds the exact app, field and label from a fresh tree before asking once.
+                # A ref-only generic approval cannot authorize a changed target.
                 return None
         if self.mode == "off" and not self.enforced(ctx, spec):
             return None
@@ -116,13 +117,33 @@ class PolicyHook(Hooks):
             if work in done:
                 change.cancel()
                 return work.result()
-            bound = getattr(ctx, "android_policy", None) if spec.capability == "android" else None
+            bound = (
+                getattr(ctx, "android_policy", None)
+                if spec.capability == "android"
+                else getattr(ctx, "desktop_policy", None)
+                if spec.capability == "desktop_fine"
+                else None
+            )
             current_spec, current_args = bound or (spec, args)
             again = self.policy.decide(ctx.principal, current_spec, current_args, taint=ctx.taint)
             before = getattr(ctx, "decision", None)
             tightened = again.action == "deny" or (
                 again.action != "allow" and before is not None and before.action == "allow"
             )
+            if spec.capability == "desktop_fine":
+                from .. import v2flags
+                from ..core_contracts import LEVEL_ORDER
+
+                tightened = (
+                    tightened
+                    or v2flags.value("PANINI_DESKTOP_TOOLS") != "fine"
+                    or not v2flags.enabled("PANINI_V2_LEDGER")
+                )
+                tightened = (
+                    tightened
+                    or before is not None
+                    and LEVEL_ORDER.index(again.level) > LEVEL_ORDER.index(before.level)
+                )
             if tightened:
                 work.cancel()
                 from ..core_contracts import ToolResult

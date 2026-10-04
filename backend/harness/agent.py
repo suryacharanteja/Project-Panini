@@ -545,6 +545,9 @@ class Agent:
             spaces=v2flags.enabled("PANINI_SPACES"),
             android=v2flags.enabled("PANINI_ANDROID") and not self.background,
             teach=v2flags.enabled("PANINI_TEACH") and not self.background,
+            desktop_fine=v2flags.value("PANINI_DESKTOP_TOOLS") == "fine"
+            and "desktop" in self.capabilities
+            and not self.background,
         )
 
     def tool_context(self):
