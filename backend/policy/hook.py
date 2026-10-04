@@ -26,18 +26,30 @@ class PolicyHook(Hooks):
     def policy(self):
         return self._policy or current()
 
-    def enforced(self, ctx):
+    def enforced(self, ctx, spec=None):
         from ..channels import SURFACES
 
-        return self.mode == "enforce" or ctx.principal.kind == "persona" or ctx.principal.surface in SURFACES
+        return (
+            self.mode == "enforce"
+            or ctx.principal.kind == "persona"
+            or ctx.principal.surface in SURFACES
+            or (spec is not None and spec.capability == "android")
+        )
 
     async def before(self, ctx, spec, args):
-        if self.mode == "off" and not self.enforced(ctx):
+        if spec.capability == "android":
+            ctx.android_policy = None
+            ctx.decision = None
+            if spec.effect.value != "observe":
+                # The Android hand grounds the exact package, field and label from a fresh phone tree
+                # before asking once. A ref-only generic approval cannot authorize a changed target.
+                return None
+        if self.mode == "off" and not self.enforced(ctx, spec):
             return None
         background = bool(getattr(ctx.view, "background", False))
         decision = self.policy.decide(ctx.principal, spec, args, taint=ctx.taint, background=background)
         ctx.decision = decision
-        if not self.enforced(ctx):
+        if not self.enforced(ctx, spec):
             return None
         from ..core_contracts import ToolResult
 
@@ -79,7 +91,7 @@ class PolicyHook(Hooks):
         token_asked = v1_asked.set(cell)
         token_pre = preapproved.set(bool(getattr(ctx, "preapproved", False)))
         try:
-            if not self.enforced(ctx):
+            if not self.enforced(ctx, spec):
                 return await call()
             return await self._revocable(ctx, spec, args, call)
         finally:
@@ -97,7 +109,9 @@ class PolicyHook(Hooks):
             if work in done:
                 change.cancel()
                 return work.result()
-            again = self.policy.decide(ctx.principal, spec, args, taint=ctx.taint)
+            bound = getattr(ctx, "android_policy", None) if spec.capability == "android" else None
+            current_spec, current_args = bound or (spec, args)
+            again = self.policy.decide(ctx.principal, current_spec, current_args, taint=ctx.taint)
             before = getattr(ctx, "decision", None)
             tightened = again.action == "deny" or (
                 again.action != "allow" and before is not None and before.action == "allow"

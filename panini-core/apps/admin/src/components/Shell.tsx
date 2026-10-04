@@ -72,6 +72,7 @@ export const NAV: Section[] = [
       { to: '/build/safety', label: 'Safety', icon: <ShieldCheck size={16} />, deva: 'रक्षा' },
       { to: '/build/remote', label: 'Remote access', icon: <Smartphone size={16} />, deva: 'दूर' },
       { to: '/build/phone', label: 'Phone line', icon: <Smartphone size={16} /> },
+      { to: '/build/android', label: 'Android hands', icon: <Smartphone size={16} /> },
       { to: '/memory', label: 'Memory', icon: <Brain size={16} />, deva: 'स्मृति' },
     ],
   },

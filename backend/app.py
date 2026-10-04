@@ -20,6 +20,7 @@ from .http import ApiBoundary
 from .panini.contracts import Fault
 from .panini.settings import Settings
 from .routes import admin, agui, browser, comparison, harness, panini, speech, voice
+from .routes import android as android_routes
 from .routes import channels as channels_routes
 from .routes import console as console_routes
 from .routes import live as live_routes
@@ -158,6 +159,7 @@ def create_app(
     app.include_router(spaces_routes.console_router)
     app.include_router(spaces_routes.shell_router)
     app.include_router(admin.router)
+    app.include_router(android_routes.router)
     app.include_router(channels_routes.router)
     app.include_router(agui.console_router)
     app.include_router(agui.shell_router)

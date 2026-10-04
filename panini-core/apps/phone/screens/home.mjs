@@ -44,5 +44,33 @@ export async function home(app) {
         text: `${status.tasks?.running ?? status.running ?? 0} running, ${status.tasks?.queued ?? status.queued ?? 0} waiting`,
       }),
     ),
+    status.android?.active &&
+      h(
+        'div.card',
+        {},
+        h('h3', { text: 'PANINI is using your phone' }),
+        h('p.muted', {
+          text: 'Android debugging control is active. You can stop it here or turn off debugging on your phone.',
+        }),
+        h(
+          'button.danger.wide',
+          {
+            onclick: (event) =>
+              action(event.currentTarget, async () => {
+                const reply = await app.fabric.request(
+                  'POST',
+                  `/live/android/${encodeURIComponent(status.android.target)}/control/take`,
+                );
+                if (reply.status !== 200)
+                  throw new Error(
+                    reply.body?.detail || 'Could not stop phone control. Pause PANINI instead.',
+                  );
+                toast('Phone control stopped.');
+                app.show('home');
+              }),
+          },
+          'Stop phone control',
+        ),
+      ),
   );
 }

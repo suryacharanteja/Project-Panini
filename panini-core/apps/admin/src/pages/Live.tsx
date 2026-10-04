@@ -19,6 +19,7 @@ const GRANT_HELP: Partial<Record<LiveHand, string>> = {
   desktop: 'Your desktop is personal: off until you turn it on.',
   managed: "PANINI's own browser.",
   sandbox: "PANINI's isolated computer.",
+  android: 'Your selected Android phone.',
 };
 
 /** Which hands your phone and other remote surfaces may watch and control (V2-12 §5.6). */
@@ -28,7 +29,7 @@ function RemoteGrants() {
   return (
     <Card title="Remote viewing">
       <div className="grid gap-3 sm:grid-cols-2">
-        {(['managed', 'sandbox', 'chrome', 'desktop'] as LiveHand[]).map((hand) => (
+        {(['managed', 'sandbox', 'chrome', 'desktop', 'android'] as LiveHand[]).map((hand) => (
           <label key={hand} className="flex items-start gap-3 text-sm">
             <Switch
               checked={grants.data![hand]}

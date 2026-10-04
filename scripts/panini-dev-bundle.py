@@ -19,7 +19,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True, help="Verified commit the source patch applies to.")
     parser.add_argument("--label", required=True)
-    parser.add_argument("--profile", choices=("spaces", "phone", "channels", "outbound"), default="spaces")
+    parser.add_argument(
+        "--profile", choices=("spaces", "phone", "channels", "outbound", "android"), default="spaces"
+    )
     parser.add_argument(
         "--evidence", required=True, help="Workspace artifact directory with release-check.log."
     )
@@ -77,6 +79,22 @@ def main():
         ("node_modules/dompurify/LICENSE", "dompurify-LICENSE.txt"),
         ("node_modules/dompurify/LICENSE-MPL", "dompurify-LICENSE-MPL.txt"),
     ]
+    if args.profile == "android":
+        included = [
+            "release-check.log",
+            "browser-smoke.log",
+            "admin-build.log",
+            "admin-desktop.png",
+            "admin-mobile.png",
+            "admin-live.png",
+            "android-home.png",
+            "final-targeted.log",
+        ]
+        licenses += [
+            ("node_modules/playwright-core/LICENSE", "playwright-core-LICENSE.txt"),
+            ("node_modules/playwright-core/NOTICE", "playwright-core-NOTICE.txt"),
+            ("node_modules/playwright-core/ThirdPartyNotices.txt", "playwright-core-ThirdPartyNotices.txt"),
+        ]
     if any(not (evidence / name).is_file() for name in included):
         parser.error("Build and verify the surfaces before packaging their evidence.")
     output = evidence / f"panini-{args.label}-dev-{commit[:7]}.zip"
@@ -103,6 +121,8 @@ def main():
         )
         if args.profile == "outbound":
             setup = "Configure the outbound TLS SIP trunk and owner checklist in Admin → Build → Phone line, then opt in with PANINI_OUTBOUND_CALLS. Prepare a brief and approve its exact replacement-safe review in Inbox. Read the outbound qualification document; no real SIP or physical Android result is claimed."
+        if args.profile == "android":
+            setup = "Enable PANINI_ANDROID and PANINI_V2_LEDGER, install Android SDK Platform Tools and run the pinned Playwright CLI's install android command for source development. In Admin → Build → Android hands, pair/connect or authorize USB debugging, select the phone and acknowledge driver installation. The unsigned installer includes the pinned driver APKs. Read the Android qualification report; no physical Android result is claimed."
         bundle.writestr(
             "README.txt",
             f"PANINI local development increment {commit}\nPatch base: {base}\n\nApply source.patch to a checkout at the patch base, run npm ci, and use the existing Python development environment. Built Admin, shell and Android PWA assets are included at their repository paths. {setup} Read the included qualification document for remaining requirements.\n\nThis is not a standalone installer, signed production release, physical Android qualification or full LLD completion. No credentials or databases are included.\n",

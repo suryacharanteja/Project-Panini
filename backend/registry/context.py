@@ -23,6 +23,7 @@ class ToolView:
     sandbox: bool = False  # V2-11: PANINI_SANDBOX (PANINI's own isolated computers)
     live: bool = False  # V2-12: PANINI_LIVE_VIEW (live view and takeover)
     spaces: bool = False
+    android: bool = False
 
     def satisfies(self, requires) -> bool:
         checks = {
@@ -39,6 +40,7 @@ class ToolView:
             "sandbox": self.sandbox,
             "live": self.live,
             "spaces": self.spaces,
+            "android": self.android,
         }
         return all(checks[r] for r in requires)
 

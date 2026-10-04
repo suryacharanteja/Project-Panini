@@ -543,6 +543,7 @@ class Agent:
             sandbox=v2flags.enabled("PANINI_SANDBOX"),  # Also for background work: it never touches this PC.
             live=v2flags.enabled("PANINI_LIVE_VIEW"),
             spaces=v2flags.enabled("PANINI_SPACES"),
+            android=v2flags.enabled("PANINI_ANDROID") and not self.background,
         )
 
     def tool_context(self):

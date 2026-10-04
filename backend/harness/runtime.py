@@ -107,6 +107,11 @@ class Harness:
         from ..telephony.outbound import OutboundCalls
 
         self.outbound = OutboundCalls(self)
+        from ..hands.android import Android
+        from ..live import hub
+
+        self.android = Android(self)
+        hub().register_poller("android", self.android.frame, 1.0)
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
         agent = Agent(
@@ -119,7 +124,10 @@ class Harness:
         )
         from .. import v2flags
 
-        if any(v2flags.enabled(key) for key in ("PANINI_V2_REGISTRY", "PANINI_PERSONAS", "PANINI_SPACES")):
+        if any(
+            v2flags.enabled(key)
+            for key in ("PANINI_V2_REGISTRY", "PANINI_PERSONAS", "PANINI_SPACES", "PANINI_ANDROID")
+        ):
             agent.registry = self.registry
         return agent
 
@@ -164,6 +172,7 @@ class Harness:
                 "AND json_extract(data, '$.kind')='watch'"
             )["n"],
             "connectors": len(self.connectors.servers),
+            "android": self.android.activity(),
         }
 
     def suggest(self, force=False):
@@ -307,6 +316,7 @@ class Harness:
         if start:
             await start
         await self.outbound.close()
+        await self.android.driver.close()
         await self.channels.stop()
         await self.mobile.disable(save=False)
         await self.worker.close()

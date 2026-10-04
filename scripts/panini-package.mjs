@@ -298,6 +298,31 @@ await cp(
 // V2-08: the Playwright browser driver (the MCP server inside playwright-core). It drives the installed
 // Edge or Chrome, so no browser download is bundled. Capability manifests ship beside it.
 const driver = join(runtime, 'panini-core/capabilities/browser/playwright');
+await cp(
+  join(root, 'panini-core/capabilities/android/sidecar'),
+  join(runtime, 'panini-core/capabilities/android/sidecar'),
+  { recursive: true },
+);
+const androidCache = join(root, 'artifacts/playwright-android-dependencies');
+await run(process.execPath, ['node_modules/playwright-core/cli.js', 'install', 'android'], root, {
+  PLAYWRIGHT_BROWSERS_PATH: androidCache,
+});
+const browserPins = JSON.parse(
+  await readFile(join(root, 'node_modules/playwright-core/browsers.json'), 'utf8'),
+);
+const androidPin = browserPins.browsers.find((entry) => entry.name === 'android');
+if (!androidPin || !/^\d+$/.test(androidPin.revision))
+  throw new Error('Missing pinned Android driver revision.');
+for (const name of ['android-driver.apk', 'android-driver-target.apk']) {
+  const source = join(androidCache, `android-${androidPin.revision}`, name);
+  const destination = join(
+    runtime,
+    'panini-core/capabilities/android/drivers',
+    `android-${androidPin.revision}`,
+  );
+  await mkdir(destination, { recursive: true });
+  await copyFile(source, join(destination, name));
+}
 const playwrightCore = join(driver, 'node_modules/playwright-core');
 await mkdir(playwrightCore, { recursive: true });
 for (const name of ['package.json', 'init-overlay.js', 'tools-1.63.0.json', 'page-pdf.mjs'])

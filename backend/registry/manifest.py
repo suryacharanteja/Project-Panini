@@ -27,6 +27,7 @@ REQUIREMENTS = {
     "sandbox",
     "live",
     "spaces",
+    "android",
 }
 
 

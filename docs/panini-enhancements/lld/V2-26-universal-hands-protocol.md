@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 6 · P2 · L (2 weeks) |
 | Depends on | V2-10 (browser vocabulary), V2-21 (Android tree); desktop worker |
 | Flag | `PANINI_DESKTOP_TOOLS` = `coarse` (default) · `fine` |
-| Status | Not started |
+| Status | In progress: shared grammar and role mapping built; fine Windows hand and comparison gate pending |
 
 ## 1. Outcome
 
