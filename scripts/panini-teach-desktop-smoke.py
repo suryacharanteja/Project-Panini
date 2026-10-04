@@ -12,6 +12,8 @@ from ctypes import wintypes
 from pathlib import Path
 from uuid import uuid4
 
+import psutil
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -310,6 +312,33 @@ async def main():
                 # A fresh recording remains available after each fenced cancellation.
                 await h.teach.recorder.start_desktop(ctx, "fixture")
                 assert (await h.teach.recorder.stop(discard=True))["state"] == "discarded"
+                # Suspend only our fixture's UIA provider, then kill only our broker.
+                # Its recording child must exit even if a provider call cannot complete.
+                frame = await worker("snapshot")
+                box = next(r["bounds"] for r in frame["nodes"] if r["name"] == "Draft text")
+                await h.teach.recorder.start_desktop(ctx, "fixture")
+                children = [
+                    p
+                    for p in psutil.Process(broker.pid).children()
+                    if p.name() == "Panini.Desktop.Worker.exe"
+                ]
+                assert len(children) == 1
+                ui32 = ctypes.WinDLL("user32", use_last_error=True)
+                ui32.GetForegroundWindow.restype = wintypes.HWND
+                assert ui32.GetForegroundWindow() == selected["hwnd"]
+                frozen = psutil.Process(fixture.pid)
+                try:
+                    frozen.suspend()
+                    ui32.SetCursorPos(round(box["x"] + box["width"] / 2), round(box["y"] + box["height"] / 2))
+                    ui32.mouse_event(2, 0, 0, 0, 0)
+                    ui32.mouse_event(4, 0, 0, 0, 0)
+                    await asyncio.sleep(0.5)
+                    broker.terminate()
+                    broker.wait(timeout=5)
+                    await asyncio.to_thread(children[0].wait, timeout=5)
+                finally:
+                    frozen.resume()
+                await h.teach.recorder.stop(discard=True)
                 evidence = ROOT / "artifacts/teach-desktop"
                 evidence.mkdir(parents=True, exist_ok=True)
                 (evidence / "recording.json").write_text(
@@ -329,6 +358,7 @@ async def main():
                     "restartAfterCancellation": True,
                     "focusDoesNotInvoke": True,
                     "privateTypingSuppressed": True,
+                    "workerExitedAfterBrokerDeathWithSuspendedProvider": True,
                 }
                 (evidence / "native-evidence.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
                 print(json.dumps(report))

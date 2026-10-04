@@ -38,6 +38,8 @@ after disabling Teach and while replay is awaiting a decision. The existing copp
   recording/input refusal, Stop/start fencing, fresh recording after cancellation and focus without invoke.
   A test driver types a fixed string into the fixture's focused PasswordBox after checking the owned
   HWND/PID; neither that string nor the fixture's password appears in replay data or snapshot artifacts.
+  It also suspends only the fixture's UIA provider, terminates only its own broker and verifies that the
+  recording child exits within five seconds. This covers cleanup independently of a responsive provider.
 - `backend/tests/teach/test_desktop.py`: malformed selectors, bounded data, sensitive ancestry, fresh refs,
   exact window scope, parameterized Unicode, database/start/stop failures, revoked flags, keyboard/private
   focus, replacement assertions, ambiguous windows and no retry after an unknown effect.

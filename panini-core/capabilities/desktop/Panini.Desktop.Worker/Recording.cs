@@ -47,10 +47,11 @@ internal static partial class Program
         if (owner.StartTime.ToUniversalTime().Ticks.ToString() != request["owner_created"]!.GetValue<string>()) throw new InvalidOperationException("RECORDING_OWNER_CHANGED");
         var before = RecordingSnapshot(request);
         using var cancel = new CancellationTokenSource(TimeSpan.FromMinutes(15));
+        var recordingEnded = 0;
         // Provider calls can hang. Broker death must terminate hooks even while UIA is blocked.
         _ = Task.Run(async () =>
         {
-            while (!cancel.IsCancellationRequested)
+            while (Volatile.Read(ref recordingEnded) == 0)
             {
                 await Task.Delay(250);
                 try { if (owner.HasExited) Environment.Exit(1); }
@@ -242,5 +243,6 @@ internal static partial class Program
         finally { cancel.Cancel(); PostThreadMessage(hookThread, 0x12, IntPtr.Zero, IntPtr.Zero); pump.Join(1000); }
         var after = failure is null ? RecordingSnapshot(request) : null;
         Console.WriteLine(JsonSerializer.Serialize(new { ok = true, result = new { state = failure is null ? "stopped" : "interrupted", events, after, failure } }, Json));
+        Volatile.Write(ref recordingEnded, 1);
     }
 }
