@@ -189,3 +189,8 @@ Presentation evidence: `npm run phone:smoke` exercises encrypted pairing, the Sc
 The avatar now fetches an authenticated public persona catalog and starts media with the selected persona's voice and private instructions. Manual switching stops current work and reconnects media within the conversation. Bounded history follows the same persona only; archive/rollback is checked before delegation. Generation checks protect new media from delayed old-session closure. `test_voice_adapter.py`, `test_voice_personas_api.py` and the avatar UI smoke cover these paths.
 
 The latest opt-in `npm run personas:voice:live` probe passed Marin and Cedar using real Live sessions, seeded text history and synthetic silent WebRTC peers. It waits for connected media and first assistant transcript output from the backend-result speech path. It does not qualify completed audible playback, physical Android, a real SIP call, multi-speaker handoff or a live team benchmark. Earlier greeting timeouts and cleanup limitations are recorded in the [qualification evidence](../qualification-2026-10-04.md). V2-18 remains **In progress**.
+
+
+### Decoded audio continuation — 2026-10-04
+
+The opt-in voice probe now validates received and rendered non-silent samples, a quiet tail, context acknowledgment and clean provider session closure for Marin and Cedar, with seeded text history. Both passed. This is a bounded synthetic browser check, not subjective listening, physical Android, real SIP or long conversation qualification. Multi-speaker handoff, live research-to-writing team qualification, evaluation scorecard integration and later-LLD integrations remain open. See the [latest evidence and probe limitations](../qualification-2026-10-04.md).

@@ -109,6 +109,11 @@ async def main():
     from backend.telephony.inbound import CallService
 
     h = app.state.harness
+    from backend.harness.proactive import Notices
+
+    h.policy = persona_policy
+    h.notices = Notices(store)
+    h.notices.add("welcome", "Welcome", "This is the phone app preview.", dedupe="welcome")
     h.sessions = Sessions(store)
     h.threads = Threads(store, h.sessions)
     h.artifacts = Artifacts(store, store.path.parent / "artifacts")

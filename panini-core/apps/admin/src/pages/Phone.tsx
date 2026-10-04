@@ -15,6 +15,7 @@ type PhoneStatus = {
     duration_s: number;
     reason: string;
     receipt_id?: string;
+    summary?: string;
   }[];
 };
 
@@ -222,6 +223,7 @@ export function PhonePage() {
                   {c.number} · {Math.round(c.duration_s)} seconds ·{' '}
                   {c.verified ? 'verified' : 'unverified'}
                   <p>{c.reason}</p>
+                  {c.summary && <p className="text-sm text-faint">{c.summary}</p>}
                   {c.receipt_id && <p className="text-xs text-faint">Receipt {c.receipt_id}</p>}
                 </div>
               ))

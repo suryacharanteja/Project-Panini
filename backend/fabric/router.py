@@ -238,7 +238,7 @@ async def call_action(call_id: str, action: str, request: Request):
     if not service.active or service.active.id != call_id:
         raise HTTPException(409, "This call has ended or changed.")
     if action == "end":
-        await service.end()
+        await service.end(reason="Ended on the paired phone.")
     elif action == "verify":
         service.request_verification()
     elif action == "transfer":

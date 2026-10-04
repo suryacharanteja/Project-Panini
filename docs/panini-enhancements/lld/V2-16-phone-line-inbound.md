@@ -55,7 +55,7 @@ receipt in the conversation.
 | `backend/telephony/callers.py` | Caller registry, PIN hashing, verification state |
 | `backend/telephony/prompts.py` | Phone instructions per persona |
 | `panini-core/voice/live-spoken-conversation/panini/live.py` | Split `create()` into `create()` + `attach()` (no behaviour change for WebRTC) |
-| `backend/harness/migrations/0011_calls.sql` | `calls`, `callers` |
+| `backend/harness/migrations/0014_calls.sql`, `0015_call_receipt_sync.sql` | `calls`, `callers` |
 | Admin `src/pages/Phone.tsx` | Setup wizard, numbers, callers, PIN, limits, call history |
 
 ### 5.2 Setup (Admin wizard)
@@ -213,4 +213,11 @@ Implemented in `backend/telephony/` and migration `0014_calls.sql`: verified ing
 
 `backend/tests/telephony/test_inbound.py` covers signed delivery replay, spoofed display names, PIN attempts, unverified refusal, revocation, remaining daily duration, sideband failure/restart, receipt storage failure and actual Agent policy enforcement under global shadow mode. Speech and keypad cannot resolve action approvals; tap cannot resolve verify-level approval. Phone smoke verifies identity on the signed Inbox path and ends a preview call.
 
-No real SIP call has been placed or qualified. Real number/HTTPS ingress, priced cost, unknown-caller ask/message modes, later transcript finalization cases and full run-engine surface integration remain open. Duration/provider usage are recorded. [Current qualification evidence](../qualification-2026-10-04.md) lists exact test scope and provider limits. This LLD remains **In progress**.
+No real SIP call has been placed or qualified. Real number/HTTPS ingress, priced cost, unknown-caller ask/message modes and full run-engine surface integration remain open. Duration/provider usage are recorded. [Current qualification evidence](../qualification-2026-10-04.md) lists exact test scope and provider limits. This LLD remains **In progress**.
+
+
+### Lifecycle continuation — 2026-10-04
+
+`backend/tests/telephony/test_lifecycle.py` now proves late transcript preservation with immutable artifacts and chained evidence, paused receipt delivery across a service restart, a crash after session save without duplicate delivery, sanitized hangup failure, bounded cancellation with overlapping work refused, already-closed provider sessions and End before caller verification. Receipt summaries use recorded processing states and are delivered to the bound thread and the phone Inbox. No transcript is interpreted as a trusted instruction or task result. Migration 0015 adds durable receipt delivery state; an existing-call upgrade test passes.
+
+The latest synthetic browser probe proves decoded audio and a quiet tail for Marin/Cedar. It does not qualify the SIP transport. Duration/provider usage are recorded; priced cost and spend integration remain pending. The [latest qualification record](../qualification-2026-10-04.md) records scope, earlier failed probe and remaining infrastructure requirements.

@@ -67,6 +67,7 @@ export async function calls(app) {
         h('p.muted', {
           text: `${call.state} · ${Math.round(call.duration_s)} seconds · ${call.reason || ''}`,
         }),
+        call.summary ? h('p', { text: call.summary }) : null,
       );
   }
   await refresh();

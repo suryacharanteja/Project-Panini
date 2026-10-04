@@ -19,6 +19,7 @@ from .connection import PhoneConnection
 from .prompts import PHONE_INSTRUCTIONS
 
 SESSION_ID = re.compile(r"^[a-zA-Z0-9_-]{1,150}$")
+WORK_STOP_TIMEOUT_S = 10
 
 
 def limit(key, default, maximum):
@@ -62,6 +63,8 @@ class CallService:
         self.active = None
         self.lock = asyncio.Lock()
         self._registry = None
+        self.draining = set()
+        self.receipt_sync = None
 
     async def _provider(self, session_id, action, body=None):
         if not SESSION_ID.fullmatch(session_id):
@@ -88,7 +91,10 @@ class CallService:
             "enabled": v2flags.enabled("PANINI_PHONE_LINE"),
             "active": self.active.id if self.active else None,
             "callers": self.callers.list(),
-            "calls": self.store.all("SELECT * FROM calls ORDER BY started DESC LIMIT 50"),
+            "calls": [
+                {**row, "summary": self.call_summary(row) if row["receipt_id"] else ""}
+                for row in self.store.all("SELECT * FROM calls ORDER BY started DESC LIMIT 50")
+            ],
             "setup": "Route a TLS SIP number to your OpenAI project and configure its signed Live webhook in Remote access. Red-team qualification is future development.",
         }
 
@@ -104,9 +110,12 @@ class CallService:
                 "number": call.caller["number"],
                 "transcript": call.transcript[-100:],
             },
-            "calls": self.store.all(
-                "SELECT id,persona_id,state,verified,started,ended,duration_s,reason,receipt_id FROM calls ORDER BY started DESC LIMIT 20"
-            ),
+            "calls": [
+                {**row, "summary": self.call_summary(row) if row["receipt_id"] else ""}
+                for row in self.store.all(
+                    "SELECT id,persona_id,state,verified,started,ended,duration_s,reason,receipt_id FROM calls ORDER BY started DESC LIMIT 20"
+                )
+            ],
         }
 
     def request_verification(self):
@@ -155,9 +164,11 @@ class CallService:
             reason, code = "", 486
             if not v2flags.enabled("PANINI_PHONE_LINE"):
                 reason = "Phone line is off."
+            elif self.h.policy.paused():
+                reason = "PANINI is paused."
             elif not caller or caller["kind"] == "blocked":
                 reason, code = "Caller is not permitted.", 603
-            elif self.active:
+            elif self.active or any(not task.done() for task in self.draining):
                 reason = "Another call is active."
             elif (
                 daily["n"] >= limit("PANINI_CALLS_PER_DAY", 20, 1000)
@@ -259,6 +270,8 @@ class CallService:
     def authorized(self, call):
         if call.closing or self.active is not call or not v2flags.enabled("PANINI_PHONE_LINE"):
             raise Fault("CALL_CLOSED", "The phone call is no longer active.")
+        if self.h.policy.paused():
+            raise Fault("PANINI_PAUSED", "PANINI is paused.")
         current = self.callers.get(call.caller["number"])
         if (
             not current
@@ -349,14 +362,11 @@ class CallService:
                 }
             )
             call.transcript_chars += len(text)
+            if call.closing and call.receipt:
+                self.save_late_transcript(call)
 
     async def request(self, call, text, identifier=None):
         if call.closing:
-            return
-        if not call.verified:
-            await call.connection.speak(
-                "Please verify using the keypad PIN followed by #.", delegation_id=identifier
-            )
             return
         control = control_intent(text)
         if control == "end":
@@ -366,6 +376,11 @@ class CallService:
             if call.work:
                 call.work.cancel()
             await call.connection.speak("Stopping the current request.", delegation_id=identifier)
+            return
+        if not call.verified:
+            await call.connection.speak(
+                "Please verify using the keypad PIN followed by #.", delegation_id=identifier
+            )
             return
         if call.lock.locked():
             await call.connection.speak(
@@ -387,6 +402,12 @@ class CallService:
                 call.requests += 1
                 call.work = asyncio.create_task(self.compute(call, text))
                 result = await call.work
+                if call.closing:
+                    self.store.execute(
+                        "UPDATE call_requests SET state='cancelled' WHERE call_id=? AND delegation_id=?",
+                        (call.id, identifier),
+                    )
+                    return
                 self.store.execute(
                     "UPDATE call_requests SET state='finished',result=? WHERE call_id=? AND delegation_id=?",
                     (json.dumps(result), call.id, identifier),
@@ -514,12 +535,23 @@ class CallService:
             if task and task is not asyncio.current_task():
                 task.cancel()
         if call.work:
-            await asyncio.gather(call.work, return_exceptions=True)
+            work = call.work
+            _, pending = await asyncio.wait([work], timeout=WORK_STOP_TIMEOUT_S)
+            if pending:
+                self.draining.add(work)
+                work.add_done_callback(self.drained)
+                state = "failed"
+                reason = "Work did not stop within the deadline; its outcome is unconfirmed."
         for iid in list(call.pending):
             self.h.interrupts.cancel(iid, "Phone call ended")
         try:
-            with contextlib.suppress(Exception):
-                await self.provider(call.id, "hangup")
+            finalized = getattr(call.connection, "finalized", None)
+            if not finalized or not finalized.is_set():
+                try:
+                    await asyncio.wait_for(self.provider(call.id, "hangup"), 20)
+                except Exception:
+                    state = "failed"
+                    reason = "Remote hangup could not be confirmed. " + reason
             await call.connection.close()
         finally:
             try:
@@ -533,6 +565,9 @@ class CallService:
         self.store.execute(
             "UPDATE calls SET state='failed',ended=?,duration_s=?,reason='Call ended; receipt finalization incomplete' WHERE id=?",
             (self.clock(), duration, call.id),
+        )
+        self.store.execute(
+            "UPDATE call_requests SET state='cancelled' WHERE call_id=? AND state='running'", (call.id,)
         )
         aid = self.h.artifacts.put(
             "transcript",
@@ -571,6 +606,74 @@ class CallService:
                 call.id,
             ),
         )
+        call.receipt = receipt["id"]
+        self.sync_receipts()
+        if self.h.policy.paused() and (self.receipt_sync is None or self.receipt_sync.done()):
+            self.receipt_sync = asyncio.create_task(self.resume_receipts())
+
+    def drained(self, task):
+        self.draining.discard(task)
+        if not task.cancelled():
+            task.exception()
+
+    def save_late_transcript(self, call):
+        """Retain late fragments without rewriting the ended state or its original receipt."""
+        artifact = self.h.artifacts.put(
+            "transcript",
+            json.dumps({"untrusted": True, "messages": call.transcript}).encode(),
+            "application/json",
+            run_id=call.id,
+        )
+        self.h.ledger.evidence(
+            call.receipt, "late_transcript", "Late untrusted transcript retained.", {"artifact_id": artifact}
+        )
+        self.store.execute("UPDATE calls SET transcript_artifact_id=? WHERE id=?", (artifact, call.id))
+
+    def sync_receipts(self):
+        if self.h.policy.paused():
+            return
+        for row in self.store.all(
+            "SELECT * FROM calls WHERE receipt_id IS NOT NULL AND receipt_synced=0 ORDER BY started"
+        ):
+            identifier = "phone_receipt_" + row["id"]
+            session = self.h.sessions.get(row["thread_id"])
+            summary = self.call_summary(row)
+            if not any(item.get("id") == identifier for item in session["items"]):
+                self.h.sessions.save(
+                    row["thread_id"],
+                    [
+                        *session["items"],
+                        {
+                            "id": identifier,
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": summary}],
+                        },
+                    ],
+                )
+            self.h.notices.add("call_receipt", "Phone call receipt", summary, dedupe=identifier)
+            self.store.execute("UPDATE calls SET receipt_synced=1 WHERE id=?", (row["id"],))
+
+    def call_summary(self, row):
+        counts = self.store.all(
+            "SELECT state,COUNT(*) AS n FROM call_requests WHERE call_id=? GROUP BY state",
+            (row["id"],),
+        )
+        labels = {"finished": "answered", "cancelled": "stopped", "failed": "failed", "running": "processing"}
+        outcomes = (
+            ", ".join(f"{item['n']} {labels.get(item['state'], 'unconfirmed')}" for item in counts) or "none"
+        )
+        summary = (
+            f"Phone call {row['state']} after {round(row['duration_s'])} seconds. "
+            f"Caller {'verified' if row['verified'] else 'unverified'}. "
+            f"Requests: {outcomes}. Receipt: {row['receipt_id']}."
+        )
+        return summary
+
+    async def resume_receipts(self):
+        while self.h.policy.paused():
+            await asyncio.sleep(0.5)
+        self.sync_receipts()
 
     async def recover(self):
         for row in self.store.all(
@@ -582,9 +685,15 @@ class CallService:
                 "UPDATE calls SET state='failed',ended=?,reason='PANINI restarted; call finalization incomplete' WHERE id=?",
                 (self.clock(), row["id"]),
             )
+        self.sync_receipts()
+        if self.h.policy.paused():
+            self.receipt_sync = asyncio.create_task(self.resume_receipts())
 
     async def close(self):
         await self.end(reason="PANINI stopped.")
+        if self.receipt_sync:
+            self.receipt_sync.cancel()
+            await asyncio.gather(self.receipt_sync, return_exceptions=True)
 
 
 def runtime(app):

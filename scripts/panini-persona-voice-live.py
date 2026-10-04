@@ -19,7 +19,7 @@ async def main():
 
     report = {
         "at": datetime.now(UTC).isoformat(),
-        "kind": "live synthetic WebRTC startup and output",
+        "kind": "live synthetic WebRTC decoded audio and quiet-tail probe",
         "voices": [],
         "physical_phone": False,
     }
@@ -66,15 +66,23 @@ async def main():
                 0,
             )
             output = asyncio.Event()
+            accepted = set()
+            provider_errors = []
+            transcript = []
 
             async def event(e):
                 if e.get("type") == "transcript" and e.get("role") == "assistant" and e.get("delta"):
+                    transcript.append(e["delta"])
                     output.set()
+                elif e.get("type") == "context.accepted":
+                    accepted.add(e.get("client_event_id"))
+                elif e.get("type") == "error":
+                    provider_errors.append(e["message"])
 
             media.connection.on_event = event
             entry = {"voice": voice, "passed": False}
             try:
-                async with asyncio.timeout(60):
+                async with asyncio.timeout(90):
                     entry["stage"] = "synthetic_offer"
                     offer = json.loads(await peer.stdout.readline())
                     entry["stage"] = "provider_start"
@@ -85,19 +93,40 @@ async def main():
                     connected = json.loads(await peer.stdout.readline())
                     if not connected.get("connected"):
                         raise RuntimeError("Synthetic audio peer did not connect.")
-                    await media.connection.speak(
+                    command_id = await media.connection.speak(
                         "Backend outcome: PANINI voice test connected. Say PANINI voice test ready."
                     )
                     entry["stage"] = "spoken_output"
                     await asyncio.wait_for(output.wait(), 30)
-                    entry["passed"] = True
+                    entry["stage"] = "context_acknowledgment"
+                    async with asyncio.timeout(30):
+                        while command_id not in accepted:
+                            await asyncio.sleep(0.05)
+                    entry["context_accepted"] = True
+                    entry["stage"] = "decoded_playback"
+                    peer.stdin.write(b'{"playback":true}\n')
+                    await peer.stdin.drain()
+                    playback = json.loads(await peer.stdout.readline())
+                    entry["playback"] = playback
+                    entry["transcript"] = "".join(transcript)[:2000]
+                    entry["passed"] = bool(playback.get("passed")) and not provider_errors
+                    if not entry["passed"]:
+                        entry["error"] = "Decoded speech, quiet tail or provider event check failed."
             except Exception as exc:
                 entry["error"] = str(exc)[:350] if isinstance(exc, RuntimeError) else type(exc).__name__
             finally:
                 await media.close()
+                entry["provider_errors"] = provider_errors
+                entry["session_finalized"] = media.connection.finalized.is_set()
+                if provider_errors or not entry["session_finalized"]:
+                    entry["passed"] = False
+                    entry.setdefault("error", "Provider event or clean finalization check failed.")
                 if peer.returncode is None:
-                    peer.stdin.write(b'{"end":true}\n')
-                    await peer.stdin.drain()
+                    try:
+                        peer.stdin.write(b'{"end":true}\n')
+                        await peer.stdin.drain()
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass
                     try:
                         await asyncio.wait_for(peer.wait(), 8)
                     except TimeoutError:

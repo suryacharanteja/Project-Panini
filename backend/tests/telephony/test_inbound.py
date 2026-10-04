@@ -10,6 +10,7 @@ import pytest
 
 from backend.brain.threads import Threads
 from backend.fabric.ingress import Ingress
+from backend.harness.proactive import Notices
 from backend.harness.sessions import Sessions
 from backend.harness.store import Store
 from backend.interrupts.service import Interrupts
@@ -49,6 +50,7 @@ def world(tmp_path, monkeypatch):
         interrupts=Interrupts(store),
         artifacts=Artifacts(store, tmp_path / "artifacts"),
         ledger=Ledger(store),
+        notices=Notices(store),
     )
     h.personas = Personas(
         store, h.policy, identity_read=lambda: "PRIVATE OWNER IDENTITY", identity_write=lambda text: None

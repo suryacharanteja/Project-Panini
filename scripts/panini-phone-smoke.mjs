@@ -137,6 +137,10 @@ try {
   await page.screenshot({ path: 'artifacts/phone/android-call.png' });
   await page.getByRole('button', { name: 'End call', exact: true }).click();
   await page.getByText('No active call', { exact: true }).waitFor();
+  await page.getByText(/Phone call ended after/).waitFor();
+  await page.screenshot({ path: 'artifacts/phone/android-call-receipt.png' });
+  await page.getByRole('button', { name: 'Inbox', exact: true }).click();
+  await page.getByText('Phone call receipt', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await page.getByRole('heading', { name: 'Ready', exact: true }).waitFor();
   await page.reload();
@@ -190,7 +194,7 @@ try {
     throw Error('Revoked keys retained');
   if (errors.length) throw Error(errors.join('\n'));
   console.log(
-    'PASS encrypted pairing, persistent non-extractable keys, signed approval, Ask exactly once, task history/stop, reload, Live, Android share target, offline recovery and revocation in Android-sized Chromium',
+    'PASS encrypted pairing, persistent non-extractable keys, signed approval, Ask exactly once, task history/stop, phone call verification/end/receipt/Inbox delivery, reload, Live, Android share target, offline recovery and revocation in Android-sized Chromium',
   );
 } catch (error) {
   for (const page of browser?.contexts().flatMap((c) => c.pages()) || []) {

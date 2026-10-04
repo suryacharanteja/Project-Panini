@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -5,6 +6,45 @@ import pytest
 
 from backend.panini.contracts import Fault
 from backend.panini.voice import INSTRUCTIONS, NeutralConnection, VoiceMedia
+
+
+@pytest.mark.anyio
+async def test_live_close_bounds_a_handler_that_ignores_cancellation(monkeypatch):
+    from panini import live
+
+    monkeypatch.setattr(live, "HANDLER_CLOSE_TIMEOUT_S", 0.01)
+    connection = NeutralConnection("test", AsyncMock(), AsyncMock())
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_handler():
+        started.set()
+        try:
+            await release.wait()
+        except asyncio.CancelledError:
+            await release.wait()
+
+    task = connection._track(slow_handler())
+    try:
+        await started.wait()
+        await asyncio.wait_for(connection.close(), 0.5)
+        assert connection.closing and not task.done()
+    finally:
+        release.set()
+        await task
+
+
+@pytest.mark.anyio
+async def test_context_acknowledgment_matches_the_sent_command():
+    import json
+
+    events = AsyncMock()
+    connection = NeutralConnection("test", events, AsyncMock())
+    connection.socket = SimpleNamespace(send=AsyncMock())
+    identifier = await connection.speak("Backend result is ready.")
+    command = json.loads(connection.socket.send.call_args.args[0])
+    assert identifier == command["event_id"] and command["delegation_id"] is None
+    await connection.handle_event({"type": "session.commentary.appended", "client_event_id": identifier})
+    events.assert_awaited_once_with({"type": "context.accepted", "client_event_id": identifier})
 
 
 @pytest.fixture

@@ -1,4 +1,5 @@
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -27,6 +28,25 @@ def test_v1_database_upgrades_in_place(tmp_path):
     assert store.migrations[0] == "0001_baseline"
     assert store.one("SELECT title FROM sessions WHERE id='s'")["title"] == "old"
     store.close()
+
+
+def test_existing_call_history_survives_receipt_sync_upgrade(tmp_path):
+    source = Path(__file__).resolve().parents[2] / "harness" / "migrations"
+    previous = tmp_path / "previous"
+    previous.mkdir()
+    for path in source.glob("*.sql"):
+        if path.name < "0015":
+            (previous / path.name).write_bytes(path.read_bytes())
+    db = sqlite3.connect(":memory:", isolation_level=None)
+    db.executescript(SCHEMA)
+    migrate(db, previous)
+    db.execute(
+        "INSERT INTO calls(id,number,persona_id,state,started,duration_s) VALUES ('existing','unknown','panini','ended',1,42)"
+    )
+    assert migrate(db, source) == ["0015_call_receipt_sync"]
+    assert db.execute("SELECT duration_s,receipt_synced FROM calls WHERE id='existing'").fetchone() == (42, 0)
+    assert migrate(db, source) == []
+    db.close()
 
 
 def _connection():

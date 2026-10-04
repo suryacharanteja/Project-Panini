@@ -77,3 +77,36 @@ Remaining requirements:
 - Physical Android PWA installation, passkeys, production transport, signed installer and remaining LLDs. The repository has no Git remote or production deployment destination.
 
 This is a **local developer release**. V2-16 and V2-18 remain In progress; all 28 LLDs and Dot equivalence are not complete. Credentials, pairing keys and product databases are excluded from the bundle.
+
+
+## Latest increment: decoded audio and call lifecycle qualification
+
+Red-team qualification/enforcement remain disabled and deferred. V2-16 and V2-18 remain In progress.
+
+### Live audio evidence
+
+The probe now keeps an active HTML audio sink, measures decoded audio through Web Audio, checks received/emitted WebRTC samples, requires at least 400 ms of sampled non-silent speech and a 2.5-second quiet tail, matches the context acknowledgment to its command and closes the provider session cleanly. User microphones and speakers are not used; the rendered sink has zero volume. No audio is recorded.
+
+Latest real Live probe at 2026-10-04T05:35:58Z: **Marin and Cedar both passed** with seeded text history. Marin measured approximately 1.44 seconds of non-silent samples, Cedar 1.16 seconds; each had a quiet tail over 2.5 seconds, decoded samples and clean session finalization without provider event errors. The emitted transcript for both was “PANINI voice test ready.” An initial analyser-only attempt produced transcript but zero decoded samples; adding the active HTML sink fixed the probe. The failed attempt is retained in `artifacts/personas/voice-live.json`.
+
+This qualifies the bounded synthetic browser receive/render path. Quiet-tail detection is a heuristic, not a provider turn-completion event. It does not establish subjective sound quality, hardware speaker playback, long conversation quality, barge-in, a real SIP call or physical Android operation. The avatar already used an HTML audio element; this was a probe correction.
+
+Official documentation: [Managing GPT-Live sessions](https://developers.openai.com/api/docs/guides/live-conversations). Transcript deltas and context acknowledgments alone do not establish playback completion.
+
+### Call lifecycle delivered
+
+- Pause refuses new calls and ends active calls. Durable receipt delivery waits while paused and resumes after unpause or service restart.
+- A deterministic summary is stored in the call thread and delivered to Notices/phone Inbox. Stable message IDs, notice deduplication and `receipt_synced` prevent repeated delivery after a crash between message save and marking delivery. Summaries report recorded request processing states; they do not claim verified effects or promote transcript instructions.
+- Late verified transcript fragments produce a new immutable transcript artifact and a chained evidence entry while preserving the call's ended state, duration and original receipt.
+- Hangup failure is recorded as failed/unconfirmed without provider response bodies. A provider-confirmed closed session does not require a second hangup.
+- Work cancellation has a 10-second deadline. Uncooperative work leaves an unconfirmed result and prevents overlapping calls while it drains. Live handler cleanup is bounded. Voice End remains available before caller verification without granting access.
+- Migration `0015_call_receipt_sync.sql` upgrades existing call history without changing prior migrations. Admin and the PWA display the receipt summary; PWA cache version is v6. Phone-originated end records the paired phone as its source.
+
+### Verification
+
+- Full `npm test` passed: **768 backend**, 7 evaluation, 16/16 scripted offline cases, 125 CLI (1 skipped), 102 frontend, 12 phone, 95 search, 18 Admin and 12 shell tests. Pins, Prettier, Ruff and TypeScript passed. The same five backend dependency/Windows cleanup warnings remain. Log: `artifacts/personas/playback-lifecycle-final-check.log`.
+- Final focused lifecycle, schema-upgrade and voice suites: **36 passed**, one dependency warning, after the final receipt wording, cache version and unverified End updates. Log: `artifacts/personas/playback-lifecycle-targeted.log`. Final changed-file formatting and Ruff checks passed.
+- Final phone browser smoke passed the real encrypted pairing and signed identity approval, call end, receipt history and Inbox delivery, along with prior task/live/share/offline/revocation cases. Log: `artifacts/personas/playback-phone-smoke.log`. Receipt screenshot inspected; final Admin and shell builds passed.
+- Android SDK ADB is installed, but `adb devices -l` reported no connected device. Standard configuration checks found no SIP provider/project setting or HTTPS relay. No real SIP number was dialed, purchased or provisioned.
+
+Remaining: real SIP qualification, physical Android installation/hardware playback, natural conversation and multi-speaker/team qualification, priced voice cost and daily spend integration, unknown-caller ask/message modes, complete run-engine surface integration and remaining LLDs. This remains a local developer release; no production deployment or full Dot equivalence is claimed.
