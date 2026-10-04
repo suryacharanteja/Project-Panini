@@ -22,9 +22,13 @@ The registry hand delivers `desktop_windows`, `desktop_snapshot`, `desktop_click
 `desktop_select`, `desktop_toggle`, `desktop_scroll`, `desktop_press` and text/value/element assertions.
 Every effect refreshes the target before and after review. Reviews use the actual app, role, label and
 bounds; current policy is enforced even in general shadow/off mode. The foreground agent, AG-UI and
-persona children preserve stronger approval levels through a decision-aware callback into durable reviews.
+persona children, inbound phone calls, background tasks and channel jobs preserve stronger approval levels
+through a decision-aware callback into durable reviews.
 The approval level is included in the action digest. Legacy two-argument callers refuse stronger reviews
-instead of reducing them to tap. Android and the generic policy hook use the same rule. Pause, tighter permissions, flag disable and
+instead of reducing them to tap. Nested legacy prompts reuse only the current approved tool scope. AG-UI
+stores the exact waiting interrupt with its parked attempt, allowing a PC decision to resume after a
+stream-runner restart with the same nonce and action digest. Android and the generic policy hook use the
+same approval rule. Pause, tighter permissions, flag disable and
 native uncertainty stop the operation rather than retrying it. Each action invalidates published refs.
 
 Fine pointer actions use bounds and hierarchy for UIA hit-testing; they bypass `FromPoint` and use paced
@@ -54,8 +58,11 @@ remains in use during actions. Further preview presentation and overlay qualific
   label/value/title/focus, stronger local reviews, pause/disable, credential focus, principal isolation,
   stale refs, replacement assertions, uncertain dispatch and cancellation with native Stop.
 - Real foreground coordinator and AG-UI round trips exercise verify/local approvals, reject insufficient
-  phone/AG-UI tap decisions, and verify single dispatch after PC approval. Persona delegation preserves
-  the same PC-only review. These use scripted models and disposable data, with no live provider claims.
+  phone/AG-UI tap decisions, and verify single dispatch after PC approval. AG-UI resumes a PC-approved
+  command after runner replacement and rejects a forged nonce and repeated completion. Persona delegation,
+  background workers, channels and inbound phone requests preserve stronger reviews. Background/channel
+  continuation checks earlier effects are not repeated. These use scripted models, provider fixtures and
+  disposable data, with no live provider claims.
 
 Evidence lives under `artifacts/desktop-fine/`, including native framework IDs, snapshots, logs, exact
 source qualification and packaged release verification. Repository gates and package hashes are added

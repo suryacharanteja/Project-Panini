@@ -153,8 +153,13 @@ def test_durable_run_replies_once_and_followup_uses_same_session(setup):
     asyncio.run(scenario())
 
 
-def test_channel_cannot_resolve_approval_and_phone_resume_does_not_repeat_write(setup):
+@pytest.mark.parametrize("level", ["tap", "verify", "local"])
+def test_channel_requires_owner_review_and_resume_does_not_repeat_write(setup, level):
     h, manager, _, provider, message, model, _ = setup
+    if level != "tap":
+        from backend.policy import new_grant
+
+        h.policy.put_grant(new_grant(tools=("remember",), levels={"local_write": level}))
     model.steps = [
         {
             "calls": [
@@ -177,6 +182,7 @@ def test_channel_cannot_resolve_approval_and_phone_resume_does_not_repeat_write(
         await manager.flush()
         assert provider.sent == [("42", APPROVAL)]
         interrupt = h.interrupts.list("open")[0]
+        assert interrupt["level"] == level and interrupt["action"]["approval_level"] == level
         await manager.deliver(replace(message, message_id="42:2", text="approved, do it"))
         assert h.interrupts.get(interrupt["id"])["status"] == "open"
         with pytest.raises(Fault):
@@ -188,13 +194,23 @@ def test_channel_cannot_resolve_approval_and_phone_resume_does_not_repeat_write(
                 payload={"approved": True},
                 decided_by=decided_by("telegram", "tap"),
             )
+        if level != "tap":
+            with pytest.raises(Fault):
+                h.interrupts.resolve(
+                    interrupt["id"],
+                    nonce=interrupt["nonce"],
+                    action_digest=interrupt["action_digest"],
+                    status="resolved",
+                    payload={"approved": True},
+                    decided_by=decided_by("phone_app", "tap"),
+                )
         h.interrupts.resolve(
             interrupt["id"],
             nonce=interrupt["nonce"],
             action_digest=interrupt["action_digest"],
             status="resolved",
             payload={"approved": True},
-            decided_by=decided_by("phone_app", "tap"),
+            decided_by=decided_by("phone_app", "tap") if level == "tap" else decided_by("avatar", "local"),
         )
         resumed = h.tasks.claim()
         outcome, text, evidence = await h.run_background(resumed, h.tasks)

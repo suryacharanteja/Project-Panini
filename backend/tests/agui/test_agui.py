@@ -267,6 +267,44 @@ def test_stronger_registry_review_cannot_be_resolved_by_agui_tap(tmp_path, agui_
         )
         assert second[-1]["type"] == "RUN_ERROR"
         assert h.interrupts.get(review["id"])["status"] == "open" and not target.exists()
+        from backend.interrupts import decided_by
+
+        h.interrupts.resolve(
+            review["id"],
+            nonce=review["nonce"],
+            action_digest=review["action_digest"],
+            status="resolved",
+            payload={"approved": True},
+            decided_by=decided_by("avatar", "local"),
+        )
+        app.state.agui = None  # Resume using the durable proof after replacing the stream runner.
+        forged = [{**resume[0], "metadata": {**resume[0]["metadata"], "nonce": "wrong"}}]
+        bad = events(
+            client.post(
+                "/api/agui/agents/panini/run",
+                headers=HEADERS,
+                json=body(run="bad-proof", resume=forged, messages=[]),
+            )
+        )
+        assert bad[-1]["code"] == "INTERRUPT_CHANGED" and not target.exists()
+        third = events(
+            client.post(
+                "/api/agui/agents/panini/run",
+                headers=HEADERS,
+                json=body(run="pc-approved", resume=resume, messages=[]),
+            )
+        )
+        assert third[-1]["result"]["outcome"] == "verified_complete", third
+        assert target.read_text(encoding="utf-8-sig").strip() == "hello"
+        assert not h.interrupts.list("open")  # The legacy command prompt did not ask a second time.
+        again = events(
+            client.post(
+                "/api/agui/agents/panini/run",
+                headers=HEADERS,
+                json=body(run="already-done", resume=resume, messages=[]),
+            )
+        )
+        assert again[-1]["code"] == "INTERRUPT_UNKNOWN"
 
 
 def test_a_wrong_nonce_or_a_decline_never_runs_the_action(tmp_path, agui_on):

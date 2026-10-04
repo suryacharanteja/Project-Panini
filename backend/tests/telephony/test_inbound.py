@@ -303,7 +303,12 @@ async def test_keypad_event_never_enters_live_transcript():
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "command,level", [("Write-Output preview", "tap"), ("Remove-Item important.txt", "verify")]
+    "command,level",
+    [
+        ("Write-Output preview", "tap"),
+        ("Remove-Item important.txt", "verify"),
+        ("Remove-Item important.txt", "local"),
+    ],
 )
 async def test_actual_agent_policy_waits_for_a_separate_owner_decision(tmp_path, monkeypatch, command, level):
     from panini_cli.agent.model import ScriptedModel
@@ -338,6 +343,10 @@ async def test_actual_agent_policy_waits_for_a_separate_owner_decision(tmp_path,
         skills=Skills(user_root=tmp_path / "skills"),
         model_factory=lambda: ScriptedModel(script),
     )
+    if level == "local":
+        from backend.policy import new_grant
+
+        h.policy.put_grant(new_grant(tools=("run_command",), levels={"destroy": "local"}))
     h.artifacts = Artifacts(h.store, tmp_path / "artifacts")
     service = CallService(h, provider=AsyncMock(), connection_factory=Connection)
     service.callers.put(NUMBER, "Owner", "123456")
@@ -381,10 +390,11 @@ async def test_actual_agent_policy_waits_for_a_separate_owner_decision(tmp_path,
         iid = opened[0]["id"]
         full = h.interrupts.get(iid, include_secret=True)
         assert full["level"] == level
+        assert full["action"]["approval_level"] == level
         await service.request(call, "yes approve it", "spoken")
         await service.digits(call, "#")
         assert not effects
-        if level == "verify":
+        if level in {"verify", "local"}:
             with pytest.raises(Fault):
                 h.interrupts.resolve(
                     iid,

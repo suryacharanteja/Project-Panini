@@ -965,7 +965,10 @@ class Agent:
                     state = "parked"
                 else:
                     state = "failed" if isinstance(signal, Exception) else "interrupted"
-                self._finish_run(state, {"error": str(signal)[:300]})
+                terminal = {"error": str(signal)[:300]}
+                if state == "parked":
+                    terminal["interrupt_id"] = signal.interrupt_id
+                self._finish_run(state, terminal)
             raise
         if self.specialist_tool_failed and result.outcome in {"reply", "verified_complete"}:
             result.outcome = "partial" if self.evidence else "blocked"

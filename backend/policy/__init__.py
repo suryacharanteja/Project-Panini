@@ -36,6 +36,12 @@ def note_v1_confirmation():
         cell.append(True)
 
 
+def v1_confirmation_preapproved() -> bool:
+    """One concrete v2 review also covers legacy prompts nested in that same tool call."""
+    note_v1_confirmation()
+    return preapproved.get()
+
+
 __all__ = [
     "Decision",
     "Grant",

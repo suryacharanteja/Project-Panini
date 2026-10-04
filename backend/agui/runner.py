@@ -168,6 +168,19 @@ class AguiRuns:
                 if v["run_id"] == parked["task_id"] and v["thread_id"] == thread
             ]
         if run.resume:
+            # A stronger review can be answered on the PC before the AG-UI client resumes.
+            # Recover only the exact interrupt that parked this attempt, never an earlier approval.
+            if parked and service is not None and not open_views:
+                iid = (parked.get("result") or {}).get("interrupt_id")
+                if iid:
+                    view = service.get(iid, include_secret=True)
+                    if (
+                        view["status"] == "resolved"
+                        and view["kind"] == "approval"
+                        and view["run_id"] == parked["task_id"]
+                        and view["thread_id"] == thread
+                    ):
+                        open_views = [view]
             # A page decision may have committed before its response was lost. Recover only
             # durable page reviews belonging to this parked run; other approvals stay one-shot.
             if parked and service is not None and not open_views:
@@ -361,6 +374,10 @@ class AguiRuns:
         ledger_run = plan["ledger_run"]
 
         async def confirm(summary, detail, decision=None):
+            from ..policy import v1_confirmation_preapproved
+
+            if decision is None and v1_confirmation_preapproved():
+                return True
             action = {"summary": str(summary)[:500], "detail": str(detail)[:3000]}
             level = decision.level.value if decision else "tap"
             if decision is not None:

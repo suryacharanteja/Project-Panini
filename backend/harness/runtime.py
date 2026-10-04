@@ -229,8 +229,15 @@ class Harness:
         """A background run asking the person: approved actions pass once; otherwise the run parks (V2-05)."""
         from ..interrupts import InterruptSpec, Parked, active, digest
 
-        async def confirm(summary, detail):
+        async def confirm(summary, detail, decision=None):
+            from ..policy import v1_confirmation_preapproved
+
+            if decision is None and v1_confirmation_preapproved():
+                return True
             action = {"summary": str(summary)[:500], "detail": str(detail)[:3000]}
+            level = decision.level.value if decision else "tap"
+            if decision is not None:
+                action["approval_level"] = level
             key = digest(action)
             if self.tasks.consume_preapproval(task["id"], key):
                 return True
@@ -245,7 +252,7 @@ class Harness:
                     f"A background task wants to: {summary}",
                     preview={"task": task.get("title", ""), "detail": str(detail)[:3000]},
                     action=action,
-                    level="tap",
+                    level=level,
                     ttl_s=24 * 3600,
                 ),
                 run_id=task["id"],
@@ -424,6 +431,7 @@ class Harness:
             else ("phone_app" if task.get("origin") in {"phone", "phone-share"} else "background"),
         )
         agent.run_id = task["id"]
+        agent.confirm_decision = agent.confirm
         agent.thread_id = channel_job["thread_id"] if channel_job else task["id"]
         if channel_job:
             agent.registry = self.registry
@@ -437,15 +445,20 @@ class Harness:
 
             agent.before_model = check_channel
 
-            async def channel_confirm(summary, detail):
+            async def channel_confirm(summary, detail, decision=None):
                 from ..interrupts import InterruptSpec, Parked, digest
+                from ..policy import v1_confirmation_preapproved
 
                 check_channel()
+                if decision is None and v1_confirmation_preapproved():
+                    return True
                 action = {"summary": str(summary)[:500], "detail": str(detail)[:3000]}
+                decision = decision or agent.tool_context().decision
+                level = str(decision.level) if decision else "tap"
+                if decision is not None:
+                    action["approval_level"] = level
                 if tasks.consume_preapproval(task["id"], digest(action)):
                     return True
-                decision = agent.tool_context().decision
-                level = str(decision.level) if decision else "tap"
                 view = self.interrupts.open(
                     InterruptSpec(
                         "approval",
@@ -465,6 +478,7 @@ class Harness:
                 raise Parked(view["id"], str(summary)[:200])
 
             agent.confirm = channel_confirm
+            agent.confirm_decision = channel_confirm
 
         # V2-06: a run parked on an approval continues from its last checkpoint; the ledger replays any
         # step that already happened, and the approved action passes once.

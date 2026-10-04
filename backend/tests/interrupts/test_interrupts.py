@@ -226,7 +226,8 @@ def test_shell_confirmation_flow_runs_on_interrupts(monkeypatch, tmp_path):
     store.close()
 
 
-def test_background_task_parks_resumes_and_does_not_repeat_effects(monkeypatch, tmp_path):
+@pytest.mark.parametrize("level", ["tap", "verify", "local"])
+def test_background_task_parks_resumes_and_does_not_repeat_effects(monkeypatch, tmp_path, level):
     from panini_cli.agent.model import ScriptedModel
 
     from backend.harness.mobile import build_app
@@ -269,6 +270,15 @@ def test_background_task_parks_resumes_and_does_not_repeat_effects(monkeypatch, 
     h = Harness(
         Store(tmp_path / "h.sqlite3"), model_factory=model, skills=Skills(user_root=tmp_path / "skills")
     )
+    if level != "tap":
+        from backend.policy import new_grant
+
+        monkeypatch.setenv("PANINI_V2_POLICY", "enforce")
+        h.policy.put_grant(
+            new_grant(
+                tools=("run_command",), levels={"destroy": level, "local_exec": "none", "local_write": "none"}
+            )
+        )
     h.adapters = {}
     task = h.tasks.submit("Clean up the work folder", origin="eval")
 
@@ -286,7 +296,16 @@ def test_background_task_parks_resumes_and_does_not_repeat_effects(monkeypatch, 
             code = h.mobile.devices.new_code()["code"]
             await phone.post("/api/pair", json={"code": code, "name": "Test phone"})
             pending = (await phone.get("/api/interrupts")).json()["interrupts"]
-            assert len(pending) == 1 and "Remove-Item" in pending[0]["preview"]["detail"]
+            if level != "tap":
+                # This legacy phone inbox only supports tap reviews.
+                assert pending == []
+                pending = h.interrupts.list("open")
+            assert len(pending) == 1
+            if level == "tap":
+                assert "Remove-Item" in pending[0]["preview"]["detail"]
+            else:
+                assert "destroy" in pending[0]["title"]
+            assert pending[0]["level"] == level
             answer = await phone.post(
                 f"/api/interrupts/{pending[0]['id']}",
                 json={
@@ -297,12 +316,22 @@ def test_background_task_parks_resumes_and_does_not_repeat_effects(monkeypatch, 
             )
             return answer.json()
 
-    assert asyncio.run(approve_from_phone())["interrupt"]["status"] == "resolved"
+    response = asyncio.run(approve_from_phone())
+    if level == "tap":
+        assert response["interrupt"]["status"] == "resolved"
+    else:
+        review = h.interrupts.list("open")[0]
+        assert "interrupt" not in response and review["action"]["approval_level"] == level
+        resolve(h.interrupts, review, by=LOCAL)
     assert h.tasks.get(task["id"])["status"] == "queued"
     (work / "step1.txt").unlink()
     asyncio.run(first_attempt())
     done = h.tasks.get(task["id"])
-    assert done["status"] == "completed", (done.get("result"), h.tasks.events(task["id"]))
+    assert done["status"] == "completed", (
+        done.get("result"),
+        h.tasks.events(task["id"]),
+        h.interrupts.list(None),
+    )
     # The earlier effect (step1.txt) was replayed from its receipt, not executed again.
     assert not (work / "step1.txt").exists()
     h.store.close()

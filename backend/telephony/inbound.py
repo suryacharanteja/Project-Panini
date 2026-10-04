@@ -455,12 +455,16 @@ class CallService:
 
         run_id = uuid4().hex
 
-        async def confirm(title, detail):
+        async def confirm(title, detail, decision=None):
+            from ..policy import v1_confirmation_preapproved
+
             self.authorized(call)
-            decision = getattr(agent.tool_context(), "decision", None)
+            if decision is None and v1_confirmation_preapproved():
+                return True
+            decision = decision or getattr(agent.tool_context(), "decision", None)
             level = getattr(getattr(decision, "level", None), "value", "tap")
             if level not in {"tap", "verify", "local"}:
-                level = "tap"
+                return False
             view = self.h.interrupts.open(
                 InterruptSpec(
                     kind="approval",
@@ -468,7 +472,7 @@ class CallService:
                     title=title,
                     message="Approve this phone-call action on your paired phone or PC.",
                     preview={"detail": str(detail)[:3000]},
-                    action={"title": title, "detail": detail},
+                    action={"title": title, "detail": detail, "approval_level": level},
                     level=level,
                     ttl_s=60,
                 ),
@@ -527,6 +531,7 @@ class CallService:
             self._registry.hooks = [LedgerHook(), PolicyHook(mode="enforce", policy=self.h.policy)]
         agent.registry = self._registry
         agent.run_id, agent.thread_id = run_id, call.thread
+        agent.confirm_decision = confirm
         result = await agent.run(text[:5000], session_id=call.thread)
         return {"outcome": result.outcome, "message": result.message}
 
