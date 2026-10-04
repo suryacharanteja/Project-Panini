@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { CardBoundary } from './boundary';
+import { TeachReview } from './TeachReview';
 const MarkdownPreview = lazy(() =>
   import('./MarkdownPreview').then((module) => ({ default: module.MarkdownPreview })),
 );
@@ -80,6 +81,7 @@ function InterruptCardBody({
     interrupt.kind === 'review' &&
     interrupt.reason === 'page_draft' &&
     typeof preview?.content === 'string';
+  const teachReview = interrupt.kind === 'review' && interrupt.reason === 'teach_version';
   const detail = pageDraft
     ? String(preview.content)
     : toText(preview?.detail ?? preview?.effect ?? preview, 1500);
@@ -133,7 +135,9 @@ function InterruptCardBody({
           <pre className="pc-preview">{preview.diff}</pre>
         </details>
       )}
-      {pageDraft && onReview ? (
+      {teachReview ? (
+        <TeachReview preview={preview} />
+      ) : pageDraft && onReview ? (
         <textarea
           aria-label="Review page draft"
           value={reviewContent}

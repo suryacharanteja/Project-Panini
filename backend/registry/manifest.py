@@ -28,6 +28,7 @@ REQUIREMENTS = {
     "live",
     "spaces",
     "android",
+    "teach",
 }
 
 

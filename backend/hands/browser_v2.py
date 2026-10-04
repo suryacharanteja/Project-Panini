@@ -185,6 +185,26 @@ class BrowserHand:
         started = time.monotonic()
         try:
             session = await self.session(browser, ctx)
+            if getattr(ctx, "teach_replay", False) and tool.effect != "observe":
+                harness = self.runtime["harness"]
+                if (
+                    not harness.teach.allowed()
+                    or not harness.teach.valid_binding(ctx)
+                    or harness.policy.decide(ctx.principal, spec, args, taint=ctx.taint).action == "deny"
+                ):
+                    raise ValueError("Replay permission changed before dispatch.")
+                if tool.ref:
+                    latest = await session.call("browser_snapshot", {}, timeout_s=15)
+                    if latest.get("isError"):
+                        raise ValueError("The replay target could not be refreshed.")
+                    refreshed = element_names(inline_snapshot(text_of(latest), self.managed.output_root()))
+                    ref = str(args.get("target", ""))
+                    previous = self.names.get(key, {}).get(ref)
+                    if not previous or refreshed.get(ref) != previous:
+                        self.names[key] = refreshed
+                        raise ValueError(
+                            "The reviewed target changed during approval. Inspect the page before replaying."
+                        )
             await self._trace(ctx, browser, session)
             if tool.typing:
                 await self._probe_typing(session, key, tool, args)

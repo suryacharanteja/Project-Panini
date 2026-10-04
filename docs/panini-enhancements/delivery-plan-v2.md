@@ -267,13 +267,16 @@ Dependencies: V2-08 (Node sidecar pattern), V2-03 (policy), V2-12 (live view).
 
 ### V2-22: Teach by demonstration and self-healing skills
 
-Implementation register: **Not started**. [Source LLD](lld/V2-22-teach-by-demonstration.md).
+Implementation register: **In progress**. [Source LLD](lld/V2-22-teach-by-demonstration.md).
 
 Dependencies: V2-10 (browser vocabulary), V2-04 (receipts), V2-05 (reviews); desktop broker changes.
 
-- [ ] A browser recording becomes a reviewed skill that replays with different inputs.
+- [x] A browser recording becomes a reviewed skill that replays with different inputs.
 - [ ] The healer repairs a changed label and proposes a patch; nothing changes without approval.
 - [ ] A desktop recording replays in Notepad; passwords never appear in recordings.
+
+See the [browser checkpoint report](qualification-teach-browser-2026-10-05.md). Desktop recording,
+frame-scoped replay and live healer qualification remain pending.
 
 ### V2-23: PANINI as an MCP server
 

@@ -681,6 +681,12 @@ function App() {
                   {background.reviews > 0 && ` · ${background.reviews} to review`}
                 </p>
               )}
+            {['recording', 'starting'].includes(background?.recording?.state) && (
+              <p className="background-work" role="status">
+                <span className="pulse" aria-hidden="true" /> Recording your demonstration
+                <button onClick={() => void call('teachStop')}>Stop recording</button>
+              </p>
+            )}
             {caption && (
               <div className="captions" aria-label="Live captions">
                 {caption}

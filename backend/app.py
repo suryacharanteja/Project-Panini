@@ -25,6 +25,7 @@ from .routes import channels as channels_routes
 from .routes import console as console_routes
 from .routes import live as live_routes
 from .routes import spaces as spaces_routes
+from .routes import teach as teach_routes
 from .work import CapacityError, WorkPool
 
 
@@ -160,6 +161,8 @@ def create_app(
     app.include_router(spaces_routes.shell_router)
     app.include_router(admin.router)
     app.include_router(android_routes.router)
+    app.include_router(teach_routes.router)
+    app.include_router(teach_routes.shell_router)
     app.include_router(channels_routes.router)
     app.include_router(agui.console_router)
     app.include_router(agui.shell_router)

@@ -829,6 +829,8 @@ function ipc() {
         });
       case 'stop':
         return client.scoped('/stop', { command_id: randomUUID() });
+      case 'teachStop':
+        return client.call('/harness/teach/stop', {});
       case 'end':
         return client.scoped('/end', { command_id: randomUUID() });
       case 'media':

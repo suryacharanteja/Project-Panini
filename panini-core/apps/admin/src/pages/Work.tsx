@@ -1,5 +1,7 @@
 import { Download, RefreshCw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { InterruptCard } from '../../../shared-ui/cards';
+import '../../../shared-ui/tokens.css';
 import { ago, api, harness, useResource, when } from '../api';
 import { SaveToSpace } from './spaces/SaveToSpace';
 import {
@@ -24,11 +26,12 @@ const STATUS_TONE: Record<string, any> = {
 };
 
 export function InboxPage() {
+  const interrupts = useResource<any>(harness('/interrupts'), 2000);
   const reviews = useResource<any>(harness('/reviews'), 10000);
   const notices = useResource<any>(harness('/notices'), 10000);
   const { busy, run } = useAction();
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const reload = () => Promise.all([reviews.reload(), notices.reload()]);
+  const reload = () => Promise.all([reviews.reload(), notices.reload(), interrupts.reload()]);
 
   const decide = (id: string, decision: 'rerun' | 'dismiss') =>
     run(
@@ -64,6 +67,32 @@ export function InboxPage() {
         </Button>
       }
     >
+      <div className="mb-5 grid gap-3">
+        {interrupts.data?.interrupts?.map((item: any) => (
+          <InterruptCard
+            key={item.id}
+            interrupt={{ ...item, expiresAt: new Date(item.expires_at * 1000).toISOString() }}
+            onDecide={async (approved) => {
+              const fresh = await api(harness(`/interrupts/${item.id}`));
+              if (fresh.status !== 'open') {
+                await interrupts.reload();
+                return;
+              }
+              if (fresh.nonce !== item.nonce || fresh.action_digest !== item.action_digest)
+                throw new Error('The review changed. Refresh before deciding.');
+              await api(harness(`/interrupts/${item.id}`), {
+                body: {
+                  nonce: item.nonce,
+                  action_digest: item.action_digest,
+                  status: 'resolved',
+                  payload: { approved },
+                },
+              });
+              await reload();
+            }}
+          />
+        ))}
+      </div>
       <div className="grid gap-5">
         <Card title="Waiting for your decision" deva="प्रतीक्षा">
           {(reviews.data?.reviews ?? []).length === 0 ? (

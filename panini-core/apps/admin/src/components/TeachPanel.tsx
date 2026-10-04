@@ -1,0 +1,339 @@
+import { Circle, Square, Play, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
+import { admin, api, harness, useResource } from '../api';
+import { Badge, Button, Card, Field, inputClass, useAction } from './ui';
+
+export function TeachPanel() {
+  const state = useResource<any>(harness('/teach'), 2500);
+  const [browser, setBrowser] = useState('managed');
+  const [draft, setDraft] = useState<any>(null);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [expected, setExpected] = useState('');
+  const [selected, setSelected] = useState<any>(null);
+  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const [result, setResult] = useState<any>(null);
+  const { busy, run } = useAction();
+  const recording = ['recording', 'starting'].includes(state.data?.recording?.state);
+  const start = () =>
+    run('record', async () => {
+      await api(harness('/teach/record/start'), { body: { browser } });
+      setDraft(null);
+      await state.reload();
+    });
+  const stop = () =>
+    run('stop', async () => {
+      const stopped = await api(harness('/teach/stop'), { body: {} });
+      if (stopped.replay?.steps) setDraft(stopped.replay);
+      await state.reload();
+    });
+  const open = (skill: string) =>
+    run('open', async () => {
+      const full = await api(harness(`/teach/skills/${skill}`));
+      setSelected(full);
+      setInputs(
+        Object.fromEntries(
+          Object.entries(full.replay.inputs).map(([k, v]: [string, any]) => [k, v.default]),
+        ),
+      );
+      setResult(null);
+    });
+
+  return (
+    <Card
+      title="Teach PANINI"
+      className="mb-5"
+      actions={
+        <Badge tone={recording ? 'error' : 'neutral'}>
+          {recording ? '● Recording' : state.data?.enabled ? 'Ready' : 'Setup needed'}
+        </Badge>
+      }
+    >
+      <p className="mb-4 text-sm text-muted">
+        Show a browser task once, review its inputs and expected result, then replay it. Each action
+        follows your current permissions.
+      </p>
+      {!state.data?.enabled && (
+        <p className="mb-4 text-xs text-copper-light">
+          Enable Teach, the action ledger and durable reviews in Settings. Desktop recording is
+          still in development.
+        </p>
+      )}
+      {state.error && (
+        <p role="alert" className="mb-3 text-danger">
+          {state.error}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <select
+          className={inputClass + ' max-w-64'}
+          aria-label="Recording browser"
+          value={browser}
+          disabled={recording}
+          onChange={(e) => setBrowser(e.target.value)}
+        >
+          <option value="managed">PANINI browser</option>
+          <option value="chrome">My attached Chrome tab</option>
+        </select>
+        <Button
+          tone="primary"
+          disabled={!state.data?.enabled || recording || state.data?.replaying}
+          busy={busy === 'record'}
+          onClick={() => void start()}
+        >
+          <Circle size={14} /> Watch me
+        </Button>
+        <Button
+          tone="danger"
+          disabled={!recording && !state.data?.replaying}
+          busy={busy === 'stop'}
+          onClick={() => void stop()}
+        >
+          <Square size={14} /> Stop
+        </Button>
+        {recording && (
+          <span className="text-xs text-muted" role="status">
+            Do the task in the selected browser, then press Stop. Stop before entering credentials.
+          </span>
+        )}
+      </div>
+      {state.data?.recordings?.some((r: any) => r.state === 'draft') && !draft && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {state.data.recordings
+            .filter((r: any) => r.state === 'draft')
+            .slice(0, 5)
+            .map((r: any) => (
+              <Button
+                key={r.id}
+                onClick={() =>
+                  void run('draft', async () =>
+                    setDraft((await api(harness(`/teach/recordings/${r.id}`))).replay),
+                  )
+                }
+              >
+                Open recording · {new Date(r.created * 1000).toLocaleString()}
+              </Button>
+            ))}
+        </div>
+      )}
+      {draft && (
+        <form
+          className="mt-5 grid gap-4 border-t border-line pt-5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run(
+              'review',
+              async () => {
+                const replay = {
+                  ...draft,
+                  expect: [
+                    { id: 's999', tool: 'browser_verify_text_visible', args: { text: expected } },
+                  ],
+                };
+                await api(harness('/teach/propose'), {
+                  body: { name, description, replay, base_version: 0 },
+                });
+                setDraft(null);
+                await state.reload();
+              },
+              'Skill review is ready in Inbox.',
+            );
+          }}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Skill name">
+              <input
+                required
+                pattern="[a-z0-9][a-z0-9-]{1,62}"
+                className={inputClass}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="my-weekly-report"
+              />
+            </Field>
+            <Field label="What does this task do?">
+              <input
+                required
+                maxLength={300}
+                className={inputClass}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </Field>
+          </div>
+          <ol className="grid gap-2" aria-label="Recorded steps">
+            {draft.steps.map((s: any, i: number) => (
+              <li
+                key={s.id}
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-line p-3 text-xs"
+              >
+                <span className="mono text-copper-light">
+                  {i + 1}. {s.tool.replace('browser_', '')}
+                </span>
+                <span>{s.target?.name ?? s.args?.url ?? s.note}</span>
+                {s.tool === 'manual' && <Badge tone="error">Needs correction</Badge>}
+                <Button
+                  className="ml-auto"
+                  tone="ghost"
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      steps: draft.steps.filter((_: any, n: number) => n !== i),
+                      recording_artifacts: Object.fromEntries(
+                        Object.entries(draft.recording_artifacts ?? {}).filter(
+                          ([key]) => key !== s.id,
+                        ),
+                      ),
+                    })
+                  }
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ol>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {Object.entries(draft.inputs).map(([key, spec]: [string, any]) => (
+              <Field
+                key={key}
+                label={`Input: ${key}`}
+                hint={`Suggested ${spec.kind}. Review the default.`}
+              >
+                <input
+                  className={inputClass}
+                  value={spec.default}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      inputs: { ...draft.inputs, [key]: { ...spec, default: e.target.value } },
+                    })
+                  }
+                />
+              </Field>
+            ))}
+          </div>
+          <Field
+            label="What visible text proves the task worked?"
+            hint="Use a specific result, such as Report saved. A dispatched click alone is not proof."
+          >
+            <input
+              required
+              maxLength={500}
+              className={inputClass}
+              value={expected}
+              onChange={(e) => setExpected(e.target.value)}
+            />
+          </Field>
+          <details>
+            <summary className="cursor-pointer text-xs text-muted">
+              Advanced: edit normalized steps and input names
+            </summary>
+            <textarea
+              key={JSON.stringify(draft)}
+              aria-label="Normalized recording"
+              className={inputClass + ' mono mt-3 min-h-64 text-xs'}
+              defaultValue={JSON.stringify(draft, null, 2)}
+              onBlur={(e) => {
+                void run('edit', async () => setDraft(JSON.parse(e.target.value)));
+              }}
+            />
+          </details>
+          <Button
+            type="submit"
+            tone="primary"
+            busy={busy === 'review'}
+            disabled={!draft.steps.length || draft.steps.some((s: any) => s.tool === 'manual')}
+          >
+            Review skill in Inbox
+          </Button>
+        </form>
+      )}
+      <div className="mt-5 grid gap-2">
+        {state.data?.skills?.map((skill: any) => (
+          <div key={skill.name} className="rounded-lg border border-line p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <strong className="mono text-sm text-copper-glow">{skill.name}</strong>
+              {skill.needs_attention && <Badge tone="error">Needs attention</Badge>}
+              <span className="text-xs text-muted">
+                {skill.passes}/{skill.runs} passed · {skill.heals} repairs
+              </span>
+              <Button
+                className="ml-auto"
+                disabled={!skill.versions.some((v: any) => v.state === 'approved')}
+                onClick={() => void open(skill.name)}
+              >
+                <Play size={13} /> Open replay
+              </Button>
+              {skill.versions.some((v: any) => v.state === 'approved') && (
+                <Button
+                  tone="ghost"
+                  onClick={() =>
+                    void run(
+                      'delete',
+                      async () => {
+                        await api(admin(`/skills/${skill.name}`), { method: 'DELETE' });
+                        setSelected(null);
+                        await state.reload();
+                      },
+                      'Skill deleted; its reviewed version history is retained.',
+                    )
+                  }
+                >
+                  Delete skill
+                </Button>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-muted">
+              {skill.versions.map((v: any) => `v${v.version} ${v.state}`).join(' · ')}
+            </p>
+            {skill.last_failure && <p className="mt-2 text-xs text-danger">{skill.last_failure}</p>}
+          </div>
+        ))}
+      </div>
+      {selected && (
+        <div className="mt-4 grid gap-3 rounded-lg border border-copper/30 p-4">
+          <h3 className="text-sm">
+            Replay {selected.name} · v{selected.version}
+          </h3>
+          {Object.keys(inputs).map((key) => (
+            <Field key={key} label={key}>
+              <input
+                className={inputClass}
+                value={inputs[key]}
+                onChange={(e) => setInputs({ ...inputs, [key]: e.target.value })}
+              />
+            </Field>
+          ))}
+          <p className="text-xs text-muted">
+            Required action approvals appear in Inbox. Keep Stop available while replaying.
+          </p>
+          <Button
+            tone="primary"
+            disabled={!state.data?.enabled || recording}
+            busy={busy === 'replay'}
+            onClick={() =>
+              void run('replay', async () => {
+                setResult(
+                  await api(harness('/teach/run'), {
+                    body: { name: selected.name, inputs, browser },
+                  }),
+                );
+                await state.reload();
+              })
+            }
+          >
+            <Play size={14} /> Replay skill
+          </Button>
+          {result && (
+            <p role="status" className="text-sm">
+              {result.state ?? result.error} {result.failure}
+            </p>
+          )}
+        </div>
+      )}
+      <Button tone="ghost" className="mt-3" onClick={() => void state.reload()}>
+        <RefreshCw size={12} /> Refresh
+      </Button>
+    </Card>
+  );
+}

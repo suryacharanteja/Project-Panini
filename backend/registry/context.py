@@ -24,6 +24,7 @@ class ToolView:
     live: bool = False  # V2-12: PANINI_LIVE_VIEW (live view and takeover)
     spaces: bool = False
     android: bool = False
+    teach: bool = False
 
     def satisfies(self, requires) -> bool:
         checks = {
@@ -41,6 +42,7 @@ class ToolView:
             "live": self.live,
             "spaces": self.spaces,
             "android": self.android,
+            "teach": self.teach,
         }
         return all(checks[r] for r in requires)
 

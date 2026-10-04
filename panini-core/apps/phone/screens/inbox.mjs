@@ -60,7 +60,12 @@ function interruptCard(app, view) {
           'details',
           {},
           h('summary', { text: 'Details' }),
-          h('pre', { text: JSON.stringify(view.preview, null, 2).slice(0, 2000) }),
+          h('pre', {
+            text: JSON.stringify(view.preview, null, 2).slice(
+              0,
+              view.reason === 'teach_version' ? 160000 : 2000,
+            ),
+          }),
         )
       : null,
     model.asks

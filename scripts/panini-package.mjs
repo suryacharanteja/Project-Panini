@@ -325,7 +325,14 @@ for (const name of ['android-driver.apk', 'android-driver-target.apk']) {
 }
 const playwrightCore = join(driver, 'node_modules/playwright-core');
 await mkdir(playwrightCore, { recursive: true });
-for (const name of ['package.json', 'init-overlay.js', 'tools-1.63.0.json', 'page-pdf.mjs'])
+for (const name of [
+  'package.json',
+  'init-overlay.js',
+  'init-live.cjs',
+  'init-teach.cjs',
+  'tools-1.63.0.json',
+  'page-pdf.mjs',
+])
   await copyFile(
     join(root, 'panini-core/capabilities/browser/playwright', name),
     join(driver, name),

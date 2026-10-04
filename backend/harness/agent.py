@@ -544,6 +544,7 @@ class Agent:
             live=v2flags.enabled("PANINI_LIVE_VIEW"),
             spaces=v2flags.enabled("PANINI_SPACES"),
             android=v2flags.enabled("PANINI_ANDROID") and not self.background,
+            teach=v2flags.enabled("PANINI_TEACH") and not self.background,
         )
 
     def tool_context(self):

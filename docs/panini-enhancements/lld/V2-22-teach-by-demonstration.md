@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 5 · P2 · L (2 weeks) |
 | Depends on | V2-10 (browser vocabulary), V2-04 (receipts), V2-05 (reviews); desktop broker changes |
 | Flag | `PANINI_TEACH` (default `false`) |
-| Status | Not started |
+| Status | In progress |
 
 ## 1. Outcome
 
@@ -55,7 +55,7 @@ updated skill. Skills never grant permissions: every effect in a replay still go
 | `backend/teach/healer.py` | Repair loop |
 | `panini-core/capabilities/desktop/Panini.Desktop.Worker/Recorder.cs` | Low-level hooks + UIA capture |
 | Broker ops `record_start` / `record_stop` | Added to the HMAC-signed pipe protocol |
-| `backend/harness/migrations/0015_recordings.sql` | `recordings`, `skill_runs` |
+| `backend/harness/migrations/0030_teach.sql` | recordings, reviewed versions and `skill_runs` |
 
 ### 5.2 Recording
 
@@ -165,9 +165,13 @@ marked "needs attention" in Admin.
 
 ## 8. Acceptance criteria
 
-- [ ] A browser recording becomes a reviewed skill that replays with different inputs.
+- [x] A browser recording becomes a reviewed skill that replays with different inputs.
 - [ ] The healer repairs a changed label and proposes a patch; nothing changes without approval.
 - [ ] A desktop recording replays in Notepad; passwords never appear in recordings.
+
+The [browser checkpoint report](../qualification-teach-browser-2026-10-05.md) records real pinned-recorder
+and registry replay evidence. The changed-label repair test uses a deterministic model; live model
+qualification, frame-scoped replay and the desktop recorder remain pending.
 
 ## 9. Rollout and rollback
 

@@ -35,6 +35,7 @@ class Skills:
             self.roots.append(("project", Path(workspace) / ".panini" / "skills"))
         self.roots.append(("user", Path(user_root) if user_root else data_directory() / "skills"))
         self.roots.append(("builtin", BUILTIN))
+        self.on_delete = None
 
     def catalog(self):
         found = {}
@@ -50,6 +51,7 @@ class Skills:
                         "description": meta["description"][:300],
                         "origin": origin,
                         "path": str(manifest.parent),
+                        "replay": (manifest.parent / "replay.json").is_file(),
                     }
         return list(found.values())
 
@@ -79,6 +81,8 @@ class Skills:
         if skill["origin"] != "user":
             raise ValueError(f"{name} is a {skill['origin']} skill and cannot be deleted here.")
         shutil.rmtree(skill["path"])
+        if self.on_delete:
+            self.on_delete(name)
 
     def create(self, name, description, instructions):
         """Save a user skill (after the person reviewed the draft)."""
@@ -87,6 +91,8 @@ class Skills:
         if not description.strip() or not instructions.strip():
             raise ValueError("A skill needs a description and instructions.")
         folder = self.roots[-2][1] / name  # The user root.
+        if (folder / "replay.json").exists():
+            raise ValueError("This is a reviewed demonstration. Propose a new version in Teach instead.")
         folder.mkdir(parents=True, exist_ok=True)
         text = f"---\nname: {name}\ndescription: {' '.join(description.split())}\n---\n\n{instructions.strip()}\n"
         (folder / "SKILL.md").write_text(text, encoding="utf-8")

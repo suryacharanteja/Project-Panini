@@ -253,7 +253,11 @@ async def settings(request: Request):
 @router.patch("/settings")
 async def update_settings(payload: SettingsPatch, request: Request):
     try:
-        return await admin(request).update(payload.changes)
+        result = await admin(request).update(payload.changes)
+        teach = getattr(request.app.state.harness, "teach", None)
+        if teach and not teach.allowed():
+            await teach.close()
+        return result
     except (AdminError, ValueError) as exc:
         raise _bad(exc) from None
 
@@ -275,7 +279,11 @@ async def audit(request: Request):
 @router.post("/audit/{entry_id}/restore")
 async def restore(entry_id: str, request: Request):
     try:
-        return await admin(request).restore(entry_id)
+        result = await admin(request).restore(entry_id)
+        teach = getattr(request.app.state.harness, "teach", None)
+        if teach and not teach.allowed():
+            await teach.close()
+        return result
     except AdminError as exc:
         raise _bad(exc) from None
 

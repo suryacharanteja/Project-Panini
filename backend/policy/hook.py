@@ -34,6 +34,7 @@ class PolicyHook(Hooks):
             or ctx.principal.kind == "persona"
             or ctx.principal.surface in SURFACES
             or (spec is not None and spec.capability == "android")
+            or bool(getattr(ctx, "teach_replay", False))
         )
 
     async def before(self, ctx, spec, args):
@@ -81,7 +82,13 @@ class PolicyHook(Hooks):
             title = f"{spec.title} ({decision.effect.value.replace('_', ' ')})"
             if decision.reasons:
                 title += " — " + "; ".join(decision.reasons)[:160]
-            if not await ctx.confirm(title[:200], detail[:3000]):
+            richer = getattr(ctx, "confirm_decision", None)
+            approved = (
+                await richer(title[:200], detail[:3000], decision)
+                if richer
+                else await ctx.confirm(title[:200], detail[:3000])
+            )
+            if not approved:
                 return refuse("The person did not approve this step. Try a safer approach.")
             ctx.preapproved = True
         return None

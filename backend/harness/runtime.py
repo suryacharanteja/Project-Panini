@@ -112,6 +112,9 @@ class Harness:
 
         self.android = Android(self)
         hub().register_poller("android", self.android.frame, 1.0)
+        from ..teach.service import Teach
+
+        self.teach = Teach(self)
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
         agent = Agent(
@@ -126,7 +129,13 @@ class Harness:
 
         if any(
             v2flags.enabled(key)
-            for key in ("PANINI_V2_REGISTRY", "PANINI_PERSONAS", "PANINI_SPACES", "PANINI_ANDROID")
+            for key in (
+                "PANINI_V2_REGISTRY",
+                "PANINI_PERSONAS",
+                "PANINI_SPACES",
+                "PANINI_ANDROID",
+                "PANINI_TEACH",
+            )
         ):
             agent.registry = self.registry
         return agent
@@ -173,6 +182,7 @@ class Harness:
             )["n"],
             "connectors": len(self.connectors.servers),
             "android": self.android.activity(),
+            "recording": self.teach.recorder.status(),
         }
 
     def suggest(self, force=False):
@@ -243,6 +253,13 @@ class Harness:
         return confirm
 
     def background_cycle(self):
+        if not self.teach.allowed() and (
+            self.teach.recorder.current or self.teach.recorder.starting or self.teach.replayer.active
+        ):
+            try:
+                asyncio.get_running_loop().create_task(self.teach.close())
+            except RuntimeError:
+                pass
         if getattr(self, "interrupts", None):
             self.interrupts.expire_overdue()
         browsers = getattr(self, "browsers", None)
@@ -316,6 +333,7 @@ class Harness:
         if start:
             await start
         await self.outbound.close()
+        await self.teach.close()
         await self.android.driver.close()
         await self.channels.stop()
         await self.mobile.disable(save=False)
