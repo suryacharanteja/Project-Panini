@@ -1,5 +1,6 @@
 """Real owner hook recording, reviewed skill and registry replay on a disposable Windows fixture."""
 
+import argparse
 import asyncio
 import ctypes
 import json
@@ -19,6 +20,12 @@ sys.path.insert(0, str(ROOT))
 
 
 async def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--evidence", default="artifacts/teach-desktop")
+    args = parser.parse_args()
+    evidence = (ROOT / args.evidence).resolve()
+    if not evidence.is_relative_to((ROOT / "artifacts").resolve()):
+        parser.error("Evidence must stay within this workspace's artifacts directory.")
     from backend.capabilities.desktop import DesktopPipe
     from backend.core_contracts import Principal
     from backend.harness.runtime import Harness
@@ -276,8 +283,17 @@ async def main():
                 )
                 assert any(r["tool"] == "desktop_type" and r["outcome"] == "ok" for r in receipts)
                 ctx.run_id = uuid4().hex
+                await worker("action", {"name": "Draft text", "kind": "focus"})
                 snap = await h.registry.call(ctx, "desktop_snapshot", {"window": "fixture"})
                 assert snap.outcome == "ok", snap
+                assert (
+                    next(
+                        n.name
+                        for n, row in h.desktop_fine.sessions[ctx.run_id]["nodes"].values()
+                        if row["focused"]
+                    )
+                    == "Draft text"
+                )
                 button = next(
                     n.ref
                     for n, _ in h.desktop_fine.sessions[ctx.run_id]["nodes"].values()
@@ -286,6 +302,7 @@ async def main():
                 focused = await h.registry.call(ctx, "desktop_focus", {"ref": button})
                 assert focused.outcome == "ok", focused
                 frame = await worker("snapshot")
+                assert next(r["name"] for r in frame["nodes"] if r["focused"]) == "Apply draft"
                 assert any(r["name"] == "Applied: PANINI taught Unicode café" for r in frame["nodes"]), (
                     "Focus invoked the button"
                 )
@@ -349,7 +366,6 @@ async def main():
                 finally:
                     frozen.resume()
                 await h.teach.recorder.stop(discard=True)
-                evidence = ROOT / "artifacts/teach-desktop"
                 evidence.mkdir(parents=True, exist_ok=True)
                 (evidence / "recording.json").write_text(
                     json.dumps(replay, indent=2, ensure_ascii=False), encoding="utf-8"

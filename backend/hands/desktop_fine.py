@@ -40,6 +40,10 @@ def tree(page):
             raise ValueError("Invalid desktop target identity.")
         if not re.fullmatch(r"[A-F0-9]{64}", row.get("anchor", "")):
             raise ValueError("Invalid desktop target anchor.")
+        if "entity" in row and not re.fullmatch(r"[A-F0-9]{64}", row["entity"]):
+            raise ValueError("Invalid desktop entity identity.")
+        if row["type"] == "ControlType.TabItem" and "selected" in states and "entity" not in row:
+            raise ValueError("Update the companion to bind the selected document tab.")
         box = tuple(round(row["bounds"][k]) for k in ("x", "y", "width", "height"))
         n = Node(
             reference,
@@ -133,6 +137,11 @@ class DesktopFine:
         return page, found, text
 
     def target(self, session, args, name):
+        if name == "desktop_activate":
+            roots = [(n, row) for n, row in session["nodes"].values() if n.depth == 0 and n.role == "window"]
+            if len(roots) != 1:
+                raise ValueError("A unique reviewed window root is required for activation.")
+            return roots[0]
         if name == "desktop_press":
             focused = [(n, row) for n, row in session["nodes"].values() if row.get("focused")]
             if len(focused) != 1:
@@ -301,6 +310,12 @@ class DesktopFine:
                         data={
                             "snapshot": text,
                             "window": session["choice"],
+                            "title": session["page"].get("title", ""),
+                            "selection": sorted(
+                                row["entity"]
+                                for n, row in session["nodes"].values()
+                                if n.role == "tab" and "selected" in n.states and "entity" in row
+                            ),
                             "truncated": bool(session["page"].get("truncated")),
                             "focused_ref": next(
                                 (
@@ -313,6 +328,10 @@ class DesktopFine:
                         },
                         artifact_ids=[artifact],
                     )
+                if spec.name == "desktop_activate":
+                    target = await self.adapter.select(args["window"])
+                    session.update(target=target, choice=args["window"], nodes={})
+                    await self.snapshot(ctx, session)
                 takeover().gate("desktop", session["choice"], observe=False)
                 if spec.name in {"desktop_verify_text", "desktop_verify_element", "desktop_verify_value"}:
                     old = session["nodes"].get(args.get("ref"))
@@ -360,20 +379,30 @@ class DesktopFine:
                 page, found, _ = await self.snapshot(ctx, session, publish=False)
                 title = session["page"].get("title")
                 matching = [(n, row) for n, row in found.values() if row["identity"] == identity]
-                if len(matching) != 1 or not page["foreground"] or page.get("title") != title:
+                if (
+                    len(matching) != 1
+                    or (spec.name != "desktop_activate" and not page["foreground"])
+                    or page.get("title") != title
+                ):
                     raise ValueError("The desktop changed or lost focus. Take a new snapshot.")
                 target = matching[0]
                 reviewed = await self.authorize(ctx, spec, args, session, target)
                 page, found, _ = await self.snapshot(ctx, session, publish=False)
                 matching = [(n, row) for n, row in found.values() if row["identity"] == identity]
-                if len(matching) != 1 or not page["foreground"] or page.get("title") != title:
+                if (
+                    len(matching) != 1
+                    or (spec.name != "desktop_activate" and not page["foreground"])
+                    or page.get("title") != title
+                ):
                     raise ValueError("The target changed or lost focus during review. Take a new snapshot.")
                 target = matching[0]
                 await self.authorize(ctx, spec, args, session, target, reviewed=reviewed)
                 takeover().gate("desktop", session["choice"], observe=False)
                 n, row = target
                 patterns = set(row["patterns"])
-                if spec.name == "desktop_focus":
+                if spec.name == "desktop_activate":
+                    action = {"kind": "activate"}
+                elif spec.name == "desktop_focus":
                     action = {"kind": "focus"}
                 elif spec.name == "desktop_click":
                     action = {
@@ -388,6 +417,8 @@ class DesktopFine:
                         "kind": "set_value" if "ValuePatternIdentifiers.Pattern" in patterns else "fine_type",
                         "text": args["text"],
                     }
+                    if action["kind"] == "fine_type":
+                        action["replace"] = args.get("replace", False)
                 elif spec.name == "desktop_select":
                     if "SelectionItemPatternIdentifiers.Pattern" not in patterns:
                         raise ValueError("This control has no selection pattern.")

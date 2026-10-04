@@ -100,6 +100,17 @@ class Replayer:
         result = await self.h.registry.call(ctx, tool, args)
         if result.outcome != "ok":
             raise ReplayFailure(result)
+        if tool == "desktop_snapshot" and getattr(parent, "teach_window_title", None) is not None:
+            title = result.data.get("title", "")
+            if parent.teach_window_application.casefold() == "notepad":
+                title = title.removeprefix("*")
+            if (
+                title != parent.teach_window_title
+                or result.data.get("selection") != parent.teach_window_selection
+            ):
+                raise ReplayFailure(
+                    ToolResult("blocked", "The selected window changed documents during replay.")
+                )
         return result
 
     async def run(self, ctx, name, supplied, browser="managed", window=""):
@@ -147,7 +158,13 @@ class Replayer:
                     ]
                     if len(choices) != 1:
                         raise ValueError("Select one window of the reviewed application before replay.")
-                    await self.call(ctx, "desktop_snapshot", {"window": choices[0]["choice_id"]})
+                    await self.call(ctx, "desktop_activate", {"window": choices[0]["choice_id"]})
+                    selected = await self.call(ctx, "desktop_snapshot", {})
+                    ctx.teach_window_application = replay.desktop_application
+                    ctx.teach_window_title = selected.data["title"]
+                    if replay.desktop_application.casefold() == "notepad":
+                        ctx.teach_window_title = ctx.teach_window_title.removeprefix("*")
+                    ctx.teach_window_selection = selected.data["selection"]
                 else:
                     await self.call(ctx, "browser_select", {"browser": browser})
                 for index, step in enumerate(replay.steps):
@@ -187,15 +204,17 @@ class Replayer:
                             if desktop
                             else {"target": node["ref"], "element": f"{node['role']} {node['name']}"}
                         )
-                        if step.tool == "desktop_press":
+                        if step.tool in {"desktop_press", "desktop_type"}:
                             await self.call(ctx, "desktop_focus", grounded)
                             fresh = await self.call(ctx, snapshot_tool, {})
                             focused = resolve(target, nodes(fresh.content))
                             if focused is None or fresh.data.get("focused_ref") != focused["ref"]:
                                 raise ValueError("The keyboard target changed while focusing it.")
+                            if step.tool == "desktop_type":
+                                args.update(ref=focused["ref"])
                         if step.tool in {"browser_press_key", "browser_file_upload"}:
                             await self.call(ctx, "browser_click", grounded)
-                        elif step.tool != "desktop_press":
+                        elif step.tool not in {"desktop_press", "desktop_type"}:
                             args.update(grounded)
                     result = await self.call(ctx, step.tool, args)
                     evidence.extend(result.evidence)

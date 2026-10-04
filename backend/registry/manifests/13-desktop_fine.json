@@ -2,7 +2,7 @@
   "schema": "panini.capability/1",
   "id": "desktop_fine",
   "title": "Fine Windows controls",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "summary": "Observation-scoped Windows UIA tools with opaque refs and concrete policy checks.",
   "entry": "backend.hands.desktop_fine:DesktopFineHand",
   "tools": [
@@ -100,7 +100,7 @@
       "name": "desktop_type",
       "hand": "desktop_fine",
       "title": "Type on Windows",
-      "description": "Set an editable field value, or type plain Unicode text into a document. Document Enter/Tab must be separate reviewed desktop_press steps. Credentials are never typed. Snapshot and verify afterward.",
+      "description": "Set an editable field value, or type plain Unicode text into a document. replace=true selects and replaces the whole document in the same grounded control. Document Enter/Tab must be separate reviewed desktop_press steps. Credentials are never typed. Snapshot and verify afterward.",
       "input_schema": {
         "type": "object",
         "additionalProperties": false,
@@ -113,6 +113,9 @@
           "text": {
             "type": "string",
             "maxLength": 4000
+          },
+          "replace": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -404,11 +407,42 @@
       "strict": false,
       "order": 191,
       "concurrency": "desktop_fine"
+    },
+    {
+      "name": "desktop_activate",
+      "hand": "desktop_fine",
+      "title": "Activate window on Windows",
+      "description": "Bring one explicitly selected allowed window to the foreground without clicking or invoking any control. The current window title and application are reviewed; snapshot afterward before using refs. This is an input action, never a side effect of observation.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "window": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "window"
+        ]
+      },
+      "effect": "navigate",
+      "dynamic_effect": true,
+      "requires": [
+        "desktop_fine",
+        "private",
+        "foreground",
+        "ledger"
+      ],
+      "strict": false,
+      "order": 192,
+      "concurrency": "desktop_fine"
     }
   ],
   "prompt": {
     "principles": [
-      "Windows: desktop_windows, then desktop_snapshot(window=choice_id). Use only refs from the latest tree. Every action invalidates them; snapshot and assert before claiming success.",
+      "Windows: desktop_windows, then desktop_activate(window=choice_id) to bring an explicitly chosen window forward. desktop_snapshot observes only; it never activates a window. Use only fresh refs and verify after every action.",
       "Press requires a unique focused non-credential control. Credentials are always reserved for the person. Never guess a ref, window ID or native UIA ID.",
       "Fine desktop tools are opt-in. The coarse drawing planner remains available for canvas tasks."
     ]

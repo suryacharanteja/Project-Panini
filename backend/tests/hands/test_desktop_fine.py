@@ -39,6 +39,7 @@ class Pipe:
         self.changed_anchor = False
         self.title = "Fixture"
         self.document = False
+        self.selected_tab = None
 
     async def call(self, payload):
         self.calls.append(payload)
@@ -51,26 +52,32 @@ class Pipe:
                 raise self.failure
             if "text" in payload["action"]:
                 self.value = payload["action"]["text"]
-            return {"dispatched": True, "verified": "text" in payload["action"]}
+            if payload["action"]["kind"] == "activate":
+                self.foreground = True
+            return {
+                "dispatched": True,
+                "verified": "text" in payload["action"] or payload["action"]["kind"] == "activate",
+            }
         if payload["op"] != "snapshot":
             raise ValueError("No screenshot transport in this fixture")
         self.generation += 1
         rows = []
-        for i, (name, kind, value, states, focused, patterns) in enumerate(
-            [
-                ("Fixture", "Window", None, [], False, []),
-                (
-                    "Draft text",
-                    "Document" if self.document else "Edit",
-                    self.value,
-                    [],
-                    not self.password_focus,
-                    [] if self.document else ["ValuePatternIdentifiers.Pattern"],
-                ),
-                (self.label, "Button", None, [], False, ["InvokePatternIdentifiers.Pattern"]),
-                ("Password field", "Edit", None, ["password"], self.password_focus, []),
-            ]
-        ):
+        controls = [
+            ("Fixture", "Window", None, [], False, []),
+            (
+                "Draft text",
+                "Document" if self.document else "Edit",
+                self.value,
+                [],
+                not self.password_focus,
+                [] if self.document else ["ValuePatternIdentifiers.Pattern"],
+            ),
+            (self.label, "Button", None, [], False, ["InvokePatternIdentifiers.Pattern"]),
+            ("Password field", "Edit", None, ["password"], self.password_focus, []),
+        ]
+        if self.selected_tab is not None:
+            controls.append(("Untitled", "TabItem", None, ["selected"], False, []))
+        for i, (name, kind, value, states, focused, patterns) in enumerate(controls):
             row = {
                 "ref": f"w{100 * self.generation + i}",
                 "name": name,
@@ -83,6 +90,8 @@ class Pipe:
                 "bounds": {"x": i * 100, "y": 50, "width": 80, "height": 30},
             }
             row["anchor"] = hashlib.sha256(f"{i}:{name}:{self.changed_anchor}".encode()).hexdigest().upper()
+            if kind == "TabItem":
+                row["entity"] = hashlib.sha256(f"tab:{self.selected_tab}".encode()).hexdigest().upper()
             row["identity"] = (
                 hashlib.sha256(json.dumps({k: v for k, v in row.items() if k != "ref"}).encode())
                 .hexdigest()
@@ -335,6 +344,53 @@ async def test_document_navigation_characters_do_not_move_focus_and_continue_typ
     result = await h.registry.call(
         h.ctx, "desktop_type", {"ref": ref(session, "Draft text"), "text": "before" + character + "after"}
     )
+    assert result.outcome == "blocked" and not result.dispatched
+    assert not any(c["op"] == "fine_action" for c in h.pipe.calls)
+
+
+@pytest.mark.anyio
+async def test_document_replacement_is_explicit_and_reviewed(world):
+    h = world
+    h.pipe.document = True
+    session = await snapshot(h)
+    result = await h.registry.call(
+        h.ctx, "desktop_type", {"ref": ref(session, "Draft text"), "text": "new", "replace": True}
+    )
+    assert result.outcome == "ok"
+    action = next(c for c in reversed(h.pipe.calls) if c["op"] == "fine_action")
+    assert action["action"] == {"kind": "fine_type", "text": "new", "replace": True}
+    assert h.ctx.desktop_policy[1]["replace"] is True
+
+
+@pytest.mark.anyio
+async def test_observation_never_activates_window_and_explicit_activation_invalidates_refs(world):
+    h = world
+    h.pipe.foreground = False
+    session = await snapshot(h)
+    old_ref = ref(session, "Draft text")
+    assert not any(c["op"] == "fine_action" for c in h.pipe.calls)
+    result = await h.registry.call(h.ctx, "desktop_activate", {"window": "fixture"})
+    assert result.outcome == "ok" and result.data["verified"]
+    action = next(c for c in reversed(h.pipe.calls) if c["op"] == "fine_action")
+    assert action["action"] == {"kind": "activate"}
+    assert h.pipe.foreground
+    result = await h.registry.call(h.ctx, "desktop_type", {"ref": old_ref, "text": "never"})
+    assert result.outcome == "blocked" and not result.dispatched
+
+
+@pytest.mark.anyio
+async def test_activation_rechecks_window_after_review(world):
+    from backend.policy.engine import new_grant
+
+    h = world
+    h.policy.put_grant(new_grant(tools=("desktop_activate",), levels={"navigate": "tap"}))
+
+    async def confirm(*_):
+        h.pipe.title = "Replaced document"
+        return True
+
+    h.ctx.confirm_decision = confirm
+    result = await h.registry.call(h.ctx, "desktop_activate", {"window": "fixture"})
     assert result.outcome == "blocked" and not result.dispatched
     assert not any(c["op"] == "fine_action" for c in h.pipe.calls)
 

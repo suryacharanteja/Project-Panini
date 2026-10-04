@@ -33,6 +33,9 @@ internal sealed class FineSnapshots
             var anchor = new JsonObject();
             foreach (var key in new[] { "element_id", "automation_id", "name", "type", "bounds" }) anchor[key] = node[key]!.DeepClone();
             view["anchor"] = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(anchor.ToJsonString())));
+            var entity = new JsonObject();
+            foreach (var key in new[] { "element_id", "automation_id", "type" }) entity[key] = node[key]!.DeepClone();
+            view["entity"] = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(entity.ToJsonString())));
             view.Remove("element_id");
             view.Remove("automation_id");
             view["ref"] = reference;
@@ -60,7 +63,7 @@ internal sealed class FineSnapshots
         if (node["states"]!.AsArray().Any(s => s!.GetValue<string>() is "password" or "disabled"))
             throw new InvalidOperationException("ELEMENT_UNAVAILABLE");
         var action = request["action"]!.DeepClone().AsObject();
-        if (action["kind"]?.GetValue<string>() is not ("click" or "double_click" or "invoke" or "focus" or "set_value" or "fine_type" or "select" or "toggle" or "scroll" or "keypress"))
+        if (action["kind"]?.GetValue<string>() is not ("click" or "double_click" or "invoke" or "focus" or "activate" or "set_value" or "fine_type" or "select" or "toggle" or "scroll" or "keypress"))
             throw new InvalidOperationException("UNSUPPORTED_ACTION");
         action["element_id"] = node["element_id"]!.DeepClone();
         action["expected_name"] = node["name"]!.DeepClone();

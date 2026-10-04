@@ -94,7 +94,7 @@ internal static partial class Program
             var code = ex is InvalidOperationException ? ex.Message : "UIA_UNAVAILABLE";
             // The type says what failed (for example COMException or ElementNotAvailableException)
             // without exposing application content.
-            var detail = ex is InvalidOperationException ? "" : ex.GetType().Name;
+            var detail = ex is InvalidOperationException ? ex.Data["reason"] as string ?? "" : ex.GetType().Name;
             Console.WriteLine(JsonSerializer.Serialize(new { ok = false, error = code, detail }, Json));
         }
     }
@@ -282,12 +282,12 @@ internal static partial class Program
         var (hwnd, root) = Target(request);
         var action = request["action"]!;
         var kind = action["kind"]!.GetValue<string>();
-        if (kind == "focus")
+        if (kind == "focus" && action["element_id"] is null && action["expected_type"] is null)
         {
             SetForegroundWindow(hwnd);
             return new { dispatched = true, verified = TargetForeground(hwnd), effect = "foreground" };
         }
-        if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED");
+        if (kind != "activate" && !TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED");
         if (request["expected_window_title"] is not null && root.Current.Name != request["expected_window_title"]!.GetValue<string>())
             throw new InvalidOperationException("WINDOW_CHANGED");
         var observed = request["observed_at"]!.GetValue<long>();
@@ -298,8 +298,9 @@ internal static partial class Program
         if (matches.Length != 1) throw new InvalidOperationException("ELEMENT_CHANGED");
         var element = matches[0];
         var current = element.Current;
-        if (current.IsPassword || !current.IsEnabled || current.IsOffscreen || !VisibleWithinAncestors(element, root)) throw new InvalidOperationException("ELEMENT_UNAVAILABLE");
-        if (current.Name != action["expected_name"]!.GetValue<string>() || current.AutomationId != action["expected_automation_id"]!.GetValue<string>()) throw new InvalidOperationException("ELEMENT_CHANGED");
+        if (current.IsPassword || !current.IsEnabled || current.IsOffscreen
+            || !(kind == "activate" && Automation.Compare(element, root)) && !VisibleWithinAncestors(element, root)) throw new InvalidOperationException("ELEMENT_UNAVAILABLE");
+        if (current.Name != action["expected_name"]!.GetValue<string>() || current.AutomationId != action["expected_automation_id"]!.GetValue<string>()) throw ChangedElement("label");
         if (action["expected_type"] is not null)
         {
             var b = current.BoundingRectangle;
@@ -307,19 +308,25 @@ internal static partial class Program
             if (Credential(current.Name, current.AutomationId) || current.ControlType.ProgrammaticName != action["expected_type"]!.GetValue<string>()
                 || b.X != expected["x"]!.GetValue<double>() || b.Y != expected["y"]!.GetValue<double>()
                 || b.Width != expected["width"]!.GetValue<double>() || b.Height != expected["height"]!.GetValue<double>())
-                throw new InvalidOperationException("ELEMENT_CHANGED");
+                throw ChangedElement("type_or_bounds");
             ValidateFineState(element, action);
             if (kind == "keypress" && !Automation.Compare(AutomationElement.FocusedElement, element))
                 throw new InvalidOperationException("FOCUS_CHANGED");
         }
         // Check identity/focus immediately before dispatch, including after potentially slow UIA calls.
         Target(request);
-        if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED");
+        if (kind != "activate" && !TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED");
         if (request["expected_window_title"] is not null && root.Current.Name != request["expected_window_title"]!.GetValue<string>())
             throw new InvalidOperationException("WINDOW_CHANGED");
         bool verified = false;
         switch (kind)
         {
+            case "activate":
+                if (action["expected_type"] is null || !Automation.Compare(element, root))
+                    throw new InvalidOperationException("WINDOW_ROOT_REQUIRED");
+                ActivateWindow(request, hwnd);
+                verified = true;
+                break;
             case "focus":
                 if (action["expected_type"] is null) throw new InvalidOperationException("SNAPSHOT_REQUIRED");
                 element.SetFocus();
@@ -344,7 +351,7 @@ internal static partial class Program
                 break;
             case "fine_type":
                 if (action["expected_type"] is null) throw new InvalidOperationException("SNAPSHOT_REQUIRED");
-                GroundedInput.TypeDocument(element, action["text"]!.GetValue<string>(), () => { Target(request); if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED"); });
+                verified = GroundedInput.TypeDocument(element, action["text"]!.GetValue<string>(), () => { Target(request); if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED"); }, action["replace"]?.GetValue<bool>() ?? false);
                 break;
             case "keypress":
                 GroundedInput.PressKey(action["key"]!.GetValue<string>(), () => { Target(request); if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED"); });

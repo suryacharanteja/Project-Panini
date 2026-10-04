@@ -146,6 +146,11 @@ def main():
             "shell-build.log",
             "program-qualification.json",
         ]
+        included.extend(
+            name
+            for name in ("notepad-evidence.json", "notepad-recording.json", "notepad-smoke.log")
+            if (evidence / name).is_file()
+        )
     if any(not (evidence / name).is_file() for name in included):
         parser.error("Build and verify the surfaces before packaging their evidence.")
     output = evidence / f"panini-{args.label}-dev-{commit[:7]}.zip"
@@ -179,7 +184,7 @@ def main():
         if args.profile == "desktop":
             setup = "Set PANINI_DESKTOP_TOOLS=fine and enable PANINI_V2_LEDGER in Settings. Start a private foreground desktop task; list Windows applications, snapshot a selected window and use only its current refs. Actions invalidate refs, and every claimed result needs an assertion. Coarse remains the default; read the Windows checkpoint qualification report for pending macros, desktop recording, other hand normalizers and golden-task comparison."
         if args.profile == "teach-desktop":
-            setup = "Enable PANINI_TEACH, PANINI_V2_LEDGER, PANINI_V2_INTERRUPTS and PANINI_DESKTOP_TOOLS=fine. In Admin → Build → Skills select Windows application, refresh windows and explicitly choose an allowed window. Watch me records that window for at most 15 minutes; Stop remains available after disabling Teach. Review inputs, add visible result text and approve the skill in Inbox. Replay selects a window of its reviewed application and requests effects separately. Read qualification-teach-desktop-2026-10-05.md; Notepad recording/save, per-step crops, drag gestures, fast focus changes and live healer qualification remain open."
+            setup = "Enable PANINI_TEACH, PANINI_V2_LEDGER, PANINI_V2_INTERRUPTS and PANINI_DESKTOP_TOOLS=fine. In Admin → Build → Skills select Windows application, refresh windows and explicitly choose an allowed window. Watch me records that window for at most 15 minutes; Stop remains available after disabling Teach. Review inputs, add visible result text and approve the skill in Inbox. Replay explicitly activates its selected window, replaces captured document values, verifies fresh focus and requests effects separately. Installed Notepad record/type/save has exact-file proof. Read qualification-teach-desktop-2026-10-05.md; application launch recording, Save As, per-step crops, drag gestures, fast focus changes and live healer qualification remain open."
         bundle.writestr(
             "README.txt",
             f"PANINI local development increment {commit}\nPatch base: {base}\n\nApply source.patch to a checkout at the patch base, run npm ci, and use the existing Python development environment. Built Admin, shell and Android PWA assets are included at their repository paths. {setup} Read the included qualification document for remaining requirements.\n\nThis is not a standalone installer, signed production release, physical Android qualification or full LLD completion. No credentials or databases are included.\n",

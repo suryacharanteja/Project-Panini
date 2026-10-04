@@ -306,6 +306,34 @@ async def test_desktop_replay_uses_new_inputs_fresh_refs_and_separate_assertions
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("change", ["title", "same_title_tab"])
+async def test_switching_documents_between_steps_stops_before_more_input(world, change):
+    h = world
+    data = document()
+    data["steps"].append({**data["steps"][0], "id": "s3"})
+    seed(h, data)
+    if change == "same_title_tab":
+        h.pipe.selected_tab = "first"
+    original = h.pipe.call
+
+    async def changed(payload):
+        result = await original(payload)
+        if payload["op"] == "fine_action" and payload["action"]["kind"] == "set_value":
+            if change == "title":
+                h.pipe.title = "Another document in the same window"
+            else:
+                h.pipe.selected_tab = "second"
+        return result
+
+    h.pipe.call = changed
+    result = await h.teach.replayer.run(h.ctx, "desktop-demo", {}, window="fixture")
+    assert result.data["state"] == "failed"
+    assert "changed documents" in result.content
+    assert sum(p["op"] == "fine_action" and "text" in p["action"] for p in h.pipe.calls) == 1
+    assert not h.model_requests and not h.desktop_fine.sessions
+
+
+@pytest.mark.anyio
 async def test_ambiguous_application_window_never_dispatches(world):
     h = world
     seed(h)

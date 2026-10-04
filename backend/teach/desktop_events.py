@@ -68,7 +68,7 @@ def normalize(events, application):
                 if not isinstance(value, str) or len(value) > 2000 or _SECRET.search(value):
                     tool = None
                 else:
-                    args = {"text": value}
+                    args = {"text": value, "replace": True}
             elif kind == "key":
                 if (
                     not isinstance(value, str)

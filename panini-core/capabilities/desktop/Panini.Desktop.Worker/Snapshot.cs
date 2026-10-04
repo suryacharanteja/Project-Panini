@@ -4,6 +4,12 @@ using System.Windows.Automation;
 
 internal static partial class Program
 {
+    private static InvalidOperationException ChangedElement(string reason)
+    {
+        var error = new InvalidOperationException("ELEMENT_CHANGED");
+        error.Data["reason"] = reason;
+        return error;
+    }
     private static readonly Regex CredentialLabel = new(@"password|passcode|one.time|\bpin\b|\bcvv\b|\bcvc\b|\botp\b|card.number|security.code|verification.code", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static bool Credential(string name, string automationId) => CredentialLabel.IsMatch(name + " " + automationId);
     private static AutomationElement[] FineTargets(AutomationElement root, string identifier)
@@ -42,7 +48,9 @@ internal static partial class Program
         if (element.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out p) && ((ExpandCollapsePattern)p).Current.ExpandCollapseState == ExpandCollapseState.Expanded) states.Add("expanded");
         if (!states.SequenceEqual(action["expected_states"]!.AsArray().Select(n => n!.GetValue<string>()))
             || value?[..Math.Min(value.Length, 2000)] != action["expected_value"]?.GetValue<string>())
-            throw new InvalidOperationException("ELEMENT_CHANGED");
+        {
+            throw ChangedElement("state_or_value");
+        }
     }
 
     private static void ValidateBoundsHit(AutomationElement root, AutomationElement target, int x, int y)

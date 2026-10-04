@@ -41,7 +41,7 @@ internal static partial class Program
     private static void Record(JsonObject request)
     {
         var (hwnd, root) = Target(request);
-        if (!TargetForeground(hwnd)) { SetForegroundWindow(hwnd); Thread.Sleep(150); }
+        if (!TargetForeground(hwnd)) ActivateWindow(request, hwnd);
         if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED");
         using var owner = Process.GetProcessById(request["owner_pid"]!.GetValue<int>());
         if (owner.StartTime.ToUniversalTime().Ticks.ToString() != request["owner_created"]!.GetValue<string>()) throw new InvalidOperationException("RECORDING_OWNER_CHANGED");

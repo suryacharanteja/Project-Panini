@@ -167,13 +167,15 @@ marked "needs attention" in Admin.
 
 - [x] A browser recording becomes a reviewed skill that replays with different inputs.
 - [ ] The healer repairs a changed label and proposes a patch; nothing changes without approval.
-- [ ] A desktop recording replays in Notepad; passwords never appear in recordings.
+- [x] A desktop recording replays in Notepad; passwords never appear in recordings.
 
 The [browser checkpoint report](../qualification-teach-browser-2026-10-05.md) records real pinned-recorder
 and registry replay evidence. The changed-label repair test uses a deterministic model; live model
 qualification and frame-scoped replay remain pending. The [Windows teaching checkpoint](../qualification-teach-desktop-2026-10-05.md)
-adds selected-window recording, normalization, private-field suppression and genuine WPF replay. Notepad
-recording/save, per-step crops, gestures and the remaining desktop acceptance are not qualified yet.
+adds selected-window recording, normalization, private-field suppression, genuine WPF replay and installed
+Notepad record/type/save replay with a different Unicode input and exact disk verification. Opening an app
+as a recorded step, Save As dialogs, per-step crops, gestures and the remaining requirements are not
+qualified yet. The LLD remains in progress.
 
 ## 9. Rollout and rollback
 
