@@ -23,8 +23,8 @@ const app = {
   nav: document.querySelector('nav'),
 
   async show(name) {
-    if (name !== 'calls' && !TABS.some(([tab]) => tab === name)) name = 'home';
-    const activeTab = name === 'calls' ? 'home' : name;
+    if (!['calls', 'spaces'].includes(name) && !TABS.some(([tab]) => tab === name)) name = 'home';
+    const activeTab = name === 'calls' ? 'home' : name === 'spaces' ? 'settings' : name;
     const revision = ++this.viewRevision;
     this.main.setAttribute('aria-busy', 'true');
     this.nav.querySelectorAll('button').forEach((b) => {

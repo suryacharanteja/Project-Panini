@@ -21,6 +21,7 @@ type Fabric = {
   gate: { passed: boolean; reason: string; deferred?: boolean };
   devices: Device[];
   hooks: string[];
+  passkey_origin?: string;
 };
 
 const TONE: Record<string, 'ok' | 'warn' | 'neutral' | 'error'> = {
@@ -35,6 +36,7 @@ export function RemotePage() {
   const { busy, run } = useAction();
   const [code, setCode] = useState<{ code: string; url: string } | null>(null);
   const [relay, setRelay] = useState('');
+  const [passkeyOrigin, setPasskeyOrigin] = useState('');
   const data = fabric.data;
   const act = (key: string, path: string, method = 'POST', body: unknown = {}) =>
     run(key, async () => {
@@ -100,6 +102,37 @@ export function RemotePage() {
               />
               <Button type="submit" disabled={!relay}>
                 Save
+              </Button>
+            </form>
+          </Card>
+          <Card title="Phone passkeys">
+            <p className="text-sm text-faint mb-3">
+              Use your stable HTTPS phone app origin. Changing it requires enrolling passkeys again
+              on the new origin.
+            </p>
+            {data.passkey_origin && (
+              <p className="text-sm text-faint mb-3 break-all">
+                Current origin: {data.passkey_origin}
+              </p>
+            )}
+            <form
+              className="flex flex-wrap gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void act('passkeys', '/fabric/settings', 'PATCH', {
+                  passkey_origin: passkeyOrigin,
+                });
+              }}
+            >
+              <input
+                className={inputClass}
+                value={passkeyOrigin}
+                onChange={(e) => setPasskeyOrigin(e.target.value)}
+                aria-label="Passkey app origin"
+                placeholder="https://panini.example.com"
+              />
+              <Button type="submit" disabled={!passkeyOrigin} busy={busy === 'passkeys'}>
+                Save origin
               </Button>
             </form>
           </Card>

@@ -19,7 +19,8 @@ test('cards offer what the level allows', () => {
   assert.deepEqual(card(approval).buttons, ['approve', 'decline']);
   assert.deepEqual(card({ ...approval, level: 'local' }).buttons, []);
   assert.match(card({ ...approval, level: 'local' }).note, /on your PC/);
-  assert.deepEqual(card({ ...approval, level: 'verify' }).buttons, []);
+  assert.deepEqual(card({ ...approval, level: 'verify' }).buttons, ['approve', 'decline']);
+  assert.match(card({ ...approval, level: 'verify' }).note, /passkey/);
   assert.deepEqual(card({ ...approval, kind: 'takeover' }).buttons, ['done', 'decline']);
   assert.equal(card({ ...approval, kind: 'question' }).asks, true);
   assert.deepEqual(card({ ...approval, status: 'resolved' }).buttons, []);

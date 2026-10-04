@@ -27,6 +27,13 @@ class Fabric:
         self.identity = PcIdentity.load(secrets_store)
         self.devices = Devices(store, self.identity)
         self.server = FabricServer(app, self.identity, self.devices).install()
+        from .passkeys import Passkeys
+
+        self.server.passkeys = Passkeys(
+            store,
+            self.devices,
+            lambda: self.settings().get("passkey_origin") or self.state.get("origin", ""),
+        )
         self.push = Push(store, secrets_store)
         self.server.push_key = self.push.public_key
         self.settings_path = settings_path
@@ -162,9 +169,15 @@ class Fabric:
         self.state = {**self.state, "state": "off"}
 
     def save_settings(self, patch: dict) -> dict:
-        allowed = {"relay_url", "port", "funnel"}
+        allowed = {"relay_url", "port", "funnel", "passkey_origin"}
         if set(patch) - allowed:
-            raise ValueError("Settings are relay_url, port and funnel.")
+            raise ValueError("Settings are relay_url, port, funnel and passkey_origin.")
+        if patch.get("passkey_origin"):
+            from .passkeys import Passkeys
+
+            origin = str(patch["passkey_origin"]).rstrip("/")
+            Passkeys(self.store, self.devices, lambda: origin).configuration(origin)
+            patch = {**patch, "passkey_origin": origin}
         value = {**self.settings(), **patch}
         self.settings_path.parent.mkdir(parents=True, exist_ok=True)
         self.settings_path.write_text(json.dumps(value), encoding="utf-8")
@@ -215,6 +228,7 @@ class Fabric:
             "devices": self.devices.list(),
             "push_public_key": self.push.public_key,
             "hooks": sorted(self.ingress.hooks),
+            "passkey_origin": self.settings().get("passkey_origin") or self.state.get("origin", ""),
         }
 
 

@@ -63,6 +63,14 @@ if ($manifest.sourceCommit -notmatch '^[A-Fa-f0-9]{40}$' -or $manifest.sourceDir
     throw 'A signed release must identify a clean Git source commit.'
 }
 if (!$BuildOnly) {
+    $programPython = Join-Path $workspace '.venv/Scripts/python.exe'
+    if (!(Test-Path -LiteralPath $programPython -PathType Leaf)) {
+        throw 'Release promotion requires the repository Python environment for LLD acceptance verification.'
+    }
+    & $programPython (Join-Path $workspace 'scripts/panini-program-qualify.py') --gate --expected-commit $manifest.sourceCommit
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Full LLD acceptance is incomplete; inspect artifacts/program/qualification.json.'
+    }
     if (!$QualificationEvidence -or !(Test-Path -LiteralPath $QualificationEvidence -PathType Leaf)) {
         throw 'Release promotion requires PANINI_RELEASE_QUALIFICATION_EVIDENCE from a clean VM.'
     }

@@ -677,6 +677,12 @@ class Agent:
 
         prefix = identity(self.h.personas.get(self.persona_id)) if self.persona_id != "panini" else persona()
         parts = [prefix, guide, f"Capabilities available now: {', '.join(self.capabilities) or 'none'}."]
+        if getattr(self, "team_member", False):
+            parts.append(
+                "You are one member of a team. Complete only your configured specialist role. "
+                "The team goal is shared context; do not fabricate work or speak for other members. "
+                "Use preceding completed member results as reference for your own contribution."
+            )
         chosen = self.selection
         if chosen is None:
             if catalog := self.h.skills.prompt():

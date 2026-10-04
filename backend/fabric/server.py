@@ -56,6 +56,9 @@ class FabricServer:
                 raise HTTPException(403, str(exc)) from None
 
         live_routes.remote_verifier = verifier
+        from ..routes.spaces import build
+
+        self.app.include_router(build("/api/remote/spaces", verifier))
         return self
 
     def close(self, conn: str) -> None:
@@ -127,9 +130,14 @@ class FabricServer:
         async with httpx.AsyncClient(transport=transport, base_url="http://panini.fabric") as client:
             response = await client.request(method, f"/api/remote{path}", content=content, headers=headers)
         kind = response.headers.get("content-type", "")
-        if kind.startswith("image/"):  # Live frames travel as base64 inside the envelope.
+        if kind.startswith("image/") or kind.startswith("application/pdf"):
             import base64
 
+            if kind.startswith("application/pdf") and len(response.content) > MAX_BODY // 2:
+                return {
+                    "status": 413,
+                    "body": {"detail": "Export is too large for the phone transport. Export it from Admin."},
+                }
             body = {"content_type": kind.split(";")[0], "base64": base64.b64encode(response.content).decode()}
             return {"status": response.status_code, "body": body}
         try:

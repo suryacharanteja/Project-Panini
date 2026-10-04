@@ -43,12 +43,7 @@ export function card(view) {
   if (view.status && view.status !== 'open')
     return { ...base, buttons: [], note: `Already ${view.status}.` };
   if (level === 'local') return { ...base, buttons: [], note: 'Approve this on your PC.' };
-  if (level === 'verify')
-    return {
-      ...base,
-      buttons: [],
-      note: 'This needs a passkey on your phone. Passkey approval is coming next.',
-    };
+  if (level === 'verify') base.note = 'Confirm this exact decision with your passkey.';
   if (view.kind === 'approval') return { ...base, buttons: ['approve', 'decline'] };
   if (view.kind === 'takeover') return { ...base, buttons: ['done', 'decline'] };
   if (view.kind === 'question') return { ...base, buttons: ['answer', 'decline'], asks: true };

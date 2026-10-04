@@ -69,8 +69,9 @@ broad provider qualification. Browser mobile emulation is not physical Android t
 
 ## Remaining work and release limits
 
-- Dedicated Android PWA notebook/library and Save to Space actions, channel-thread export and
-  teach-by-demo page storage depend on their surface/LLD integration work. Admin is responsive.
+- Dedicated Android PWA notebook/library, saved task/call receipts and export downloads are delivered
+  in the following phone increment. Channel-thread export and teach-by-demo page storage still depend
+  on their LLD integrations. Physical Android qualification remains open.
 - Additional crash-window qualification, including interruption after a parked run is marked resumed
   but before resumed execution, and multi-provider/repeated live evaluation remain open.
 - Production deployment, installer signing, installed-runtime qualification and physical Android

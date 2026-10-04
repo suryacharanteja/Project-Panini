@@ -63,6 +63,7 @@ async def delegate_to_persona(lead, persona_id, task, share_context=False, *, sl
     if child.persona_id != persona_id:
         raise ValueError("Personas changed while starting this specialist. Nothing was dispatched.")
     child.budget_override = child_budget
+    child.team_member = slot.startswith("member:")
     child.durable = lead.durable
     child.parent_run = lead.brain["run"]
     # Separate receipt operation keys prevent identical member calls from colliding with the lead.

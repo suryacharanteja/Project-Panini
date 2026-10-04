@@ -21,6 +21,7 @@ CacheControl==0.14.4
 cdp-use==1.4.5
 certifi==2026.7.22
 cffi==2.1.1
+cbor2==6.1.5
 charset-normalizer==3.5.1
 click==8.5.0
 cloudpickle==3.1.2
@@ -89,6 +90,8 @@ psutil==7.2.2
 py-serializable==2.1.0
 pyasn1==0.6.4
 pyasn1_modules==0.4.2
+pyOpenSSL==26.4.0
+webauthn==3.0.1
 pycparser==3.0
 pydantic==2.13.5
 pydantic-settings==2.15.0

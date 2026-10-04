@@ -42,6 +42,7 @@ async def main():
     import os
 
     os.environ["PANINI_PERSONAS"] = "true" if args.personas else "false"
+    os.environ["PANINI_SPACES"] = "true"
 
     os.environ.setdefault(
         "PANINI_LIVE_VIEW", "true"
@@ -99,6 +100,7 @@ async def main():
     )
     policy.install(persona_policy)
     fabric = Fabric(app, store, MemorySecrets(), settings_path=Path(tempfile.mkdtemp()) / "fabric.json")
+    fabric.state["origin"] = f"http://localhost:{PHONE_PORT}"
     app.state.fabric_runtime = fabric
     from unittest.mock import AsyncMock
 
@@ -116,6 +118,11 @@ async def main():
     h.notices.add("welcome", "Welcome", "This is the phone app preview.", dedupe="welcome")
     h.sessions = Sessions(store)
     h.threads = Threads(store, h.sessions)
+    from backend.brain.runs import Runs
+    from backend.spaces import Spaces
+
+    h.spaces = Spaces(store, h.threads, personas)
+    h.runs = Runs(store)
     h.artifacts = Artifacts(store, store.path.parent / "artifacts")
     h.ledger = Ledger(store)
 
@@ -153,12 +160,12 @@ async def main():
         return {"revoked": True}
 
     @control.post("/interrupt")
-    async def sample():
+    async def sample(level: str = "tap"):
         card = interrupts.open(
             InterruptSpec("approval", "tool_call", "Send the weekly report to Asha",
                           "PANINI wants to send report.pdf to asha@example.com.",
                           preview={"to": "asha@example.com", "attachment": "report.pdf"},
-                          action={"tool": "email_send", "to": "asha@example.com"}, level="tap", ttl_s=3600),
+                          action={"tool": "email_send", "to": "asha@example.com"}, level=level, ttl_s=3600),
             run_id="dev",
         )  # fmt: skip
         return {"id": card["id"]}
@@ -167,8 +174,14 @@ async def main():
     async def state():
         return {"devices": fabric.devices.list(), "interrupts": interrupts.list(status=None), "asks": asks}
 
+    @control.post("/notebook/concurrent-edit")
+    async def concurrent_edit():
+        row = store.one("SELECT id FROM pages WHERE title='Mobile plan' AND deleted_at IS NULL")
+        page = h.spaces.read(row["id"])
+        return h.spaces.edit(page["id"], expected_revision=page["revision"], content="Concurrent PC edit")
+
     code = fabric.devices.new_code()
-    origin = f"http://127.0.0.1:{PHONE_PORT}"
+    origin = f"http://localhost:{PHONE_PORT}"
     print("Pairing link (valid 5 minutes):", fabric.devices.qr_url(origin, code), flush=True)
     phone = uvicorn.Server(
         uvicorn.Config(build(fabric, "lan"), host="127.0.0.1", port=PHONE_PORT, log_level="warning")

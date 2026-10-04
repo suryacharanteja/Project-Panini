@@ -14,6 +14,7 @@ if __name__ == "__main__":
     from backend.app import app
 
     if sys.argv[1:2] == ["--check-runtime"]:
+        from backend.fabric.passkeys import Passkeys  # noqa: F401
         from backend.harness.runtime import Harness  # noqa: F401
 
         print("PANINI_BACKEND_RUNTIME_IMPORTS_OK", flush=True)

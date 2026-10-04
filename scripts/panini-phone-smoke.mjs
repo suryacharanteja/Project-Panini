@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 const phonePort = 3221,
   controlPort = 3222;
 const server = spawn(
@@ -80,6 +80,74 @@ try {
   await page.getByText('Nothing needs you right now.', { exact: true }).waitFor();
   const result = await control('/state');
   if (result.interrupts[0].status !== 'resolved') throw Error('Approval did not resolve');
+  const authenticator = await context.newCDPSession(page);
+  await authenticator.send('WebAuthn.enable');
+  await authenticator.send('WebAuthn.addVirtualAuthenticator', {
+    options: {
+      protocol: 'ctap2',
+      transport: 'internal',
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  });
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Add passkey', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove passkey', exact: true }).waitFor();
+  await page.screenshot({ path: 'artifacts/phone/android-passkeys.png' });
+  await page.getByRole('button', { name: 'Open notebook', exact: true }).click();
+  page.once('dialog', (dialog) => dialog.accept('Phone notebook'));
+  await page.getByRole('button', { name: 'New space', exact: true }).click();
+  await page.getByLabel('Notebook space').selectOption({ label: 'Phone notebook' });
+  page.once('dialog', (dialog) => dialog.accept('Mobile plan'));
+  await page.getByRole('button', { name: 'New page', exact: true }).click();
+  await page
+    .getByLabel('Notebook Markdown')
+    .fill('# Mobile mission\n\nSaved through the encrypted fabric.');
+  await page.getByRole('button', { name: 'Save page', exact: true }).click();
+  await page.getByText('Saved revision 2.', { exact: true }).waitFor();
+  await page.getByLabel('Notebook Markdown').fill('Unsent draft retained');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Open notebook', exact: true }).click();
+  await page.getByLabel('Notebook space').selectOption({ label: 'Phone notebook' });
+  await page.getByRole('button', { name: 'Mobile plan', exact: true }).click();
+  if ((await page.getByLabel('Notebook Markdown').inputValue()) !== 'Unsent draft retained')
+    throw Error('Phone notebook draft was lost');
+  await page.getByRole('button', { name: 'Save page', exact: true }).click();
+  await page.getByText('Saved revision 3.', { exact: true }).waitFor();
+  await control('/notebook/concurrent-edit', 'POST');
+  await page.getByLabel('Notebook Markdown').fill('Owner merged phone draft');
+  await page.getByRole('button', { name: 'Save page', exact: true }).click();
+  await page.getByText(/Your draft is kept. Reopen the page to compare./).waitFor();
+  await page.getByRole('button', { name: 'Mobile plan', exact: true }).click();
+  await page.getByText('Compare server revision', { exact: true }).click();
+  await page.getByText('Concurrent PC edit', { exact: true }).waitFor();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Use current revision', exact: true }).click();
+  await page.getByRole('button', { name: 'Save page', exact: true }).click();
+  await page.getByText('Saved revision 5.', { exact: true }).waitFor();
+  if (await page.getByText('Compare server revision', { exact: true }).count())
+    throw Error('Resolved notebook conflict remains actionable');
+  let download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export Markdown', exact: true }).click();
+  if (!(await readFile(await (await download).path(), 'utf8')).includes('Owner merged phone draft'))
+    throw Error('Phone Markdown export did not retain saved content');
+  download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export PDF', exact: true }).click();
+  if (!(await readFile(await (await download).path())).subarray(0, 5).equals(Buffer.from('%PDF-')))
+    throw Error('Phone PDF export was not a PDF');
+  await page.screenshot({ path: 'artifacts/phone/android-notebook.png' });
+  const verifiedCard = await control('/interrupt?level=verify', 'POST');
+  await page.getByRole('button', { name: 'Inbox', exact: true }).click();
+  await page.getByText('Confirm this exact decision with your passkey.', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+  await page.getByText('Nothing needs you right now.', { exact: true }).waitFor();
+  if (
+    (await control('/state')).interrupts.find((i) => i.id === verifiedCard.id)?.decided_by
+      ?.method !== 'passkey'
+  )
+    throw Error('Passkey approval did not resolve with verified authority');
   await page.getByRole('button', { name: 'Ask', exact: true }).click();
   await page.getByRole('combobox', { name: 'Work with' }).selectOption('scout');
   await page
@@ -138,6 +206,10 @@ try {
   await page.getByRole('button', { name: 'End call', exact: true }).click();
   await page.getByText('No active call', { exact: true }).waitFor();
   await page.getByText(/Phone call ended after/).waitFor();
+  await page.getByRole('button', { name: 'Save to Space', exact: true }).click();
+  await page.getByLabel('Save destination').selectOption({ label: 'Phone notebook' });
+  await page.getByRole('button', { name: 'Save source', exact: true }).click();
+  await page.getByText('Saved to your notebook.', { exact: true }).waitFor();
   await page.screenshot({ path: 'artifacts/phone/android-call-receipt.png' });
   await page.getByRole('button', { name: 'Inbox', exact: true }).click();
   await page.getByText('Phone call receipt', { exact: true }).waitFor();
@@ -161,12 +233,12 @@ try {
     if (!response.ok || !response.url.includes('tab=ask'))
       throw new Error('Share target redirect failed');
   });
-  await page.goto(`http://127.0.0.1:${phonePort}/?tab=ask`);
+  await page.goto(`http://localhost:${phonePort}/?tab=ask`);
   await page.getByRole('heading', { name: 'Shared with PANINI', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByRole('heading', { name: 'Ready', exact: true }).waitFor();
   if ((await control('/state')).asks.length !== 2) throw Error('Share did not arrive');
-  await page.goto(`http://127.0.0.1:${phonePort}/`);
+  await page.goto(`http://localhost:${phonePort}/`);
   await page.getByRole('heading', { name: 'Ready', exact: true }).waitFor();
   await context.setOffline(true);
   await page.reload();
@@ -194,7 +266,7 @@ try {
     throw Error('Revoked keys retained');
   if (errors.length) throw Error(errors.join('\n'));
   console.log(
-    'PASS encrypted pairing, persistent non-extractable keys, signed approval, Ask exactly once, task history/stop, phone call verification/end/receipt/Inbox delivery, reload, Live, Android share target, offline recovery and revocation in Android-sized Chromium',
+    'PASS encrypted pairing, persistent non-extractable keys, signed tap approval, real WebAuthn enrollment and verify approval with virtual authenticator, phone notebook create/edit/draft recovery and saved call receipt, Ask exactly once, task history/stop, phone call verification/end/receipt/Inbox delivery, reload, Live, Android share target, offline recovery and revocation in Android-sized Chromium',
   );
 } catch (error) {
   for (const page of browser?.contexts().flatMap((c) => c.pages()) || []) {

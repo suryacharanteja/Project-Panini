@@ -1,9 +1,11 @@
 import { h, action, toast } from './ui.mjs';
 import { personaChip } from './persona.mjs';
+import { saveSource } from './spaces.mjs';
 
 export async function calls(app) {
   const revision = app.viewRevision;
   const panel = h('div.card');
+  const savedSources = new Map();
   const view = h(
     'section.screen',
     {},
@@ -62,13 +64,17 @@ export async function calls(app) {
       for (const message of active.transcript || [])
         panel.append(h('p', { text: `${message.role}: ${message.text}` }));
     }
-    for (const call of reply.body.calls || [])
+    for (const call of reply.body.calls || []) {
+      if (call.receipt_id && !savedSources.has(call.receipt_id))
+        savedSources.set(call.receipt_id, saveSource(app, 'receipt', call.receipt_id));
       panel.append(
         h('p.muted', {
           text: `${call.state} · ${Math.round(call.duration_s)} seconds · ${call.reason || ''}`,
         }),
         call.summary ? h('p', { text: call.summary }) : null,
+        call.receipt_id ? savedSources.get(call.receipt_id) : null,
       );
+    }
   }
   await refresh();
   async function poll() {

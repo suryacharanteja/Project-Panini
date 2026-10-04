@@ -194,3 +194,12 @@ The latest opt-in `npm run personas:voice:live` probe passed Marin and Cedar usi
 ### Decoded audio continuation — 2026-10-04
 
 The opt-in voice probe now validates received and rendered non-silent samples, a quiet tail, context acknowledgment and clean provider session closure for Marin and Cedar, with seeded text history. Both passed. This is a bounded synthetic browser check, not subjective listening, physical Android, real SIP or long conversation qualification. Multi-speaker handoff, live research-to-writing team qualification, evaluation scorecard integration and later-LLD integrations remain open. See the [latest evidence and probe limitations](../qualification-2026-10-04.md).
+
+### Live team continuation — 2026-10-04
+
+`scripts/panini-persona-team-live.py` passed Scout research followed by Quill writing with real gpt-4.1,
+synthetic notebook facts, separate persona grants, source citations, attributed durable messages and
+metered child runs. The prompt now tells team members to perform only their configured role; the earlier
+run produced overlapping roles despite correct facts. The latest run produced distinct research facts and
+a two-sentence writing result. Evidence retains earlier attempts, including a probe setup error. This is
+one bounded notebook team scenario, not broad team, web research, multi-speaker or scorecard qualification.

@@ -50,6 +50,87 @@ class Decision(BaseModel):
     status: str = Field(pattern="^(resolved|cancelled)$")
     payload: dict | None = None
     signature: str
+    ceremony_id: str | None = None
+    credential: dict | None = None
+
+
+class PasskeyBegin(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    origin: str = Field(max_length=300)
+
+
+class PasskeyFinish(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ceremony_id: str = Field(max_length=100)
+    credential: dict
+
+
+class PasskeyDecision(Decision):
+    origin: str = Field(max_length=300)
+
+
+def _passkeys(fabric):
+    service = getattr(fabric, "passkeys", None)
+    if service is None:
+        raise HTTPException(503, "Passkeys are not configured.")
+    return service
+
+
+def _passkey_call(fn, *args, **kwargs):
+    import sqlite3
+
+    from webauthn.helpers.exceptions import WebAuthnException
+
+    try:
+        return fn(*args, **kwargs)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from None
+    except (WebAuthnException, sqlite3.IntegrityError):
+        raise HTTPException(403, "Passkey verification failed. Start again.") from None
+
+
+@router.get("/passkeys")
+async def passkeys(request: Request):
+    fabric, device_id = _fabric(request)
+    return {"passkeys": _passkeys(fabric).list(device_id)}
+
+
+@router.post("/passkeys/register/options")
+async def passkey_options(payload: PasskeyBegin, request: Request):
+    fabric, device_id = _fabric(request)
+    return _passkey_call(_passkeys(fabric).begin, device_id, payload.origin)
+
+
+@router.post("/passkeys/register")
+async def passkey_register(payload: PasskeyFinish, request: Request):
+    fabric, device_id = _fabric(request)
+    return _passkey_call(_passkeys(fabric).finish, device_id, payload.ceremony_id, payload.credential)
+
+
+@router.delete("/passkeys/{credential_id}")
+async def passkey_remove(credential_id: str, request: Request):
+    fabric, device_id = _fabric(request)
+    _passkeys(fabric).remove(device_id, credential_id)
+    return {"removed": True}
+
+
+@router.post("/interrupts/{interrupt_id}/passkey/options")
+async def passkey_decision_options(interrupt_id: str, payload: PasskeyDecision, request: Request):
+    fabric, device_id = _fabric(request)
+    view = _harness(request).interrupts.get(interrupt_id, include_secret=True)
+    if (
+        view["status"] != "open"
+        or view["level"] != "verify"
+        or view["nonce"] != payload.nonce
+        or view["action_digest"] != payload.action_digest
+    ):
+        raise HTTPException(409, "The request changed or cannot use a passkey. Review it again.")
+    statement = decision_statement(
+        interrupt_id, payload.nonce, payload.action_digest, payload.status, payload.payload
+    )
+    if not crypto.verify(fabric.devices.active(device_id)["sign_pub"], statement, payload.signature):
+        raise HTTPException(403, "The decision is not signed by this device.")
+    return _passkey_call(_passkeys(fabric).begin, device_id, payload.origin, statement=statement)
 
 
 class Ask(BaseModel):
@@ -104,13 +185,33 @@ async def resolve(interrupt_id: str, decision: Decision, request: Request):
     )
     if not crypto.verify(device["sign_pub"], statement, decision.signature):
         raise HTTPException(403, "The decision is not signed by this device.")
+    view = _harness(request).interrupts.get(interrupt_id, include_secret=True)
+    if view["nonce"] != decision.nonce or view["action_digest"] != decision.action_digest:
+        raise HTTPException(409, "The request changed. Review it again.")
+    if view["level"] == "local":
+        raise HTTPException(403, "This request must be approved on the PC.")
+    if view["level"] == "verify" and not (decision.credential and decision.ceremony_id):
+        raise HTTPException(403, "This request needs a passkey.")
+    method = "tap"
+    if decision.credential is not None or decision.ceremony_id is not None:
+        if not decision.credential or not decision.ceremony_id:
+            raise HTTPException(403, "A complete passkey response is required.")
+        _passkey_call(
+            _passkeys(fabric).finish,
+            device_id,
+            decision.ceremony_id,
+            decision.credential,
+            statement=statement,
+        )
+        method = "passkey"
+    # Resolve rechecks the current nonce, digest, expiry, authority and first decision.
     return _harness(request).interrupts.resolve(
         interrupt_id,
         nonce=decision.nonce,
         action_digest=decision.action_digest,
         status=decision.status,
         payload=decision.payload,
-        decided_by=decided_by("phone_app", "tap", device_id=device_id, signature=decision.signature),
+        decided_by=decided_by("phone_app", method, device_id=device_id, signature=decision.signature),
     )
 
 

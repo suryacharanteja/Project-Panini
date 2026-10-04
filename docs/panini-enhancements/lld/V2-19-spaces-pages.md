@@ -179,6 +179,7 @@ also verifies moves, history restoration, owner destroy and real PDF export. A s
 gpt-4.1 run searched and cited a synthetic page correctly. The PDF and responsive screenshots were
 visually inspected. Evidence and limits: [qualification](../qualification-spaces-2026-10-04.md).
 
-Still open: dedicated Android PWA notebook actions, channel/teach-by-demo integrations, additional
+Phone notebook actions, conflict recovery, stored-source saving and export downloads are now verified
+through the real fabric browser preview. Still open: channel/teach-by-demo integrations, additional
 crash-window and live-provider qualification, installed-runtime and production release gates.
 This is a local development increment; V2-19 and the full LLD program remain in progress.

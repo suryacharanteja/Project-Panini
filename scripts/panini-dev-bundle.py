@@ -19,6 +19,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True, help="Verified commit the source patch applies to.")
     parser.add_argument("--label", required=True)
+    parser.add_argument("--profile", choices=("spaces", "phone"), default="spaces")
     parser.add_argument(
         "--evidence", required=True, help="Workspace artifact directory with release-check.log."
     )
@@ -43,6 +44,18 @@ def main():
         "live-citation.json",
         "export.pdf",
     ]
+    if args.profile == "phone":
+        included = [
+            "release-check.log",
+            "browser-smoke.log",
+            "admin-build.log",
+            "shell-build.log",
+            "final-targeted.log",
+            "android-home.png",
+            "android-passkeys.png",
+            "android-notebook.png",
+            "team-live.json",
+        ]
     licenses = [
         ("node_modules/marked/LICENSE.md", "marked-LICENSE.txt"),
         ("node_modules/dompurify/LICENSE", "dompurify-LICENSE.txt"),
@@ -62,6 +75,7 @@ def main():
                     "patch_base": base,
                     "production_qualified": False,
                     "red_team": "disabled and deferred",
+                    "profile": args.profile,
                 },
                 indent=2,
             ),

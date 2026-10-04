@@ -336,4 +336,10 @@ with 798 backend tests, final browser smoke passed, and one live gpt-4.1 page ci
 See [Spaces qualification](qualification-spaces-2026-10-04.md) for evidence and remaining
 cross-LLD/surface integrations. Red-team remains disabled and deferred.
 
+The next phone/team increment delivers action-bound passkeys, phone notebooks and exports, and a live
+role-scoped Scout→Quill check. Final gates passed with 819 backend tests and 80 focused checks.
+[Program continuation qualification](qualification-program-2026-10-04.md) records exact evidence and
+remaining implementation/infrastructure. Full release promotion now checks every LLD acceptance list
+against the exact clean source commit before the existing signing and clean-VM gates.
+
 The next increment implements durable specialist/team/reviewer approval continuation and spending accounting across attempts. Its local HTTP/SSE qualification uses scripted models and an isolated test hand. Cross-surface persona presentation, later integrations and live-provider evaluation remain outstanding.

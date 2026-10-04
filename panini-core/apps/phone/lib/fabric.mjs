@@ -130,6 +130,10 @@ export class Fabric {
       payload,
       signature: b64(signature),
     };
+    if (shown.level === 'verify') {
+      const { verify } = await import('./passkeys.mjs');
+      Object.assign(body, await verify(this, shown, body));
+    }
     const reply = await this.request('POST', `/interrupts/${shown.id}/resolve`, body);
     return reply.status === 200
       ? { ok: true }
