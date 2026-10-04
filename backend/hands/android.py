@@ -60,6 +60,16 @@ class Android:
             self.last_action = 0.0
             await self.driver.close()
 
+    async def stop(self):
+        from ..live import takeover
+
+        self.nodes.clear()
+        self.visible_refs.clear()
+        self.last_action = 0.0
+        result = takeover().take("android", self.config.get("serial", ""))
+        await self.driver.close()
+        return result
+
     def save(self, serial, driver_consent, allowed_apps):
         if not isinstance(serial, str) or not 1 <= len(serial) <= 200 or any(ord(c) < 32 for c in serial):
             raise ValueError("Select a connected phone.")

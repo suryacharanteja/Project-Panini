@@ -57,10 +57,7 @@ export async function home(app) {
           {
             onclick: (event) =>
               action(event.currentTarget, async () => {
-                const reply = await app.fabric.request(
-                  'POST',
-                  `/live/android/${encodeURIComponent(status.android.target)}/control/take`,
-                );
+                const reply = await app.fabric.request('POST', '/android/stop');
                 if (reply.status !== 200)
                   throw new Error(
                     reply.body?.detail || 'Could not stop phone control. Pause PANINI instead.',

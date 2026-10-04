@@ -430,3 +430,15 @@ async def test_phone_takeover_interrupts_transport_without_replaying_effect(worl
     result = await asyncio.wait_for(task, 2)
     assert result.outcome == "unknown_effect" and result.dispatched
     assert not h.android.activity()["active"]
+
+
+@pytest.mark.anyio
+async def test_stop_remains_available_with_live_view_off(world, monkeypatch):
+    from backend.live import takeover
+
+    h, r, ctx, asked = world
+    ref = await snapshot(r, ctx)
+    monkeypatch.setenv("PANINI_LIVE_VIEW", "false")
+    await h.android.stop()
+    assert takeover().state("android", "phone").holder == "human"
+    assert (await r.call(ctx, "android_fill", {"ref": ref, "text": "hello"})).outcome == "blocked"

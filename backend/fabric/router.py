@@ -172,6 +172,13 @@ async def interrupts(request: Request):
     return {"interrupts": _harness(request).interrupts.list()}
 
 
+@router.post("/android/stop")
+async def stop_android(request: Request):
+    _fabric(request)
+    # Stopping device control must remain available even when live viewing is disabled.
+    return await _harness(request).android.stop()
+
+
 @router.get("/interrupts/{interrupt_id}")
 async def interrupt(interrupt_id: str, request: Request):
     _fabric(request)

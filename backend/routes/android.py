@@ -100,10 +100,14 @@ async def connect(payload: Address, request: Request):
 
 @router.post("/stop")
 async def stop(request: Request):
+    return await service(request).stop()
+
+
+@router.post("/resume")
+async def resume(request: Request):
     from ..live import takeover
 
     android = service(request)
     android.nodes.clear()
-    result = takeover().take("android", android.config["serial"])
-    await android.driver.close()
-    return result
+    android.visible_refs.clear()
+    return takeover().release("android", android.config.get("serial", ""))

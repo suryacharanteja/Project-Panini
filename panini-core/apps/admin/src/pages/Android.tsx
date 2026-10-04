@@ -232,6 +232,12 @@ export function AndroidPage() {
             >
               Stop phone control
             </Button>
+            <Button
+              disabled={!!action.busy || !status.data?.serial}
+              onClick={() => void action.run('resume', () => api(path('/resume'), { body: {} }))}
+            >
+              Return phone control
+            </Button>
           </div>
           {status.error && <p role="alert">{status.error}</p>}
           <p className="text-xs text-faint">{status.data?.qualification}</p>
