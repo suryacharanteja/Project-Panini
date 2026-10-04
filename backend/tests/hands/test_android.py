@@ -400,3 +400,33 @@ async def test_home_works_without_focused_field_but_enter_requires_one(world):
     h.android.driver.xml = xml(focused=False)
     assert (await r.call(ctx, "android_press", {"key": "HOME"})).outcome == "ok"
     assert (await r.call(ctx, "android_press", {"key": "ENTER"})).outcome == "blocked"
+
+
+@pytest.mark.anyio
+async def test_phone_takeover_interrupts_transport_without_replaying_effect(world):
+    import asyncio
+
+    from backend.live import takeover
+
+    h, r, ctx, asked = world
+    ref = await snapshot(r, ctx)
+    original = h.android.driver.call
+    entered, closed = asyncio.Event(), asyncio.Event()
+
+    async def slow(op, **args):
+        if op == "fill":
+            entered.set()
+            await closed.wait()
+            raise OSError("Owner stopped transport")
+        return await original(op, **args)
+
+    async def close():
+        closed.set()
+
+    h.android.driver.call, h.android.driver.close = slow, close
+    task = asyncio.create_task(r.call(ctx, "android_fill", {"ref": ref, "text": "hello"}))
+    await asyncio.wait_for(entered.wait(), 2)
+    takeover().take("android", "phone")
+    result = await asyncio.wait_for(task, 2)
+    assert result.outcome == "unknown_effect" and result.dispatched
+    assert not h.android.activity()["active"]

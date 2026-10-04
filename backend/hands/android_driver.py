@@ -37,10 +37,11 @@ class AndroidDriver:
                     stderr=asyncio.subprocess.DEVNULL,
                     limit=4_000_000,
                 )
+            process = self.process
             try:
-                self.process.stdin.write((json.dumps({"op": op, **arguments}) + "\n").encode())
-                await self.process.stdin.drain()
-                line = await asyncio.wait_for(self.process.stdout.readline(), 25)
+                process.stdin.write((json.dumps({"op": op, **arguments}) + "\n").encode())
+                await process.stdin.drain()
+                line = await asyncio.wait_for(process.stdout.readline(), 25)
                 result = json.loads(line)
                 if result.get("ok") is not True:
                     raise ValueError(result.get("error", "Android driver failed."))
@@ -50,7 +51,12 @@ class AndroidDriver:
                 raise
 
     async def close(self):
-        if self.process and self.process.returncode is None:
-            self.process.kill()
-            await self.process.wait()
-        self.process = None
+        process = self.process
+        if process and process.returncode is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            await process.wait()
+        if self.process is process:
+            self.process = None

@@ -49,6 +49,16 @@ class Android:
         self.last_action = 0.0
         self.generation = 0
         self.lock = asyncio.Lock()
+        from ..live import takeover
+
+        takeover().listen(self.control_changed)
+
+    async def control_changed(self, hand, target, view):
+        if hand == "android" and target == self.config.get("serial") and view.get("holder") == "human":
+            self.nodes.clear()
+            self.visible_refs.clear()
+            self.last_action = 0.0
+            await self.driver.close()
 
     def save(self, serial, driver_consent, allowed_apps):
         if not isinstance(serial, str) or not 1 <= len(serial) <= 200 or any(ord(c) < 32 for c in serial):
