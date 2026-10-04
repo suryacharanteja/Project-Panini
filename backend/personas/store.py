@@ -53,6 +53,10 @@ PERMISSIONS = {
 
 
 class Personas:
+    def presentation(self, persona_id):
+        row = self.store.one("SELECT id,name,color FROM personas WHERE id=?", (persona_id,))
+        return dict(row) if row else {"id": "panini", "name": "PANINI", "color": "copper"}
+
     def __init__(self, store, policy, *, identity_read=None, identity_write=None):
         from ..harness.learning import persona, set_persona
 

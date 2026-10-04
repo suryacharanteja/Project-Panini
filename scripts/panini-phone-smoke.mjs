@@ -11,6 +11,7 @@ const server = spawn(
     String(phonePort),
     '--control-port',
     String(controlPort),
+    '--personas',
   ],
   { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
 );
@@ -76,14 +77,46 @@ try {
   const result = await control('/state');
   if (result.interrupts[0].status !== 'resolved') throw Error('Approval did not resolve');
   await page.getByRole('button', { name: 'Ask', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Work with' }).selectOption('scout');
   await page
     .getByRole('textbox', { name: 'Ask PANINI', exact: true })
     .fill('Prepare my Android companion status.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByRole('heading', { name: 'Ready', exact: true }).waitFor();
   if ((await control('/state')).asks.length !== 1) throw Error('Ask not received exactly once');
+  if (!(await control('/state')).asks[0].goal.startsWith('@scout '))
+    throw Error('Persona selection was lost');
   await page.getByRole('button', { name: 'Work', exact: true }).click();
   await page.getByRole('button', { name: /Prepare my Android companion status/ }).click();
+  await page
+    .locator('.persona-chip[data-color="cyan"]')
+    .getByText('Scout', { exact: true })
+    .waitFor();
+  await page.getByText('Scripted preview: Scout received this request.', { exact: true }).waitFor();
+  for (const colorScheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme });
+    const contrast = await page.evaluate(() => {
+      const luminance = (color) => {
+        const rgb = color
+          .match(/[\d.]+/g)
+          .slice(0, 3)
+          .map((n) => Number(n) / 255)
+          .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+        return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+      };
+      const chip = document.querySelector('.persona-chip');
+      const bg = luminance(getComputedStyle(document.body).backgroundColor);
+      const ratios = ['copper', 'cyan', 'violet', 'green', 'amber', 'rose'].map((token) => {
+        chip.dataset.color = token;
+        const fg = luminance(getComputedStyle(chip).color);
+        return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
+      });
+      chip.dataset.color = 'cyan';
+      return Math.min(...ratios);
+    });
+    if (contrast < 4.5) throw Error(`${colorScheme} persona contrast is ${contrast}`);
+  }
+  await page.emulateMedia({ colorScheme: 'light' });
   await page.getByRole('button', { name: 'Stop task', exact: true }).click();
   await page.getByText('cancelled', { exact: true }).waitFor();
   await page.screenshot({ path: 'artifacts/phone/android-work.png' });

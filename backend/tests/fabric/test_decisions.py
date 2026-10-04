@@ -172,5 +172,53 @@ def test_task_history_requires_a_paired_session(world):
 
     app, _, _, _ = world
     client = TestClient(app)
-    for method, path in [("GET", "/threads"), ("GET", "/threads/task"), ("POST", "/threads/task/stop")]:
+    for method, path in [
+        ("GET", "/personas"),
+        ("GET", "/threads"),
+        ("GET", "/threads/task"),
+        ("POST", "/threads/task/stop"),
+    ]:
         assert client.request(method, f"/api/remote{path}").status_code == 403
+
+
+def test_phone_personas_are_presentation_only_and_messages_are_task_scoped(world, monkeypatch):
+    from backend.harness.tasks import Tasks
+    from backend.personas import Personas
+    from backend.policy import Policy
+
+    app, devices, identity, _ = world
+    h = app.state.harness
+    h.store = devices.store
+    h.tasks = Tasks(devices.store)
+    h.personas = Personas(
+        devices.store, Policy(devices.store), identity_read=lambda: "PRIVATE", identity_write=lambda _: None
+    )
+    h.personas.create("scout", name="Scout", color="cyan", instructions="PRIVATE_INSTRUCTIONS")
+    h.personas.bind_surface("phone_app", "scout")
+    task = h.tasks.submit("@scout Research", origin="phone")
+    for thread_id, text in [(task["id"], "Research result"), ("other-task", "PRIVATE_OTHER_TASK")]:
+        devices.store.execute(
+            "INSERT INTO persona_messages(thread_id,persona_id,kind,text,created) VALUES (?,?,?,?,?)",
+            (thread_id, "scout", "assistant", text, 1),
+        )
+    monkeypatch.setenv("PANINI_PERSONAS", "true")
+
+    async def scenario():
+        phone = Phone(app, identity, paired(devices))
+        await phone.connect()
+        metadata = (await phone.call("GET", "/personas"))["body"]
+        assert metadata["default_id"] == "scout"
+        assert all(set(p) == {"id", "name", "color"} for p in metadata["personas"])
+        detail = (await phone.call("GET", f"/threads/{task['id']}"))["body"]
+        assert [m["text"] for m in detail["messages"]] == ["Research result"]
+        assert detail["messages"][0]["persona"]["name"] == "Scout"
+        h.personas.archive("scout")
+        assert len((await phone.call("GET", "/personas"))["body"]["personas"]) == 1
+        assert (await phone.call("GET", f"/threads/{task['id']}"))["body"]["messages"][0]["persona"][
+            "name"
+        ] == "Scout"
+        monkeypatch.setenv("PANINI_PERSONAS", "false")
+        assert (await phone.call("GET", "/personas"))["body"]["enabled"] is False
+        assert (await phone.call("GET", f"/threads/{task['id']}"))["body"]["messages"] == []
+
+    asyncio.run(scenario())

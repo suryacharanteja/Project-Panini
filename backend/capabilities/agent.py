@@ -119,7 +119,7 @@ class AgentAdapter:
         agent.thread_id = self.sessions[session_key]
         from .. import v2flags
 
-        if v2flags.enabled("PANINI_V2_AGUI"):
+        if v2flags.enabled("PANINI_V2_AGUI") or v2flags.enabled("PANINI_PERSONAS"):
             agent.observe = _card_events(context)  # V2-07: the shell shows each tool call as a card.
         agent.reflex = getattr(context.task, "reflex", None)
         browser = self.adapters.get("browser")
@@ -194,6 +194,9 @@ def _card_events(context):
     from ..ledger.redact import redact_args, redact_result
 
     def observe(event, **data):
+        if event == "message" and data.get("persona"):
+            context.emit("running", data["text"], agent_event="persona.message", persona=data["persona"])
+            return
         if event == "tool.started":
             tool = {"id": data["call_id"], "name": data["name"], "args": redact_args(data.get("args") or {})}
         elif event == "tool.finished":

@@ -825,7 +825,14 @@ class Agent:
                 for entry in resume.get("tool_occurrences", [])
             }
         instructions = self.instructions(goal)
+        if v2flags.enabled("PANINI_PERSONAS"):
+            self.emit(
+                "persona",
+                f"Working with {self.h.personas.presentation(self.persona_id)['name']}.",
+                persona=self.h.personas.presentation(self.persona_id),
+            )
         result = None
+        last_persona_text = None
         step = first - 1
         try:
             pending = list((resume or {}).get("pending") or [])
@@ -872,20 +879,9 @@ class Agent:
                         result = AgentResult("partial", brain.STOP_MESSAGES[crossed])
                         break
                 items.extend(turn.items)
-                if turn.text and self.observe:
-                    self.observe("message", text=turn.text, persona_id=self.persona_id)
-                if turn.text and v2flags.enabled("PANINI_PERSONAS"):
-                    self.h.store.execute(
-                        "INSERT INTO persona_messages(thread_id,run_id,persona_id,kind,text,created) VALUES (?,?,?,?,?,?)",
-                        (
-                            self.thread_id,
-                            (self.brain or {}).get("run"),
-                            self.persona_id,
-                            "assistant",
-                            turn.text[:16000],
-                            time.time(),
-                        ),
-                    )
+                if turn.text:
+                    self._persona_message(turn.text)
+                    last_persona_text = turn.text
                 if not turn.calls:
                     # A plain answer: backed by verified steps it is complete; otherwise just a reply.
                     outcome = "reply"
@@ -934,6 +930,8 @@ class Agent:
         if self.persona_failed and result.outcome in {"reply", "verified_complete"}:
             result.outcome = "partial"
             result.message = "The team did not finish all assigned work. " + result.message
+        if v2flags.enabled("PANINI_PERSONAS") and result.message != last_persona_text:
+            self._persona_message(result.message)
         result.plan, result.evidence, result.steps = self.plan, self.evidence[-50:], step
         registry = getattr(self, "registry", None)
         if registry is not None and not self.depth:
@@ -945,6 +943,30 @@ class Agent:
         if session_id:
             self.h.sessions.save(session_id, items, summary=summary, title=goal[:80])
         return result
+
+    def _persona_message(self, text):
+        from .. import v2flags
+
+        enabled = v2flags.enabled("PANINI_PERSONAS")
+        if self.observe:
+            self.observe(
+                "message",
+                text=text,
+                persona_id=self.persona_id,
+                persona=self.h.personas.presentation(self.persona_id) if enabled else None,
+            )
+        if enabled:
+            self.h.store.execute(
+                "INSERT INTO persona_messages(thread_id,run_id,persona_id,kind,text,created) VALUES (?,?,?,?,?,?)",
+                (
+                    self.thread_id,
+                    (self.brain or {}).get("run"),
+                    self.persona_id,
+                    "assistant",
+                    text[:16000],
+                    time.time(),
+                ),
+            )
 
     async def _calls(self, calls, items, summary, step):
         """Run one round's tool calls in order. If one parks (an approval, or a tool in the person's app), the

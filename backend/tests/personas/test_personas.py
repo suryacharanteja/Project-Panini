@@ -196,6 +196,38 @@ async def test_agent_blocks_meta_tool_bypass_archival_and_cross_scope_delete(har
 
 
 @pytest.mark.anyio
+async def test_avatar_finish_message_has_public_identity_and_durable_attribution(harness):
+    harness.personas.update("scout", name="Scout", color="cyan", instructions="PRIVATE_INSTRUCTIONS")
+    harness.model_factory = lambda: ScriptedModel(
+        [
+            {
+                "calls": [
+                    {
+                        "name": "finish",
+                        "arguments": {"outcome": "partial", "message": "Scout's draft is ready for review."},
+                    }
+                ]
+            }
+        ]
+    )
+    observed, emitted = [], []
+    agent = harness.agent(
+        delegate=forbidden_delegate,
+        surface="avatar",
+        emit=lambda kind, message, **data: emitted.append((kind, data)),
+    )
+    agent.observe = lambda event, **data: observed.append((event, data))
+    thread = harness.sessions.create("Avatar")
+    result = await agent.run("@Scout prepare a draft", session_id=thread)
+    message = next(data for kind, data in observed if kind == "message")
+    assert message["persona"] == {"id": "scout", "name": "Scout", "color": "cyan"}
+    assert message["text"] == result.message
+    assert next(data["persona"] for kind, data in emitted if kind == "persona") == message["persona"]
+    rows = harness.store.all("SELECT persona_id,text FROM persona_messages WHERE thread_id=?", (thread,))
+    assert [dict(row) for row in rows] == [{"persona_id": "scout", "text": result.message}]
+
+
+@pytest.mark.anyio
 async def test_team_attribution_depth_and_budget(harness):
     from backend.brain.control_tools import delegate_to_persona, run_team
 

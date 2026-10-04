@@ -164,6 +164,8 @@ Implemented:
 - Cumulative cost, step and active-time budgets retained across attempts; run rows record only new own spending, and daily limits count recorded costs once. An over-budget model turn cannot dispatch its tools.
 - Assigned sandbox computer selection, Chrome/managed browser permission separation, attributed run principals and ledger receipts.
 - Admin persona editor, permission switches, defaults, effect-free identity preview and attributed conversation messages.
+- Authenticated phone persona chooser and task-scoped attributed replies, exposing only public identity fields. Archived identities remain readable in history; disabled Personas hides the metadata.
+- Avatar persona name, palette accents and an attributed conversation panel, retaining the JARVIS canvas and its existing status animations. Final `finish` replies are attributed and stored as well as intermediate messages.
 
 Default adjustment: new specialists use `memory_scope=persona` and `memory_write=false`; they have no memory grant by default. PANINI itself retains global memory. This makes a new specialist private by default while preserving the explicit global setting.
 
@@ -171,10 +173,12 @@ Verification: `backend/tests/personas/test_personas.py` covers isolation, contex
 
 Remaining before LLD completion:
 
-- Full persona colour/name chips and voice presentation across the avatar and phone, including live voice switching qualification.
+- Per-persona live voice selection and switching, including provider qualification.
 - Spaces access/default-destination integration (V2-19), and channel permission integration when V2-17 exists.
 - Persona cases in the evaluation scorecard and a live research-to-writing team qualification.
 
 Continuation evidence: `backend/tests/agui/test_persona_resume.py` exercises the real HTTP/SSE, policy, ledger and SQLite checkpoint paths with scripted models and a local test hand. Teams, direct delegates and reviewers each pause twice on identical writes; completed research is not repeated, each approved write happens once, and every model turn is charged once. The stream runner is recreated between requests. Additional cases cover decline, flag rollback, archive, grant revocation and exhausted cost/time budgets. This qualifies the local continuation path, not a live-provider or remote-device deployment.
 
 `PANINI_PERSONAS` stays off by default. Existing remote enablement gates are unchanged; red-team work is in progress and aside.
+
+Presentation evidence: `npm run phone:smoke` exercises encrypted pairing, the Scout chooser, attributed task history, signed approvals, reload, offline recovery and revocation against a throwaway loopback fabric with a scripted response. Six phone identity palettes pass contrast checks in light and dark themes. `npm run personas:ui:smoke` checks PANINI/Scout/Quill identity changes, canvas palette changes, escaped message text, compact and full-stage layouts through the shell preview bridge. Screenshots were inspected. The bridge mocks native window controls; this is browser qualification, not physical Android, Electron installation or live voice qualification.

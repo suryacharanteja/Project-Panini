@@ -1,4 +1,5 @@
 import { action, h, toast, when } from './ui.mjs';
+import { personaChip } from './persona.mjs';
 
 export async function threads(app) {
   const reply = await app.fabric.request('GET', '/threads');
@@ -17,6 +18,14 @@ export async function threads(app) {
         h('p.eyebrow', { text: task.status.replaceAll('_', ' ') }),
         h('p', { text: task.goal }),
         task.result ? h('pre', { text: JSON.stringify(task.result, null, 2) }) : null,
+        ...(detail.body.messages || []).map((message) =>
+          h(
+            'div.persona-message',
+            {},
+            personaChip(message.persona),
+            h('p', { text: message.text }),
+          ),
+        ),
         h('h3', { text: 'Activity' }),
         h(
           'ol',

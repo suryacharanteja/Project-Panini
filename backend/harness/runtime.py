@@ -362,9 +362,10 @@ class Harness:
             confirm=self._background_confirm(task) if active() else None,
             private=not external,
             background=True,
-            surface="phone_app" if task.get("origin") == "phone" else "background",
+            surface="phone_app" if task.get("origin") in {"phone", "phone-share"} else "background",
         )
         agent.run_id = task["id"]
+        agent.thread_id = task["id"]
 
         # V2-06: a run parked on an approval continues from its last checkpoint; the ledger replays any
         # step that already happened, and the approved action passes once.

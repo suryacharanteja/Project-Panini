@@ -265,6 +265,8 @@ export function Capabilities({
 /** The large avatar, drawn across the whole stage so threads can reach the capability cards. */
 export function Engine({
   state,
+  personaColor,
+  personaName = 'PANINI',
   capability,
   micLevel,
   voiceLevel,
@@ -274,6 +276,8 @@ export function Engine({
   listening,
 }: {
   state: AvatarState;
+  personaColor?: string;
+  personaName?: string;
   capability: string;
   micLevel: () => number;
   voiceLevel: () => number;
@@ -307,6 +311,7 @@ export function Engine({
       <div className="engine-layer" ref={layer} aria-hidden="true">
         <Avatar
           state={state}
+          personaColor={personaColor}
           capability={capability}
           micLevel={micLevel}
           voiceLevel={voiceLevel}
@@ -316,10 +321,10 @@ export function Engine({
       </div>
       <section
         className={`engine state-${state}`}
-        aria-label={`PANINI is ${STATE_CAPTIONS[state][1].toLowerCase()}`}
+        aria-label={`${personaName} is ${STATE_CAPTIONS[state][1].toLowerCase()}`}
       >
         <div className="panel-title">
-          PANINI <span> / AṢṬĀDHYĀYĪ</span>
+          {personaName} <span> / AṢṬĀDHYĀYĪ</span>
         </div>
         <button
           type="button"

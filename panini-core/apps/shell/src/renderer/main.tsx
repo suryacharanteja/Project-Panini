@@ -9,6 +9,7 @@ import { ShellLive } from './ShellLive';
 import { Avatar, type AvatarState, levelMeter } from './avatar/Avatar';
 import { avatarStateFor } from './avatar/state';
 import { Backdrop, Capabilities, Engine, Lexicon, StageTitle } from './Stage';
+import { presentation } from '../../../phone/lib/persona.mjs';
 
 declare global {
   interface Window {
@@ -103,6 +104,10 @@ function App() {
   const [input, setInput] = useState(''),
     [message, setMessage] = useState('Preparing your conversation…'),
     [phase, setPhase] = useState('connecting');
+  const [persona, setPersona] = useState(presentation(null));
+  const [personaMessages, setPersonaMessages] = useState<
+    { name: string; color: string; text: string }[]
+  >([]);
   const [caption, setCaption] = useState(''),
     [results, setResults] = useState<any[]>([]),
     [error, setError] = useState('');
@@ -295,12 +300,36 @@ function App() {
           setSteps([]);
           setChoices([]);
           setTools([]);
+          setPersona(presentation(null));
+          setPersonaMessages([]);
+        }
+        if (data.persona) {
+          const p = presentation(data.persona);
+          setPersona(p);
+          if (data.agent_event === 'persona.message')
+            setPersonaMessages((all) =>
+              [
+                ...all,
+                { name: p.name, color: p.color, text: String(data.message || '').slice(0, 16000) },
+              ].slice(-20),
+            );
         }
         // V2-07: each agent tool call arrives as a card (redacted arguments and result).
         if (data.agent_event === 'tool.started' && data.tool?.id)
-          setTools((all) => [...all.filter((t) => t.id !== data.tool.id), { id: String(data.tool.id), name: String(data.tool.name || ''), args: data.tool.args }].slice(-12));
+          setTools((all) =>
+            [
+              ...all.filter((t) => t.id !== data.tool.id),
+              {
+                id: String(data.tool.id),
+                name: String(data.tool.name || ''),
+                args: data.tool.args,
+              },
+            ].slice(-12),
+          );
         if (data.agent_event === 'tool.finished' && data.tool?.id)
-          setTools((all) => all.map((t) => (t.id === data.tool.id ? { ...t, output: data.tool.output ?? '' } : t)));
+          setTools((all) =>
+            all.map((t) => (t.id === data.tool.id ? { ...t, output: data.tool.output ?? '' } : t)),
+          );
         if (data.execution) setExecution(data.execution);
         if (data.outcome) setOutcome(data.outcome);
         if (data.steps) setSteps(data.steps);
@@ -485,6 +514,8 @@ function App() {
           <Backdrop />
           <Engine
             state={avatarState}
+            personaColor={persona.color}
+            personaName={persona.name}
             capability={activeCap}
             micLevel={() => (muted ? 0 : (micMeter.current?.read() ?? 0))}
             voiceLevel={() => voiceMeter.current?.read() ?? 0}
@@ -510,6 +541,7 @@ function App() {
       {!open && (
         <Bubble
           state={avatarState}
+          persona={persona}
           capability={activeCap}
           message={message}
           micLevel={() => (muted ? 0 : (micMeter.current?.read() ?? 0))}
@@ -527,6 +559,7 @@ function App() {
         >
           <Avatar
             state={avatarState}
+            personaColor={persona.color}
             capability={activeCap}
             micLevel={() => (muted ? 0 : (micMeter.current?.read() ?? 0))}
             voiceLevel={() => voiceMeter.current?.read() ?? 0}
@@ -534,7 +567,7 @@ function App() {
           />
         </button>
         <div className="brand">
-          <strong>PANINI</strong>
+          <strong title={persona.name}>{persona.name}</strong>
           <span>
             {mic
               ? muted
@@ -604,6 +637,19 @@ function App() {
             <p className="message" role="status" aria-live="polite">
               {message}
             </p>
+            {personaMessages.length > 0 && (
+              <details className="persona-timeline">
+                <summary>Team conversation</summary>
+                {personaMessages.map((item, index) => (
+                  <div key={index}>
+                    <span className="persona-chip" data-color={item.color}>
+                      {item.name}
+                    </span>
+                    <p>{item.text}</p>
+                  </div>
+                ))}
+              </details>
+            )}
             {background &&
               (background.running || background.queued > 0 || background.reviews > 0) && (
                 <p className="background-work" role="status" aria-live="polite">
@@ -1093,6 +1139,7 @@ function Bubble({
   state,
   capability,
   message,
+  persona,
   micLevel,
   voiceLevel,
   reducedMotion,
@@ -1101,6 +1148,7 @@ function Bubble({
   state: AvatarState;
   capability: string;
   message: string;
+  persona: { name: string; color: string };
   micLevel: () => number;
   voiceLevel: () => number;
   reducedMotion: boolean;
@@ -1116,7 +1164,7 @@ function Bubble({
       className={`bubble state-${state}`}
       role="button"
       tabIndex={0}
-      aria-label={`PANINI: ${status}. ${message}. Press Enter to open.`}
+      aria-label={`${persona.name}: ${status}. ${message}. Press Enter to open.`}
       title={`${status}: ${message}\nClick to open, drag to move`}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') onOpen();
@@ -1146,6 +1194,7 @@ function Bubble({
       <div className="bubble-avatar">
         <Avatar
           state={state}
+          personaColor={persona.color}
           capability={capability}
           micLevel={micLevel}
           voiceLevel={voiceLevel}

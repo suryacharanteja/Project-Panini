@@ -206,6 +206,21 @@ async def threads(request: Request):
     return {"threads": [_thread_view(task) for task in _harness(request).tasks.list(limit=50)]}
 
 
+@router.get("/personas")
+async def personas(request: Request):
+    _fabric(request)
+    from .. import v2flags
+
+    if not v2flags.enabled("PANINI_PERSONAS"):
+        return {"enabled": False, "personas": [], "default_id": "panini"}
+    service = _harness(request).personas
+    return {
+        "enabled": True,
+        "personas": [service.presentation(p["id"]) for p in service.list()],
+        "default_id": service.surface_default("phone_app"),
+    }
+
+
 @router.get("/threads/{task_id}")
 async def thread(task_id: str, request: Request):
     _fabric(request)
@@ -214,7 +229,23 @@ async def thread(task_id: str, request: Request):
         task = tasks.get(task_id)
     except KeyError:
         raise HTTPException(404, "This task is no longer available.") from None
-    return {"thread": _thread_view(task), "events": tasks.events(task_id=task_id, limit=100)}
+    from .. import v2flags
+
+    h = _harness(request)
+    messages = []
+    if v2flags.enabled("PANINI_PERSONAS"):
+        rows = h.store.all(
+            "SELECT id,persona_id,text,created FROM persona_messages WHERE thread_id=? ORDER BY id DESC LIMIT 100",
+            (task_id,),
+        )
+        messages = [
+            {**dict(row), "persona": h.personas.presentation(row["persona_id"])} for row in reversed(rows)
+        ]
+    return {
+        "thread": _thread_view(task),
+        "events": tasks.events(task_id=task_id, limit=100),
+        "messages": messages,
+    }
 
 
 @router.post("/threads/{task_id}/stop")

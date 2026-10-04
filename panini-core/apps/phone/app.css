@@ -258,3 +258,58 @@ nav button {
   max-height: 300px;
   overflow-y: auto;
 }
+.persona-chip {
+  display: inline-block;
+  border: 1px solid currentColor;
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: #865123;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.persona-chip[data-color='cyan'] {
+  color: #136770;
+}
+.persona-chip[data-color='violet'] {
+  color: #664295;
+}
+.persona-chip[data-color='green'] {
+  color: #266843;
+}
+.persona-chip[data-color='amber'] {
+  color: #765800;
+}
+.persona-chip[data-color='rose'] {
+  color: #923758;
+}
+.persona-message,
+.persona-timeline > div {
+  border-left: 1px solid #b8733340;
+  margin: 12px 0;
+  padding: 8px 12px;
+}
+.persona-timeline p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (prefers-color-scheme: dark) {
+  .persona-chip {
+    color: #e8b89a;
+  }
+  .persona-chip[data-color='cyan'] {
+    color: #4ecdd6;
+  }
+  .persona-chip[data-color='violet'] {
+    color: #b99cff;
+  }
+  .persona-chip[data-color='green'] {
+    color: #76d2a0;
+  }
+  .persona-chip[data-color='amber'] {
+    color: #ffbf00;
+  }
+  .persona-chip[data-color='rose'] {
+    color: #f292b1;
+  }
+}

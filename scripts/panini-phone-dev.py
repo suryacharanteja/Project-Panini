@@ -24,6 +24,9 @@ sys.path.insert(0, str(ROOT))
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--phone-port", type=int, default=3211)
 parser.add_argument("--control-port", type=int, default=3212)
+parser.add_argument(
+    "--personas", action="store_true", help="Show scripted specialist presentation in the isolated preview."
+)
 args = parser.parse_args()
 PHONE_PORT, CONTROL_PORT = args.phone_port, args.control_port
 if not (1024 <= PHONE_PORT <= 65535 and 1024 <= CONTROL_PORT <= 65535) or PHONE_PORT == CONTROL_PORT:
@@ -37,6 +40,8 @@ class MemorySecrets(dict):
 
 async def main():
     import os
+
+    os.environ["PANINI_PERSONAS"] = "true" if args.personas else "false"
 
     os.environ.setdefault(
         "PANINI_LIVE_VIEW", "true"
@@ -57,16 +62,32 @@ async def main():
     from backend.harness.tasks import Tasks
 
     tasks = Tasks(store)
+    from backend.personas import Personas
+
+    persona_policy = policy.Policy(store)
+    personas = Personas(
+        store, persona_policy, identity_read=lambda: "Preview identity", identity_write=lambda _: None
+    )
+    if args.personas:
+        personas.create("scout", name="Scout", color="cyan")
     asks = []
 
     def submit(goal, **kw):
         asks.append({"goal": goal, **{k: v for k, v in kw.items() if k in ("origin", "title")}})
-        return tasks.submit(goal, **kw)
+        task = tasks.submit(goal, **kw)
+        if args.personas and goal.startswith("@scout "):
+            store.execute(
+                "INSERT INTO persona_messages(thread_id,persona_id,kind,text,created) VALUES (?,?,?,?,?)",
+                (task["id"], "scout", "assistant", "Scripted preview: Scout received this request.", 1),
+            )
+        return task
 
     app = FastAPI()
     app.include_router(remote_router)
     app.include_router(live_routes.remote_router)
     app.state.harness = SimpleNamespace(
+        store=store,
+        personas=personas,
         interrupts=interrupts,
         status=lambda: {"running": 0, "queued": len(asks)},
         notices=SimpleNamespace(
@@ -76,7 +97,7 @@ async def main():
             submit=submit, list=tasks.list, get=tasks.get, events=tasks.events, cancel=tasks.cancel
         ),
     )
-    policy.install(policy.Policy())
+    policy.install(persona_policy)
     fabric = Fabric(app, store, MemorySecrets(), settings_path=Path(tempfile.mkdtemp()) / "fabric.json")
     live.hub().publish(None, "sandbox", "panini", (ROOT / "panini-core/apps/phone/icons/icon-512.png").read_bytes(),
                        {"url": "https://example.com/", "title": "Sample frame"})  # fmt: skip
