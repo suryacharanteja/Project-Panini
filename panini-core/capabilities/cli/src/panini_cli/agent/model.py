@@ -53,7 +53,16 @@ class OpenAIModel:
             self.model = model
             self.reasoning = True
 
-    async def respond(self, instructions, items, tools, on_text=None, output_schema=None, cache_key=None):
+    async def respond(
+        self,
+        instructions,
+        items,
+        tools,
+        on_text=None,
+        output_schema=None,
+        cache_key=None,
+        max_output_tokens=None,
+    ):
         import openai
 
         params = {
@@ -67,6 +76,8 @@ class OpenAIModel:
         }
         if cache_key:
             params["prompt_cache_key"] = cache_key
+        if max_output_tokens is not None:
+            params["max_output_tokens"] = max_output_tokens
         if output_schema:
             params["text"] = {
                 "format": {
@@ -165,7 +176,16 @@ class ScriptedModel:
     def from_file(cls, path):
         return cls(json.loads(Path(path).read_text(encoding="utf-8")))
 
-    async def respond(self, instructions, items, tools, on_text=None, output_schema=None, cache_key=None):
+    async def respond(
+        self,
+        instructions,
+        items,
+        tools,
+        on_text=None,
+        output_schema=None,
+        cache_key=None,
+        max_output_tokens=None,
+    ):
         self.requests.append({"instructions": instructions, "items": json.loads(json.dumps(items))})
         step = self.steps.pop(0) if self.steps else {"text": "Done."}
         if step.get("delay"):

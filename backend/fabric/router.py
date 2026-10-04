@@ -348,6 +348,7 @@ async def calls(request: Request):
             "usage_seconds": (row["outcome"] or {}).get("usage_seconds"),
             "final_usage_seconds": (row["outcome"] or {}).get("final_usage_seconds"),
             "finalization_confirmed": (row["outcome"] or {}).get("finalization_confirmed", False),
+            "outcome_report": row["outcome_report"],
         }
         for row in outbound.status()["briefs"]
         if row["receipt_id"]

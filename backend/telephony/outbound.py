@@ -23,6 +23,7 @@ from ..panini.contracts import Fault
 from .brief import CallBrief
 from .inbound import SESSION_ID, limit
 from .numbers import calling_window, validate
+from .outcomes import OutcomeReports
 from .schedule import CallSchedule
 
 CHECKLIST = (
@@ -80,6 +81,7 @@ class OutboundCalls:
         self.live_provider = provider is None
         self.loop, self.work, self.active, self.inbound = None, None, None, None
         self.lock = asyncio.Lock()
+        self.reports = OutcomeReports(self)
 
     def settings(self):
         row = self.store.one("SELECT * FROM outbound_settings WHERE id=1")
@@ -163,6 +165,7 @@ class OutboundCalls:
         for key in ("brief", "outcome", "schedule"):
             if row[key]:
                 row[key] = json.loads(row[key])
+        row["outcome_report"] = self.reports.get(identifier)
         return row
 
     def status(self):
@@ -385,6 +388,7 @@ class OutboundCalls:
         return response.json() if action == "create" else None
 
     async def tick(self):
+        self.reports.tick()
         self.prune_scheduled()
         if self.active:
             call = self.active
@@ -763,6 +767,9 @@ class OutboundCalls:
             call["pending"].discard(review["id"])
 
     async def control(self, identifier, action, text=None):
+        if action == "review-report":
+            self.reports.review(identifier)
+            return
         if action == "cancel":
             self.cancel_pending(identifier, "Cancelled by the owner before dialing.")
             return
@@ -838,6 +845,8 @@ class OutboundCalls:
                     "finalization_confirmed": call["finalization_confirmed"],
                     "keypad_events": call["keypad"],
                     "provider_error_code": call["provider_error_code"],
+                    "answered": call["answered"] is not None,
+                    "disclosure_confirmed": call["disclosed"],
                     "transcript_artifact_id": transcript,
                 }
                 self.h.ledger.end(
@@ -861,10 +870,12 @@ class OutboundCalls:
                     outcome["summary"],
                     dedupe="outbound:" + call["id"],
                 )
+                self.reports.enqueue(call["id"])
             finally:
                 self.active = None
 
     async def recover(self):
+        self.reports.recover()
         for row in self.store.all(
             "SELECT * FROM outbound_briefs WHERE state IN ('creating','connecting','ringing','answered','transferring')"
         ):
@@ -890,6 +901,7 @@ class OutboundCalls:
             self.loop = asyncio.create_task(self.maintain())
 
     async def close(self):
+        await self.reports.close()
         if self.loop:
             self.loop.cancel()
             await asyncio.gather(self.loop, return_exceptions=True)

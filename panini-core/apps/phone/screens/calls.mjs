@@ -1,6 +1,7 @@
 import { h, action, toast } from './ui.mjs';
 import { personaChip } from './persona.mjs';
 import { saveSource } from './spaces.mjs';
+import { callReport } from './call-report.mjs';
 
 export async function calls(app) {
   const revision = app.viewRevision;
@@ -120,6 +121,7 @@ export async function calls(app) {
             })
           : null,
         call.receipt_id ? savedSources.get(call.receipt_id) : null,
+        call.outcome_report ? callReport(app, call.id, call.outcome_report) : null,
       );
     }
     const pending = (outbound.body.briefs || []).filter((row) =>

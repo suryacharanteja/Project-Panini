@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, harness, useResource } from '../api';
 import { Badge, Button, Card, inputClass, useAction } from '../components/ui';
+import { OutboundReport, type CallReport } from './OutboundReport';
 
 const acknowledgements = {
   personal_tasks_only: 'Personal tasks only; no marketing or bulk calling.',
@@ -43,6 +44,7 @@ type Row = {
     finalization_confirmed?: boolean;
   };
   schedule?: { mode: string; at_utc: string; not_before: number; latest_start: number };
+  outcome_report?: CallReport;
 };
 type Status = {
   enabled: boolean;
@@ -485,6 +487,17 @@ export function OutboundPanel() {
               </p>
             )}
             {row.receipt_id && <p className="text-xs text-faint">Receipt {row.receipt_id}</p>}
+            {row.outcome_report && (
+              <OutboundReport
+                report={row.outcome_report}
+                review={() =>
+                  void act(
+                    `report-${row.id}`,
+                    `/outbound/${encodeURIComponent(row.id)}/review-report`,
+                  )
+                }
+              />
+            )}
           </article>
         ))}
       </Card>

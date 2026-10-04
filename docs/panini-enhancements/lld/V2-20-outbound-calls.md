@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 5 · P2 · L (1.5 weeks) |
 | Depends on | V2-16 (telephony foundation), V2-13 (callee-injection cases), V2-15 (approvals) |
 | Flag | `PANINI_OUTBOUND_CALLS` (default `false`) |
-| Status | In progress: reviewed SIP lifecycle, scheduled calling windows, owner controls and usage receipts built; real calls, keypad automation and interpreted outcomes pending |
+| Status | In progress: reviewed SIP lifecycle, scheduled calling windows, owner controls and usage receipts built; quote-cited interpretations built; real calls, keypad automation and live outcome qualification pending |
 | Decision | Register D7 (call scope); compliance checklist signed by the owner before enabling |
 
 ## 1. Outcome
@@ -256,3 +256,30 @@ Development checks use isolated fake SIP/voice and real storage, reviews, UI and
 disclosure, SIP/IVR, actual takeover, interpreted task outcomes, approved read-only brain lookups,
 physical Android and production release qualification remain open. See the
 [qualification report](../qualification-outbound-scheduling-2026-10-04.md).
+
+
+## 13. Quoted outcome interpretations — 2026-10-04
+
+Migration 0028 links a separate interpretation to a completed answered call with monitored disclosure
+and an intact, untrusted transcript artifact. The immutable call receipt is retained. A fresh model receives
+only the reviewed brief and merged speaker turns: no tools, memory, owner connectors or follow-up effects.
+Strict structured output is bounded to 3,000 output tokens, thirty seconds and one attempt per call; daily
+interpretation attempts have a separate cap using `PANINI_OUTBOUND_PER_DAY`. Unknown or interrupted work
+becomes unavailable, never automatically retried. Pending unattempted work can resume after restart.
+
+Every finding must quote an exact callee utterance. Assistant statements, unknown goals and commitments
+outside reviewed permissions are rejected. Achieved proposals must cover every reviewed outcome and contain
+no explicitly unresolved, declined or voicemail finding. These deterministic checks establish quote matching
+and structural consistency, **not semantic entailment or a real booking**. Results always remain model
+interpretations, even after owner assessment. Fixed follow-ups are suggestions; they never run an action.
+
+Optional Inbox review binds the source digest and exact report digest, uses the existing owner-only decision
+rules, expires after one hour and records a separate linked assessment receipt. Expired reviews can reopen;
+replayed decisions do not duplicate receipts. Accepting never updates a calendar, sends a message or grants
+new call permissions. Admin and paired PWA show quotes, proposed status, assessment and suggestions. The PWA
+restores current report state before asking for review; its shell cache includes the new module.
+
+The 25 new deterministic checks, full repository checks and real browser/fake-provider flows are development
+evidence. No live model outcome benchmark, actual booking, real audible SIP call or physical Android test is
+claimed. V2-20 and production qualification remain open; red-team remains disabled and deferred. See the
+[qualification report](../qualification-outbound-outcomes-2026-10-04.md).

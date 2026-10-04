@@ -1,6 +1,7 @@
 """Loopback-only outbound UI preview. Isolated vault/database and fake SIP/voice; no external calls."""
 
 import asyncio
+import json
 import mimetypes
 import os
 import sys
@@ -43,7 +44,21 @@ def main():
     from backend.harness.runtime import Harness
     from backend.telephony.outbound import OutboundCalls
 
-    h = Harness(model_factory=lambda: ScriptedModel([{"text": "Preview"}]))
+    quote = "Your appointment is confirmed for Thursday afternoon next week."
+    proposal = {
+        "suggested_status": "achieved",
+        "findings": [
+            {
+                "kind": "outcome",
+                "text": "Callee reports an afternoon appointment next week.",
+                "outcome_index": 0,
+                "commitment_permission": None,
+                "citations": [{"utterance_id": 1, "quote": quote}],
+            }
+        ],
+        "follow_ups": ["review_calendar_entry"],
+    }
+    h = Harness(model_factory=lambda: ScriptedModel([{"text": json.dumps(proposal)}]))
     observed = []
 
     async def provider(action, session_id=None, body=None):
@@ -63,6 +78,8 @@ def main():
             await self.on_event(
                 {"type": "transcript", "role": "assistant", "delta": h.outbound.active["brief"].disclosure()}
             )
+
+            await self.on_event({"type": "transcript", "role": "user", "delta": quote})
 
         async def speak(self, text, **kwargs):
             pass

@@ -100,6 +100,32 @@ try {
     ['create', 'session.instructions.append', 'hangup'],
   );
   assert(preview.status.briefs[0].receipt_id && preview.status.briefs[0].transcript_artifact_id);
+  const interpretation = page.getByRole('region', { name: 'Call interpretation' }).first();
+  await interpretation.getByRole('button', { name: 'Review interpretation in Inbox' }).waitFor();
+  await interpretation.getByText('Callee quote', { exact: false }).waitFor();
+  assert((await interpretation.textContent()).includes('no booking or follow-up action'));
+  await interpretation.getByRole('button', { name: 'Review interpretation in Inbox' }).click();
+  await interpretation.getByRole('button', { name: 'Review waiting in Inbox' }).waitFor();
+  status = await request('/api/harness/outbound');
+  const reportRow = status.briefs.find((row) => row.id === preview.status.briefs[0].id);
+  const reportReview = await request(
+    '/api/harness/interrupts/' + reportRow.outcome_report.review_interrupt_id,
+  );
+  assert.equal(reportReview.reason, 'outbound_report');
+  assert.equal(reportReview.preview.interpretation.independently_verified, false);
+  await request('/api/harness/interrupts/' + reportReview.id, 'POST', {
+    nonce: reportReview.nonce,
+    action_digest: reportReview.action_digest,
+    status: 'resolved',
+    payload: { approved: true },
+  });
+  await interpretation.getByText('Owner accepted', { exact: false }).waitFor();
+  const assessed = (await request('/api/harness/outbound')).briefs.find(
+    (row) => row.id === reportRow.id,
+  );
+  assert.equal(assessed.receipt_id, reportRow.receipt_id);
+  assert.equal(assessed.outcome_report.payload.independently_verified, false);
+  assert(assessed.outcome_report.review_receipt_id);
   // Schedule through the actual Admin form; approval preserves the reviewed time without dialing early.
   await page.getByLabel('Call timing', { exact: true }).selectOption('at');
   const chosen = new Date('2026-10-04T17:00:00Z');
@@ -176,6 +202,10 @@ try {
   );
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: `${evidence}/admin-mobile.png`, fullPage: true });
+  await page
+    .getByRole('region', { name: 'Call interpretation' })
+    .first()
+    .screenshot({ path: `${evidence}/admin-outcome.png` });
   assert.deepEqual(errors, []);
   const first = preview.status.briefs[0].brief;
   const phoneBrief = await request('/api/harness/outbound/briefs', 'POST', {
@@ -212,7 +242,23 @@ try {
       request: async (method, path, body) => {
         if (path === '/calls') {
           const state = await (await fetch('/preview/state', { headers })).json();
-          return { status: 200, body: { active: state.status.active, calls: [] } };
+          return {
+            status: 200,
+            body: {
+              active: state.status.active,
+              calls: state.status.briefs
+                .filter((row) => row.state === 'ended')
+                .map((row) => ({
+                  id: row.id,
+                  state: row.state,
+                  direction: 'outbound',
+                  duration_s: row.outcome.duration_s,
+                  receipt_id: row.receipt_id,
+                  summary: row.outcome.summary,
+                  outcome_report: row.outcome_report,
+                })),
+            },
+          };
         }
         const target = path.startsWith('/calls/') ? path.replace('/calls/', '/outbound/') : path;
         const response = await fetch('/api/harness' + target, {
@@ -223,9 +269,30 @@ try {
         return { status: response.status, body: await response.json() };
       },
     };
-    const app = { fabric, viewRevision: 1, show() {} };
+    const app = {
+      fabric,
+      viewRevision: 1,
+      show(view) {
+        window.previewShown = view;
+      },
+    };
     document.body.replaceChildren(await calls(app));
   });
+  const phoneReport = page
+    .getByRole('region', { name: 'Call interpretation' })
+    .filter({
+      has: page.getByRole('button', { name: 'Review interpretation in Inbox', exact: true }),
+    })
+    .first();
+  await phoneReport
+    .getByRole('button', { name: 'Review interpretation in Inbox', exact: true })
+    .click();
+  await page.waitForFunction(() => window.previewShown === 'inbox');
+  const phoneReportRow = (await request('/api/harness/outbound')).briefs.find(
+    (row) => row.id === planned.id,
+  );
+  assert(phoneReportRow.outcome_report.review_interrupt_id);
+  assert.equal(phoneReportRow.outcome_report.state, 'ready');
   await page.getByLabel('Owner call note').fill('Keep the original brief');
   await page.getByRole('button', { name: 'Send owner note' }).click();
   await page.waitForFunction(() => document.querySelector('.outbound-note').value === '');
@@ -244,7 +311,7 @@ try {
   await page.getByRole('heading', { name: 'No active call' }).waitFor();
   assert.deepEqual(errors, []);
   console.log(
-    'PASS real setup, credential clearing, draft/edit replacement, exact review approval, chosen time, no early dispatch, scheduled fake SIP dispatch, PC/PWA cancellation, fake SIP create/disclosure/note/hangup, transcript and receipt; desktop/mobile fit; real phone screen note/transfer through a fake fabric adapter. No real call or physical device.',
+    'PASS real setup, credential clearing, draft/edit replacement, exact review approval, chosen time, no early dispatch, scheduled fake SIP dispatch, PC/PWA cancellation, fake SIP create/disclosure/note/hangup, transcript and receipt; desktop/mobile fit; quote-cited report, PC owner assessment and phone restore-before-review; real phone screen note/transfer through a fake fabric adapter. No real call or physical device.',
   );
 } catch (error) {
   console.error(JSON.stringify(await request('/preview/state')));
