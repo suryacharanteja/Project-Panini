@@ -27,6 +27,7 @@ import { Home } from './pages/Home';
 import { ProjectsPage } from './pages/Projects';
 import { PersonasPage } from './pages/Personas';
 import { PhonePage } from './pages/Phone';
+import { ChannelsPage } from './pages/Channels';
 import { AutomationsPage, InboxPage, MemoryPage, RunsPage } from './pages/Work';
 import './styles.css';
 
@@ -63,6 +64,7 @@ const routeTree = root.addChildren([
   page('/build/safety', SafetyPage),
   page('/build/remote', RemotePage),
   page('/build/phone', PhonePage),
+  page('/build/channels', ChannelsPage),
   page('/build/permissions', PermissionsPage),
   page('/memory', MemoryPage),
   page('/capabilities/$name', CapabilityPage),

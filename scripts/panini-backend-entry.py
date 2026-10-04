@@ -14,6 +14,7 @@ if __name__ == "__main__":
     from backend.app import app
 
     if sys.argv[1:2] == ["--check-runtime"]:
+        from backend.channels.telegram import Telegram  # noqa: F401
         from backend.fabric.passkeys import Passkeys  # noqa: F401
         from backend.fabric.transports.listener import PHONE
         from backend.harness.learning import persona
@@ -21,7 +22,16 @@ if __name__ == "__main__":
 
         if not persona() or not (PHONE / "lib/passkeys.mjs").is_file():
             raise RuntimeError("The packaged identity or phone application is missing.")
-        for table in ("schema_migrations", "pages", "device_passkeys", "passkey_ceremonies"):
+        for table in (
+            "schema_migrations",
+            "pages",
+            "device_passkeys",
+            "passkey_ceremonies",
+            "channel_accounts",
+            "channel_jobs",
+            "channel_outbox",
+            "channel_state",
+        ):
             if not app.state.harness.store.one(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
             ):

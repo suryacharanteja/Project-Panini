@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 3 · P1 · L (1.5 weeks; channels can ship one at a time) |
 | Depends on | V2-06 (run engine), V2-13 (guardian gate), V2-14 (WhatsApp ingress only) |
 | Flag | `PANINI_CHANNELS` = comma list of `slack`, `telegram`, `whatsapp`, `email` (default empty) |
-| Status | Not started |
+| Status | In progress: Telegram text workflow and shared manager built; live-provider qualification and other channels pending |
 | Decision | Register D5 (WhatsApp Cloud API only) |
 
 ## 1. Outcome
@@ -180,10 +180,34 @@ CREATE TABLE IF NOT EXISTS channel_messages(channel TEXT NOT NULL, message_id TE
 
 ## 9. Rollout and rollback
 
-Enable channels one by one in Admin (each requires the V2-13 gate). Rollback: remove the channel from
+Enable channels one by one in Admin. The owner has disabled/deferred the V2-13 red-team gate;
+this increment remains a development release with action approvals enforced. Rollback: remove the channel from
 `PANINI_CHANNELS`; bindings remain.
 
 ## 10. Open questions
 
 - Allow trusted contacts (family) to ask PANINI for shared information (for example a family calendar)?
   Recommendation: later, through a dedicated persona with read-only grants (V2-18).
+
+## 11. Telegram text increment — 2026-10-04
+
+Migration 0025 adds account configuration, inbound dedupe, channel jobs, polling offsets and a durable
+reply outbox. Bot credentials use the existing DPAPI vault; responses expose only a configured boolean.
+The Bot API adapter long-polls the official API, persists offsets only after durable intake, and replies
+as bounded plain text. Numeric owner/group allow-lists, human-only intake, paused behavior, per-account
+task limits and bounded reply queues are enforced. Edited messages do not start work.
+
+Each accepted message creates an existing leased task bound to a persistent channel conversation.
+The channel principal is preserved in run records and receipts. Channel policy is enforced even when
+local policy is shadow/off; effects park on interrupts on the PC/paired phone. Account/group revocation
+cancels queued work and stops in-flight hands. A reopened database resumes a parked memory write after
+phone approval without repeating it. Channel text cannot resolve approvals.
+
+Replies are deduplicated durably. Explicit 429 rejections respect Retry-After and preserve chunk order;
+timeouts/crashes during sending become unknown delivery and are not blindly resent. Provider messages
+and bot credentials are redacted from logs. Admin Build → Channels configures and disables accounts.
+
+The browser check uses real Admin APIs, a real durable worker and a fake Telegram HTTP provider in an
+isolated loopback preview. It does not qualify a live bot. Telegram attachment/voice input, proactive
+notices, automatic avatar handoff, persona selection, Slack Socket Mode, WhatsApp and email remain open.
+Remote desktop/code hands are not enabled by this increment. Red-team work remains disabled/deferred.

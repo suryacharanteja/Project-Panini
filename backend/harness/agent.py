@@ -550,11 +550,15 @@ class Agent:
         from ..registry.context import ToolContext
 
         if self._tool_context is None:
+            from ..channels import SURFACES
+
             principal = Principal(
                 kind="persona"
                 if self.persona_id != "panini"
                 else ("owner" if self.private else "external_agent"),
-                surface="background" if self.background else self.surface,
+                surface=self.surface
+                if self.surface in SURFACES
+                else ("background" if self.background else self.surface),
                 client_id=self.persona_id if self.persona_id != "panini" else None,
                 verified=self.private,
             )
@@ -566,6 +570,8 @@ class Agent:
                 delegate=self.delegate,
                 confirm=self.confirm,
             )
+            if self.surface in SURFACES:
+                self._tool_context.taint.add("channel")
         return self._tool_context
 
     def tools(self):
@@ -1069,6 +1075,8 @@ class Agent:
 
     # One brain (V2-06) -----------------------------------------------------
     def _start_run(self, resume):
+        from dataclasses import asdict
+
         from .. import brain
 
         budget = self.budget_override or brain.Budget.for_mode(self.background)
@@ -1094,14 +1102,7 @@ class Agent:
         )
         run_id = runs.start(
             mode="background" if self.background else ("subagent" if self.depth else "foreground"),
-            principal={
-                "kind": "persona"
-                if self.persona_id != "panini"
-                else ("owner" if self.private else "external_agent"),
-                "client_id": self.persona_id if self.persona_id != "panini" else None,
-                "surface": "background" if self.background else self.surface,
-                "verified": self.private,
-            },
+            principal=asdict(self.tool_context().principal),
             thread_id=self.thread_id,
             task_id=self.run_id,
             parent_run_id=(resume or {}).get("run_id") or self.parent_run,

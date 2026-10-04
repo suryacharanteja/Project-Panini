@@ -19,7 +19,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True, help="Verified commit the source patch applies to.")
     parser.add_argument("--label", required=True)
-    parser.add_argument("--profile", choices=("spaces", "phone"), default="spaces")
+    parser.add_argument("--profile", choices=("spaces", "phone", "channels"), default="spaces")
     parser.add_argument(
         "--evidence", required=True, help="Workspace artifact directory with release-check.log."
     )
@@ -56,6 +56,15 @@ def main():
             "android-notebook.png",
             "team-live.json",
         ]
+    if args.profile == "channels":
+        included = [
+            "release-check.log",
+            "browser-smoke.log",
+            "admin-build.log",
+            "admin-desktop.png",
+            "admin-mobile.png",
+            "final-targeted.log",
+        ]
     licenses = [
         ("node_modules/marked/LICENSE.md", "marked-LICENSE.txt"),
         ("node_modules/dompurify/LICENSE", "dompurify-LICENSE.txt"),
@@ -80,9 +89,14 @@ def main():
                 indent=2,
             ),
         )
+        setup = (
+            "Enable PANINI_CHANNELS=telegram in Settings, then add your bot and numeric owner IDs in Admin → Build → Channels. Telegram text runs use durable background permissions; approve effects on the PC or paired phone."
+            if args.profile == "channels"
+            else "Enable PANINI_SPACES, PANINI_V2_AGUI and PANINI_V2_INTERRUPTS in Settings for notebook conversations and reviews."
+        )
         bundle.writestr(
             "README.txt",
-            f"PANINI local development increment {commit}\nPatch base: {base}\n\nApply source.patch to a checkout at the patch base, run npm ci, and use the existing Python development environment. Built Admin, shell and Android PWA assets are included at their repository paths. Enable PANINI_SPACES, PANINI_V2_AGUI and PANINI_V2_INTERRUPTS in Settings for notebook conversations and reviews. Read the included qualification document for remaining requirements.\n\nThis is not a standalone installer, signed production release, physical Android qualification or full LLD completion. No credentials or databases are included.\n",
+            f"PANINI local development increment {commit}\nPatch base: {base}\n\nApply source.patch to a checkout at the patch base, run npm ci, and use the existing Python development environment. Built Admin, shell and Android PWA assets are included at their repository paths. {setup} Read the included qualification document for remaining requirements.\n\nThis is not a standalone installer, signed production release, physical Android qualification or full LLD completion. No credentials or databases are included.\n",
         )
         for directory in ("frontend/public/admin", "panini-core/apps/shell/dist", "panini-core/apps/phone"):
             for path in sorted((ROOT / directory).rglob("*")):

@@ -55,12 +55,12 @@ def profile_name() -> str:
 def tier(principal: Principal, background: bool = False) -> str:
     if principal.kind in {"external_agent", "mcp_client", "channel_user"} or not principal.verified:
         return "external"
+    if principal.surface in {"slack", "telegram", "whatsapp", "email"}:
+        return "channel"
     if background or principal.surface in {"background", "trigger", "schedule"}:
         return "background"
     if principal.surface in {"phone_app", "phone_line", "agui_remote"}:
         return "remote"
-    if principal.surface in {"slack", "telegram", "whatsapp", "email"}:
-        return "channel"
     return "local"
 
 
