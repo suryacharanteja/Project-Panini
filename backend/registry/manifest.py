@@ -26,6 +26,7 @@ REQUIREMENTS = {
     "browser_v2",
     "sandbox",
     "live",
+    "spaces",
 }
 
 

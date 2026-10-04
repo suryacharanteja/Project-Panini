@@ -24,6 +24,7 @@ export async function api<T = any>(
   if (!response.ok) {
     const detail =
       data?.error?.message ??
+      data?.detail?.message ??
       (typeof data?.detail === 'string' ? data.detail : data?.detail?.[0]?.msg) ??
       `Request failed (${response.status}).`;
     throw new ApiError(

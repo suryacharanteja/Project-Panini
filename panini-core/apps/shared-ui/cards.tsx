@@ -64,19 +64,29 @@ type Decide = (approved: boolean) => Promise<void> | void;
 function InterruptCardBody({
   interrupt,
   onDecide,
+  onReview,
 }: {
   interrupt: InterruptView;
   onDecide: Decide;
+  onReview?: (approved: boolean, content: string) => Promise<void> | void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const preview = interrupt.preview as Record<string, unknown> | undefined;
-  const detail = toText(preview?.detail ?? preview?.effect ?? preview, 1500);
+  const pageDraft =
+    interrupt.kind === 'review' &&
+    interrupt.reason === 'page_draft' &&
+    typeof preview?.content === 'string';
+  const detail = pageDraft
+    ? String(preview.content)
+    : toText(preview?.detail ?? preview?.effect ?? preview, 1500);
+  const [reviewContent, setReviewContent] = useState(pageDraft ? String(preview?.content) : '');
   const decide = async (approved: boolean) => {
     setBusy(true);
     setError('');
     try {
-      await onDecide(approved);
+      if (pageDraft && onReview) await onReview(approved, reviewContent);
+      else await onDecide(approved);
     } catch (exc) {
       setError(toText((exc as Error)?.message) || 'The decision could not be sent.');
       setBusy(false);
@@ -93,7 +103,17 @@ function InterruptCardBody({
         <Chip state="attention" />
       </header>
       <p>{toText(interrupt.message, 1000)}</p>
-      {detail && <pre className="pc-preview">{detail}</pre>}
+      {pageDraft && onReview ? (
+        <textarea
+          aria-label="Review page draft"
+          value={reviewContent}
+          maxLength={20000}
+          onChange={(event) => setReviewContent(event.target.value)}
+          className="pc-preview w-full min-h-64"
+        />
+      ) : (
+        detail && <pre className="pc-preview">{detail}</pre>
+      )}
       <p className="pc-hint">
         Nothing happens until you approve.
         {stronger ? ' This step needs approval on this PC or with a passkey.' : ''}
@@ -120,7 +140,11 @@ function InterruptCardBody({
   );
 }
 
-export function InterruptCard(props: { interrupt: InterruptView; onDecide: Decide }) {
+export function InterruptCard(props: {
+  interrupt: InterruptView;
+  onDecide: Decide;
+  onReview?: (approved: boolean, content: string) => Promise<void> | void;
+}) {
   return (
     <CardBoundary label="approval card">
       <InterruptCardBody {...props} />

@@ -236,12 +236,12 @@ Dependencies: V2-03 (grants), V2-06 (run engine and sub-runs).
 
 ### V2-19: Spaces and pages (PANINI's notebook)
 
-Implementation register: **Not started**. [Source LLD](lld/V2-19-spaces-pages.md).
+Implementation register: **In progress**. [Source LLD](lld/V2-19-spaces-pages.md).
 
 Dependencies: V2-05 (reviews), V2-07 (shared UI and Admin conversations); V2-18 for persona access.
 
-- [ ] Create, edit with conflicts, nest, search, soft delete and restore work in Admin.
-- [ ] "Show me the draft before saving" produces a review card; approve saves once; decline saves nothing.
+- [x] Create, edit with conflicts, nest, search, soft delete and restore work in Admin.
+- [x] "Show me the draft before saving" produces a review card; approve saves once; decline saves nothing.
 - [ ] PANINI cites a page found by `pages_search` in an answer.
 
 ### V2-20: Outbound calls on your behalf

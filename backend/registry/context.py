@@ -22,6 +22,7 @@ class ToolView:
     claw_cdp: bool = False  # V2-09: PANINI_CLAW_CDP (full control of the attached Chrome tab)
     sandbox: bool = False  # V2-11: PANINI_SANDBOX (PANINI's own isolated computers)
     live: bool = False  # V2-12: PANINI_LIVE_VIEW (live view and takeover)
+    spaces: bool = False
 
     def satisfies(self, requires) -> bool:
         checks = {
@@ -37,6 +38,7 @@ class ToolView:
             "browser_v2": self.managed_browser or self.claw_cdp,
             "sandbox": self.sandbox,
             "live": self.live,
+            "spaces": self.spaces,
         }
         return all(checks[r] for r in requires)
 

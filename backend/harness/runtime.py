@@ -97,6 +97,9 @@ class Harness:
         self.sandbox.register_live()  # V2-12: its frames and owner input in the live view.
         self.sandbox.ensure_row(DEFAULT_COMPUTER)
         self.threads = Threads(self.store, self.sessions)
+        from ..spaces import Spaces
+
+        self.spaces = Spaces(self.store, self.threads, self.personas)
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
         agent = Agent(
@@ -109,7 +112,7 @@ class Harness:
         )
         from .. import v2flags
 
-        if v2flags.enabled("PANINI_V2_REGISTRY") or v2flags.enabled("PANINI_PERSONAS"):
+        if any(v2flags.enabled(key) for key in ("PANINI_V2_REGISTRY", "PANINI_PERSONAS", "PANINI_SPACES")):
             agent.registry = self.registry
         return agent
 

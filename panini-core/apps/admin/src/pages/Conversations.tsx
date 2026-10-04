@@ -46,15 +46,15 @@ function reducer(state: Conversation, action: Action): Conversation {
 }
 
 /** Talk to PANINI over AG-UI from the console: tool calls, plan and approvals stream in as cards (V2-07). */
-export function ConversationsPage() {
-  const [thread, setThread] = useState(() => savedThread() || newId());
+export function ConversationsPage({ initialThread }: { initialThread?: string } = {}) {
+  const [thread, setThread] = useState(() => initialThread || savedThread() || newId());
   const [state, dispatch] = useReducer(reducer, undefined, emptyConversation);
   const [draft, setDraft] = useState('');
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    saveThread(thread);
+    if (!initialThread) saveThread(thread);
     const controller = new AbortController();
     void connectThread(
       thread,
@@ -105,19 +105,21 @@ export function ConversationsPage() {
 
   return (
     <Page
-      title="Conversations"
+      title={initialThread ? 'Page conversation' : 'Conversations'}
       deva="संवाद"
       eyebrow="AG-UI"
       actions={
-        <Button
-          onClick={() => {
-            abort.current?.abort();
-            dispatch({ type: 'reset' });
-            setThread(newId());
-          }}
-        >
-          New conversation
-        </Button>
+        !initialThread && (
+          <Button
+            onClick={() => {
+              abort.current?.abort();
+              dispatch({ type: 'reset' });
+              setThread(newId());
+            }}
+          >
+            New conversation
+          </Button>
+        )
       }
     >
       <Card
@@ -164,7 +166,22 @@ export function ConversationsPage() {
             </CardBoundary>
           ))}
           {state.interrupts.map((interrupt) => (
-            <InterruptCard key={interrupt.id} interrupt={interrupt} onDecide={decide} />
+            <InterruptCard
+              key={interrupt.id}
+              interrupt={interrupt}
+              onDecide={decide}
+              onReview={(approved, content) =>
+                go({
+                  threadId: thread,
+                  resume: state.interrupts.map((i) => ({
+                    interruptId: i.id,
+                    status: 'resolved' as const,
+                    payload: { approved, ...(i.id === interrupt.id ? { content } : {}) },
+                    metadata: { nonce: i.nonce, actionDigest: i.actionDigest },
+                  })),
+                })
+              }
+            />
           ))}
           {state.error && (
             <p role="alert" className="text-sm text-danger">

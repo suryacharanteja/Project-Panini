@@ -427,6 +427,7 @@ class Agent:
         # through client_call(call_id, name, arguments); durable runs keep run records without the flag.
         self.observe, self.client_tools, self.client_call, self.durable = None, [], None, False
         self.only_tools = None  # V2-08: a focused agent sees only these tool names.
+        self.before_model = None  # A bound document may revoke access between streamed turns.
         self.browser_preference = None  # V2-10: "managed" when the person asked for a separate browser.
 
     async def _select(self, goal, items):
@@ -541,6 +542,7 @@ class Agent:
             claw_cdp=v2flags.enabled("PANINI_CLAW_CDP") and not self.background,
             sandbox=v2flags.enabled("PANINI_SANDBOX"),  # Also for background work: it never touches this PC.
             live=v2flags.enabled("PANINI_LIVE_VIEW"),
+            spaces=v2flags.enabled("PANINI_SPACES"),
         )
 
     def tool_context(self):
@@ -863,6 +865,8 @@ class Agent:
                 prompt = instructions + (
                     f"\n\nEarlier in this conversation (summary):\n{summary}" if summary else ""
                 )
+                if self.before_model:
+                    self.before_model()
                 turn = await self.model.respond(
                     prompt,
                     items,
@@ -1235,6 +1239,8 @@ class Agent:
         if not old:
             return items, summary
         text = transcript(old)
+        if self.before_model:
+            self.before_model()
         turn = await self.model.respond(
             "Summarise this conversation for your own later use: goals, decisions, results with "
             "evidence, open questions and the person's stated preferences. Under 400 words. "

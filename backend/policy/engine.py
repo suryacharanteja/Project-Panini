@@ -14,7 +14,7 @@ from .effects import RISKY_WORDS, classify
 
 E, L = EffectClass, ApprovalLevel
 TIERS = ("local", "remote", "channel", "external", "background")
-UNTRUSTED_TAINTS = {"web", "email", "channel", "call", "mcp", "a2a", "shared", "client_context"}
+UNTRUSTED_TAINTS = {"web", "email", "channel", "call", "mcp", "a2a", "shared", "client_context", "page"}
 
 # balanced (= PANINI_APPROVALS=risky): effect → level per tier (local, remote, channel, external, background)
 BALANCED = {

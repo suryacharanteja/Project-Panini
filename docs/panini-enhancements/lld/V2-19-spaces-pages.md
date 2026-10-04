@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 4 · P1 · M (5 days) |
 | Depends on | V2-05 (reviews), V2-07 (shared UI and Admin conversations); V2-18 for persona access |
 | Flag | `PANINI_SPACES` (default `false`) |
-| Status | Not started |
+| Status | In progress |
 | Decision | Register D9 (UI in Admin) |
 
 ## 1. Outcome
@@ -47,7 +47,7 @@ No document workspace. Results live in tasks, notices and the agent inbox; proje
 | `backend/spaces/tools.py` | Agent tools |
 | `backend/spaces/export.py` | Markdown export; PDF through the managed Playwright session (`browser_pdf_save` on a rendered page) |
 | `backend/routes/spaces.py` | Console API |
-| `backend/harness/migrations/0014_spaces.sql` | Tables |
+| `backend/harness/migrations/0016_spaces.sql` | Tables (0014 is already used by calls) |
 | Admin `src/pages/spaces/` | `SpaceLibrary`, `SpaceWorkspace`, `PageDocument`, `PageOutline`, editor folder (ported) |
 | `panini-core/apps/shared-ui/cards/` | "Save to Space" action on result and receipt cards |
 
@@ -146,8 +146,8 @@ Ported from OpenDots and extended:
 
 ## 8. Acceptance criteria
 
-- [ ] Create, edit with conflicts, nest, search, soft delete and restore work in Admin.
-- [ ] "Show me the draft before saving" produces a review card; approve saves once; decline saves nothing.
+- [x] Create, edit with conflicts, nest, search, soft delete and restore work in Admin.
+- [x] "Show me the draft before saving" produces a review card; approve saves once; decline saves nothing.
 - [ ] PANINI cites a page found by `pages_search` in an answer.
 
 ## 9. Rollout and rollback
@@ -158,3 +158,22 @@ Flag on after step 3. Rollback: flag off hides Spaces and tools; data stays.
 
 - Sync pages to a folder of Markdown files (for Obsidian/VS Code users)? Recommendation: optional one-way export
   to `Documents\PANINI Spaces` in a later item.
+
+## 11. Delivery evidence — 2026-10-04
+
+Implemented: atomic CAS and 50 revisions, nested-parent validation, 30-day restore, filtered FTS,
+persona space access, canonical read tools and approved create/edit tools, durable review replay,
+owner-edited approvals, stable page/persona threads and AG-UI page conversations. Access is checked
+before every model entry. Page context and search/read results carry quarantined provenance.
+Admin has a lazy-loaded Tiptap 3.31.4 editor, Markdown mode, tables/tasks, insertion menu, autosave,
+local draft recovery, search, nested creation, trash/restore, page discussions and Markdown export.
+
+`npm test`: 783 backend tests passed; all other repository gates passed. Real browser smoke exercises
+the built Admin against a throwaway database and real AG-UI/interrupt code with a scripted model,
+including owner-edited review, recovery/conflict cases, search and trash/restore. It makes no provider
+calls. Evidence: `artifacts/spaces/release-check.log`, `artifacts/spaces/browser-smoke.log`.
+
+Still open: result/receipt/history Save-to-Space integration and its rejection tests, PDF export,
+library grid/outline and move/history/access controls, reviewed move/delete tools, owner destroy,
+validated default destinations, recovery after an already-resolved decision loses its SSE response,
+and live page-search/citation qualification. This local increment does not complete V2-19.

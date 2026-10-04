@@ -22,6 +22,7 @@ from .panini.settings import Settings
 from .routes import admin, agui, browser, comparison, harness, panini, speech, voice
 from .routes import console as console_routes
 from .routes import live as live_routes
+from .routes import spaces as spaces_routes
 from .work import CapacityError, WorkPool
 
 
@@ -153,6 +154,8 @@ def create_app(
     app.include_router(harness.shell_router)
     app.include_router(harness.console_router)
     app.include_router(harness.a2a_router)
+    app.include_router(spaces_routes.console_router)
+    app.include_router(spaces_routes.shell_router)
     app.include_router(admin.router)
     app.include_router(agui.console_router)
     app.include_router(agui.shell_router)

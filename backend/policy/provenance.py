@@ -16,7 +16,7 @@ import re
 from .engine import UNTRUSTED_TAINTS
 
 # Labels that mean "someone other than the owner wrote this".
-QUARANTINED = UNTRUSTED_TAINTS | {"download", "sensitive_local"}
+QUARANTINED = UNTRUSTED_TAINTS | {"download", "sensitive_local", "page"}
 MAX_CHARS = 7000
 CLOSE = re.compile(r"</\s*untrusted", re.IGNORECASE)
 PROMPT_LINE = (

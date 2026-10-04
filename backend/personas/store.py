@@ -45,8 +45,14 @@ PERMISSIONS = {
     ),
     "sandbox_files": ("sandbox", ("sandbox_files_read", "sandbox_files_write", "sandbox_files_list")),
     "sandbox_shell": ("sandbox", ("sandbox_exec",)),
-    "spaces_read": ("spaces", ("spaces_list", "page_read", "page_search")),
-    "spaces_write": ("spaces", ("space_create", "page_create", "page_update", "page_delete")),
+    "spaces_read": (
+        "spaces",
+        ("spaces_list", "page_read", "page_search", "pages_list", "pages_read", "pages_search"),
+    ),
+    "spaces_write": (
+        "spaces",
+        ("space_create", "page_create", "page_update", "page_delete", "pages_create", "pages_edit"),
+    ),
     "memory_read": ("memory", ("recall",)),
     "memory_write": ("memory", ("remember", "forget")),
 }

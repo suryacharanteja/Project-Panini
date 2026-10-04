@@ -1,5 +1,5 @@
 import { createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { StrictMode } from 'react';
+import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Shell } from './components/Shell';
 import { ToastProvider } from './components/ui';
@@ -31,6 +31,14 @@ import { AutomationsPage, InboxPage, MemoryPage, RunsPage } from './pages/Work';
 import './styles.css';
 
 const root = createRootRoute({ component: Shell, notFoundComponent: NotFound });
+const SpacesPage = lazy(() =>
+  import('./pages/spaces/Spaces').then((module) => ({ default: module.SpacesPage })),
+);
+const SpacesRoute = () => (
+  <Suspense fallback={<p role="status">Loading notebook…</p>}>
+    <SpacesPage />
+  </Suspense>
+);
 const page = (path: string, component: () => React.ReactNode) =>
   createRoute({ getParentRoute: () => root, path, component });
 
@@ -41,6 +49,7 @@ const routeTree = root.addChildren([
   page('/runs', RunsPage),
   page('/receipts', ReceiptsPage),
   page('/projects', ProjectsPage),
+  page('/spaces', SpacesRoute),
   page('/build/skills', SkillsPage),
   page('/build/connectors', ConnectorsPage),
   page('/build/automations', AutomationsPage),
