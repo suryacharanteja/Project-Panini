@@ -16,6 +16,10 @@ const server = spawn(
   { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
 );
 let browser;
+let diagnostic = '';
+server.stderr.on('data', (chunk) => {
+  diagnostic = (diagnostic + chunk).slice(-5000);
+});
 try {
   const link = await new Promise((resolve, reject) => {
     let output = '';
@@ -120,6 +124,19 @@ try {
   await page.getByRole('button', { name: 'Stop task', exact: true }).click();
   await page.getByText('cancelled', { exact: true }).waitFor();
   await page.screenshot({ path: 'artifacts/phone/android-work.png' });
+  await control('/call', 'POST');
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Phone calls', exact: true }).click();
+  await page.getByText('Waiting for keypad PIN or phone confirmation', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Verify this is me', exact: true }).click();
+  await page.getByText('Verify phone caller', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Phone calls', exact: true }).click();
+  await page.getByText('Caller verified', { exact: true }).waitFor();
+  await page.screenshot({ path: 'artifacts/phone/android-call.png' });
+  await page.getByRole('button', { name: 'End call', exact: true }).click();
+  await page.getByText('No active call', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await page.getByRole('heading', { name: 'Ready', exact: true }).waitFor();
   await page.reload();
@@ -175,6 +192,12 @@ try {
   console.log(
     'PASS encrypted pairing, persistent non-extractable keys, signed approval, Ask exactly once, task history/stop, reload, Live, Android share target, offline recovery and revocation in Android-sized Chromium',
   );
+} catch (error) {
+  for (const page of browser?.contexts().flatMap((c) => c.pages()) || []) {
+    console.error((await page.locator('main').innerText()).slice(0, 1200));
+  }
+  console.error(diagnostic);
+  throw error;
 } finally {
   await browser?.close();
   server.kill();

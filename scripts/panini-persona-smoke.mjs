@@ -71,6 +71,24 @@ try {
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await card.getByRole('button', { name: 'Archive', exact: true }).click();
   await card.waitFor({ state: 'detached' });
+  await page.goto(`http://127.0.0.1:${port}/build/remote`);
+  await page.getByText('Red-team qualification: future development.', { exact: false }).waitFor();
+  await page.goto(`http://127.0.0.1:${port}/build/phone`);
+  await page.getByLabel('Caller number', { exact: true }).fill('+14155550123');
+  await page.getByLabel('Caller name', { exact: true }).fill('Preview owner');
+  await page.getByLabel('Caller PIN', { exact: true }).fill('123456');
+  await page.getByRole('button', { name: 'Save caller', exact: true }).click();
+  await page.getByText('Preview owner · +14155550123', { exact: false }).waitFor();
+  await page
+    .getByLabel('Webhook signing secret', { exact: true })
+    .fill('whsec_' + Buffer.alloc(32, 7).toString('base64'));
+  await page.getByRole('button', { name: 'Save webhook', exact: true }).click();
+  await page.getByText('Webhook path: /hooks/phone/', { exact: false }).waitFor();
+  if (await page.getByLabel('Webhook signing secret').inputValue())
+    throw new Error('Webhook secret remained in the form.');
+  await page.screenshot({ path: 'artifacts/personas/phone-admin.png', fullPage: true });
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth))
+    throw new Error('Phone setup overflows mobile viewport.');
   if (errors.length) throw new Error(errors.join('\n'));
   console.log(
     'Persona Admin smoke passed: create, edit, grants, identity test, reload, mobile layout, archive.',

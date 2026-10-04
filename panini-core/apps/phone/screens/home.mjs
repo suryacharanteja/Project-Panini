@@ -39,6 +39,7 @@ export async function home(app) {
       'div.card',
       {},
       h('h3', { text: 'Background work' }),
+      h('button.wide', { onclick: () => app.show('calls') }, 'Phone calls'),
       h('p.muted', {
         text: `${status.tasks?.running ?? status.running ?? 0} running, ${status.tasks?.queued ?? status.queued ?? 0} waiting`,
       }),

@@ -3,7 +3,7 @@
 import { Fabric } from './lib/fabric.mjs';
 import * as db from './lib/db.mjs';
 
-const CACHE = 'panini-phone-v4';
+const CACHE = 'panini-phone-v5';
 const SHELL = [
   '/',
   '/app.js',
@@ -16,6 +16,7 @@ const SHELL = [
   '/lib/db.mjs',
   '/lib/persona.mjs',
   '/screens/persona.mjs',
+  '/screens/calls.mjs',
   '/screens/home.mjs',
   '/screens/threads.mjs',
   '/screens/inbox.mjs',

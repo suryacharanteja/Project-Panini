@@ -18,7 +18,7 @@ type Fabric = {
   reason: string;
   origin: string;
   pc_id: string;
-  gate: { passed: boolean; reason: string };
+  gate: { passed: boolean; reason: string; deferred?: boolean };
   devices: Device[];
   hooks: string[];
 };
@@ -63,12 +63,20 @@ export function RemotePage() {
               </Button>
             }
           >
-            {!data.gate.passed && (
+            {data.gate.deferred && (
+              <p className="text-sm text-faint">
+                Red-team qualification: future development. Remote access follows your configured
+                mode.
+              </p>
+            )}
+            {!data.gate.passed && !data.gate.deferred && (
               <p className="text-sm text-slate">
                 Remote access stays off until the red-team gate passes: {data.gate.reason}
               </p>
             )}
-            {data.reason && data.gate.passed && <p className="text-sm text-slate">{data.reason}</p>}
+            {data.reason && (data.gate.passed || data.gate.deferred) && (
+              <p className="text-sm text-slate">{data.reason}</p>
+            )}
             {data.origin && (
               <p className="text-sm text-faint">Phones reach PANINI at {data.origin}</p>
             )}

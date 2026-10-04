@@ -144,6 +144,8 @@ class Session:
     evidence: dict = field(default_factory=dict)
     confirmations: dict = field(default_factory=dict)
     media: object | None = None
+    voice_persona_id: str = "panini"
+    voice_history: dict = field(default_factory=dict)
     media_generation: int = 0
     media_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     stop_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -1149,10 +1151,13 @@ class Coordinator:
     async def close_media(self, s):
         async with s.media_lock:
             media, s.media = s.media, None
+            generation = s.media_generation
             s.media_generation += 1
             if media:
                 await media.close()
-                s.hub.publish("media.closed", {"message": "Microphone connection closed."})
+                s.hub.publish(
+                    "media.closed", {"message": "Microphone connection closed.", "generation": generation}
+                )
 
     async def end(self, s):
         if s.state == "closed":

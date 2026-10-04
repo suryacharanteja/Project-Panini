@@ -29,9 +29,50 @@ try {
   browser = await chromium.launch({ headless: true, channel: 'chrome' });
   const page = await browser.newPage({ viewport: { width: 1440, height: 980 } });
   const errors = [];
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const ctx = new AudioContext();
+      const target = ctx.createMediaStreamDestination();
+      return target.stream;
+    };
+    window.RTCPeerConnection = class {
+      iceGatheringState = 'complete';
+      connectionState = 'new';
+      addTrack() {}
+      createDataChannel() {}
+      async createOffer() {
+        return { type: 'offer', sdp: 'scripted SDP offer' };
+      }
+      async setLocalDescription(value) {
+        this.localDescription = value;
+      }
+      async setRemoteDescription() {
+        this.connectionState = 'connected';
+        this.onconnectionstatechange?.();
+      }
+      close() {
+        this.connectionState = 'closed';
+      }
+    };
+  });
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('http://127.0.0.1:3233/shell.html?personas');
   await page.locator('.brand strong').getByText('PANINI', { exact: true }).waitFor();
+  await page.getByLabel('Conversation settings').click();
+  await page.getByLabel('Voice specialist').selectOption('scout');
+  await page.getByLabel('Conversation settings').click();
+  await page.getByRole('button', { name: '◉ Talk to PANINI', exact: true }).click();
+  await page.getByRole('button', { name: 'Listening · End call', exact: true }).waitFor();
+  await page.getByLabel('Conversation settings').click();
+  await page.getByLabel('Voice specialist').selectOption('quill');
+  await page.waitForFunction(() => window.voiceOffers?.length === 2);
+  await page.waitForTimeout(100);
+  await page.getByLabel('Conversation settings').click();
+  await page.getByRole('button', { name: 'Listening · End call', exact: true }).waitFor();
+  const voices = await page.evaluate(() => window.voiceOffers.map((offer) => offer.persona_id));
+  if (voices.join(',') !== 'scout,quill')
+    throw new Error('Voice reconnect used the wrong persona.');
+  await page.getByRole('button', { name: 'Listening · End call', exact: true }).click();
   await page.evaluate(() =>
     window.emitPersonaPreview(
       { id: 'scout', name: 'Scout', color: 'cyan' },

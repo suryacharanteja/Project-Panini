@@ -43,5 +43,24 @@ def test_admin_lists_every_flag_in_the_v2_group():
 
 def test_status_reports_items(monkeypatch):
     monkeypatch.delenv("PANINI_V2_ONE_BRAIN", raising=False)
+    monkeypatch.setenv("PANINI_GUARDIAN", "true")
+    monkeypatch.setenv("PANINI_REDTEAM_ENFORCE", "false")
     status = v2flags.status()
     assert status["items"]["V2-06"] == {"flag": "PANINI_V2_ONE_BRAIN", "enabled": False}
+    assert status["items"]["V2-13"] == {"flag": "PANINI_GUARDIAN", "enabled": True}
+
+
+def test_redteam_is_deferred_without_reporting_a_pass(monkeypatch):
+    monkeypatch.delenv("PANINI_REDTEAM_ENFORCE", raising=False)
+    for key, value in (
+        ("PANINI_REMOTE_MODE", "lan"),
+        ("PANINI_PHONE_LINE", "true"),
+        ("PANINI_CHANNELS", "email"),
+        ("PANINI_MCP_SERVER", "true"),
+    ):
+        monkeypatch.setenv(key, value)
+        assert v2flags.value(key) == value
+        assert v2flags.blocked_by_gate(key) == ""
+    assert v2flags.redteam_gate()["deferred"]
+    assert not v2flags.redteam_gate()["passed"]
+    assert v2flags.status()["gate"]["blocked"] == {}

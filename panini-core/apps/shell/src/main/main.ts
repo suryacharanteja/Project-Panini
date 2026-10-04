@@ -836,7 +836,10 @@ function ipc() {
           command_id: randomUUID(),
           media_generation: input.generation,
           sdp: text(input.sdp, 100000),
+          persona_id: String(input.persona_id || 'panini'),
         });
+      case 'voice-personas':
+        return client.scoped('/voice-personas', undefined, 'GET');
       case 'media-close':
         return client.scoped(
           '/media',

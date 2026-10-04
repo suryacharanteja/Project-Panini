@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Phase / priority / size | Phase 3 · P0 · L (1.5–2 weeks) |
-| Depends on | V2-05 (interrupts); V2-13 red-team gate before enabling |
+| Depends on | V2-05 (interrupts); red-team qualification deferred by owner |
 | Flag | `PANINI_REMOTE_MODE` = `off` (default) · `lan` · `tailscale` · `relay` |
-| Status | Built, held off by the V2-13 gate (2026-10-03) |
+| Status | Built; red-team enforcement disabled by owner (2026-10-04); production transport qualification pending |
 | Decisions | Register D1 (transport), D10 (relay hosting) |
 
 ## 1. Outcome
@@ -298,3 +298,7 @@ Not done:
 - the Cloudflare Worker relay: it needs `wrangler` and a Cloudflare account (register decision D10); the Node relay is the tested reference;
 - live checks on a real phone over mobile data, Tailscale and push on Android/iOS: they need the phone app (V2-15) and a passing red-team gate;
 - Tailscale is not installed on this PC, so its driver is tested with a fake CLI only.
+
+## Owner decision — 2026-10-04
+
+The red-team enablement gate described in the original design is deferred to future development. `PANINI_REDTEAM_ENFORCE=false` is the default; this does not fabricate a passing red-team result. Pairing, device authentication, encrypted envelopes, signed decisions and action permissions remain applicable. Explicit future enforcement restores the gate.

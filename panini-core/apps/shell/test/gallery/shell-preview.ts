@@ -3,7 +3,25 @@
 const listeners: ((event: any) => void)[] = [];
 const snapshot = { state: 'ready', task: null, results: [], selected_targets: {} };
 (window as any).panini = {
-  async invoke(method: string) {
+  async invoke(method: string, input: any = {}) {
+    const personas = [
+      { id: 'panini', name: 'PANINI', color: 'copper' },
+      { id: 'scout', name: 'Scout', color: 'cyan' },
+      { id: 'quill', name: 'Quill', color: 'violet' },
+    ];
+    if (method === 'voice-personas') return { personas };
+    if (method === 'media') {
+      ((window as any).voiceOffers ||= []).push(input);
+      emit('media.connected', {
+        generation: input.generation,
+        persona: personas.find((p) => p.id === input.persona_id),
+      });
+      return { sdp: 'scripted SDP answer' };
+    }
+    if (method === 'media-close') {
+      setTimeout(() => emit('media.closed', { generation: input.generation }), 40);
+      return { status: 'closed' };
+    }
     if (method === 'status')
       return {
         connected: true,

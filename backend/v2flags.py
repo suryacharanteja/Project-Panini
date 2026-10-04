@@ -54,6 +54,12 @@ FLAGS = {
         Flag("PANINI_LIVE_VIEW", "V2-12", "false", help="Live view and take-over for every hand."),
         Flag("PANINI_GUARDIAN", "V2-13", "false", help="Injection firewall and pre-dispatch guardian."),
         Flag(
+            "PANINI_REDTEAM_ENFORCE",
+            "V2-13",
+            "false",
+            help="Future development: enforce live red-team qualification for remote surfaces.",
+        ),
+        Flag(
             "PANINI_REMOTE_MODE",
             "V2-14",
             "off",
@@ -88,13 +94,19 @@ FLAGS = {
 }
 
 
-# V2-13 §5.7: surfaces that let other people or agents reach PANINI stay off until the red-team gate passes.
+# Future V2-13 enforcement is opt-in; the owner deferred red-team qualification.
 GATED = {"PANINI_REMOTE_MODE", "PANINI_PHONE_LINE", "PANINI_CHANNELS", "PANINI_MCP_SERVER"}
 REDTEAM_RESULT = Path(__file__).resolve().parents[1] / "evals" / "redteam" / "latest.json"
 
 
 def redteam_gate(path: Path | None = None) -> dict:
     """The latest red-team result and whether it passes: no silent effects and >= 95 % legitimate completion."""
+    if path is None and _raw("PANINI_REDTEAM_ENFORCE") in OFF:
+        return {
+            "passed": False,
+            "deferred": True,
+            "reason": "Red-team qualification is disabled and deferred to future development.",
+        }
     try:
         result = json.loads((path or REDTEAM_RESULT).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -120,14 +132,19 @@ def _raw(key: str) -> str:
 
 def value(key: str) -> str:
     raw = _raw(key)
-    if key in GATED and raw not in OFF and not redteam_gate()["passed"]:
+    if (
+        key in GATED
+        and raw not in OFF
+        and _raw("PANINI_REDTEAM_ENFORCE") not in OFF
+        and not redteam_gate()["passed"]
+    ):
         return FLAGS[key].default  # Refuses to turn on: the gate is not met.
     return raw
 
 
 def blocked_by_gate(key: str) -> str:
     """Why a gated flag the owner turned on is still off ("" when it is not blocked)."""
-    if key not in GATED or _raw(key) in OFF:
+    if key not in GATED or _raw(key) in OFF or _raw("PANINI_REDTEAM_ENFORCE") in OFF:
         return ""
     gate = redteam_gate()
     return "" if gate["passed"] else gate["reason"]
@@ -143,11 +160,15 @@ def listed(key: str) -> set[str]:
 
 
 def status() -> dict:
+    items = {}
+    for key, flag in FLAGS.items():
+        # Auxiliary qualification flags do not replace an item's primary feature flag.
+        items.setdefault(flag.item, {"flag": key, "enabled": enabled(key)})
     return {
         "flags": {key: value(key) for key in FLAGS},
         "gate": {
             "redteam": redteam_gate(),
             "blocked": {k: blocked_by_gate(k) for k in GATED if blocked_by_gate(k)},
         },
-        "items": {flag.item: {"flag": key, "enabled": enabled(key)} for key, flag in FLAGS.items()},
+        "items": items,
     }

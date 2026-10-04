@@ -331,13 +331,23 @@ async def connect_media(session_id: str, payload: MediaOffer, request: Request):
         c.authorize(s, p, epoch)
         if s.media or payload.media_generation <= s.media_generation:
             raise Fault("MEDIA_BUSY", "Close the existing microphone connection before reconnecting.")
+        from ..panini.voice import voice_profile
+
+        profile = voice_profile(c, payload.persona_id)
+        s.voice_persona_id = profile["id"]
         s.media_generation = payload.media_generation
         media = c.voice_factory(c, s, p, epoch)
         s.media = media
         try:
             answer = await media.start(payload.sdp)
             c.authorize(s, p, epoch)
-            s.hub.publish("media.connected", {"generation": s.media_generation})
+            s.hub.publish(
+                "media.connected",
+                {
+                    "generation": s.media_generation,
+                    "persona": {key: profile[key] for key in ("id", "name", "color")},
+                },
+            )
             return {"sdp": answer, "media_generation": s.media_generation}
         except BaseException as exc:
             s.media = None
@@ -360,6 +370,17 @@ async def disconnect_media(session_id: str, payload: MediaClose, request: Reques
     await c.stop(s)
     await c.close_media(s)
     return {"status": "closed"}
+
+
+@router.get("/sessions/{session_id}/voice-personas")
+async def voice_personas(session_id: str, request: Request):
+    c, _, _, _ = session(request, session_id, mutation=True)
+    from .. import v2flags
+
+    service = getattr(c.adapters.get("agent"), "harness", None)
+    if not v2flags.enabled("PANINI_PERSONAS") or service is None:
+        return {"personas": []}
+    return {"personas": [service.personas.presentation(row["id"]) for row in service.personas.list()]}
 
 
 @router.post("/extensions/pairing-code")

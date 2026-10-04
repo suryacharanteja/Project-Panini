@@ -173,12 +173,19 @@ Verification: `backend/tests/personas/test_personas.py` covers isolation, contex
 
 Remaining before LLD completion:
 
-- Per-persona live voice selection and switching, including provider qualification.
+- Full multi-speaker voice handoff and live research-to-writing team qualification. Explicit avatar voice selection/reconnect is implemented; WebRTC probes are recorded separately from real SIP qualification.
 - Spaces access/default-destination integration (V2-19), and channel permission integration when V2-17 exists.
 - Persona cases in the evaluation scorecard and a live research-to-writing team qualification.
 
 Continuation evidence: `backend/tests/agui/test_persona_resume.py` exercises the real HTTP/SSE, policy, ledger and SQLite checkpoint paths with scripted models and a local test hand. Teams, direct delegates and reviewers each pause twice on identical writes; completed research is not repeated, each approved write happens once, and every model turn is charged once. The stream runner is recreated between requests. Additional cases cover decline, flag rollback, archive, grant revocation and exhausted cost/time budgets. This qualifies the local continuation path, not a live-provider or remote-device deployment.
 
-`PANINI_PERSONAS` stays off by default. Existing remote enablement gates are unchanged; red-team work is in progress and aside.
+`PANINI_PERSONAS` stays off by default. Red-team qualification is disabled and deferred to future development by owner; pairing and action permissions continue to apply.
 
 Presentation evidence: `npm run phone:smoke` exercises encrypted pairing, the Scout chooser, attributed task history, signed approvals, reload, offline recovery and revocation against a throwaway loopback fabric with a scripted response. Six phone identity palettes pass contrast checks in light and dark themes. `npm run personas:ui:smoke` checks PANINI/Scout/Quill identity changes, canvas palette changes, escaped message text, compact and full-stage layouts through the shell preview bridge. Screenshots were inspected. The bridge mocks native window controls; this is browser qualification, not physical Android, Electron installation or live voice qualification.
+
+
+## Voice reconnect evidence — 2026-10-04
+
+The avatar now fetches an authenticated public persona catalog and starts media with the selected persona's voice and private instructions. Manual switching stops current work and reconnects media within the conversation. Bounded history follows the same persona only; archive/rollback is checked before delegation. Generation checks protect new media from delayed old-session closure. `test_voice_adapter.py`, `test_voice_personas_api.py` and the avatar UI smoke cover these paths.
+
+The latest opt-in `npm run personas:voice:live` probe passed Marin and Cedar using real Live sessions, seeded text history and synthetic silent WebRTC peers. It waits for connected media and first assistant transcript output from the backend-result speech path. It does not qualify completed audible playback, physical Android, a real SIP call, multi-speaker handoff or a live team benchmark. Earlier greeting timeouts and cleanup limitations are recorded in the [qualification evidence](../qualification-2026-10-04.md). V2-18 remains **In progress**.

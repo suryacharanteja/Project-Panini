@@ -23,12 +23,13 @@ const app = {
   nav: document.querySelector('nav'),
 
   async show(name) {
-    if (!TABS.some(([tab]) => tab === name)) name = 'home';
+    if (name !== 'calls' && !TABS.some(([tab]) => tab === name)) name = 'home';
+    const activeTab = name === 'calls' ? 'home' : name;
     const revision = ++this.viewRevision;
     this.main.setAttribute('aria-busy', 'true');
     this.nav.querySelectorAll('button').forEach((b) => {
-      b.classList.toggle('active', b.dataset.tab === name);
-      if (b.dataset.tab === name) b.setAttribute('aria-current', 'page');
+      b.classList.toggle('active', b.dataset.tab === activeTab);
+      if (b.dataset.tab === activeTab) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
     try {

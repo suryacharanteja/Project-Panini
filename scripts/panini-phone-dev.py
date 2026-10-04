@@ -99,10 +99,39 @@ async def main():
     )
     policy.install(persona_policy)
     fabric = Fabric(app, store, MemorySecrets(), settings_path=Path(tempfile.mkdtemp()) / "fabric.json")
+    app.state.fabric_runtime = fabric
+    from unittest.mock import AsyncMock
+
+    from backend.brain.threads import Threads
+    from backend.harness.sessions import Sessions
+    from backend.ledger.artifacts import Artifacts
+    from backend.ledger.receipts import Ledger
+    from backend.telephony.inbound import CallService
+
+    h = app.state.harness
+    h.sessions = Sessions(store)
+    h.threads = Threads(store, h.sessions)
+    h.artifacts = Artifacts(store, store.path.parent / "artifacts")
+    h.ledger = Ledger(store)
+
+    def fake_connection(*args, **kwargs):
+        return SimpleNamespace(
+            attach=AsyncMock(), close=AsyncMock(), speak=AsyncMock(), send=AsyncMock(), usage={"seconds": 1}
+        )
+
+    calls = CallService(h, provider=AsyncMock(), connection_factory=fake_connection)
+    app.state.phone_line = calls
     live.hub().publish(None, "sandbox", "panini", (ROOT / "panini-core/apps/phone/icons/icon-512.png").read_bytes(),
                        {"url": "https://example.com/", "title": "Sample frame"})  # fmt: skip
 
     control = FastAPI()
+
+    @control.post("/call")
+    async def sample_call():
+        os.environ["PANINI_PHONE_LINE"] = "true"
+        calls.callers.put("+14155550123", "Preview owner", "123456")
+        await calls.incoming("preview_call", [{"name": "From", "value": "<sip:+14155550123@preview>"}])
+        return {"id": calls.active.id}
 
     @control.post("/confirm")
     async def confirm():

@@ -11,7 +11,7 @@ Updated 2026-10-04. Owner authorized all LLDs. This tracks the complete v2 progr
 5. V2-20 outbound calls (including the LLD compliance gate), V2-21 Android hands, V2-22 teach-by-demo, V2-23 MCP, V2-24 continuity, V2-25 triggers.
 6. V2-26 universal hands and V2-27 offline/private routing, with the specified comparative evaluation gates.
 
-V2-13 red-team is in progress and aside under the owner's earlier instruction. External ingress flags stay gated. Live provider evaluation currently requires restored credits; device and signing qualification require actual Android hardware/tooling and a signing certificate. These are release requirements, not substitutes for implementation.
+Owner decision on 2026-10-04 supersedes the earlier red-team gate: red-team qualification and its enablement enforcement are disabled and deferred to future development. `PANINI_REDTEAM_ENFORCE` defaults off; remote and phone-line configuration no longer requires a passing red-team file. Pairing, signed decisions and action permissions remain enforced. Feature flags remain opt-in. Two live avatar WebRTC voice probes passed; real SIP, physical Android and signing qualification still require configured infrastructure and hardware. Unchecked original red-team requirements below describe future development, not a current release gate.
 
 ## All LLD acceptance checks
 
@@ -171,7 +171,7 @@ Dependencies: V2-07 (cards), V2-08 (Playwright sessions), V2-11 (sandbox).
 
 ### V2-13: Injection firewall and guardian
 
-Implementation register: **Partial (red-team work in progress)**. [Source LLD](lld/V2-13-guardian.md).
+Implementation register: **Red-team disabled; deferred to future development by owner**. [Source LLD](lld/V2-13-guardian.md).
 
 Dependencies: V2-03 (taint and policy), V2-01 (eval harness).
 
@@ -183,7 +183,7 @@ Dependencies: V2-03 (taint and policy), V2-01 (eval harness).
 
 Implementation register: **Built (gated)**. [Source LLD](lld/V2-14-remote-fabric.md).
 
-Dependencies: V2-05 (interrupts); V2-13 red-team gate before enabling.
+Dependencies: V2-05 (interrupts). Red-team qualification enforcement is deferred by owner.
 
 - [ ] A phone pairs by QR with SAS confirmation and works over LAN, Tailscale and relay.
 - [ ] Relay sees only ciphertext (I6 test); revocation is immediate.
@@ -203,7 +203,7 @@ Dependencies: V2-14 (fabric), V2-12 (live view), V2-05 (interrupts).
 
 ### V2-16: Phone line (inbound calls over SIP)
 
-Implementation register: **Not started**. [Source LLD](lld/V2-16-phone-line-inbound.md).
+Implementation register: **In progress: inbound lifecycle and UI built; live SIP qualification pending**. [Source LLD](lld/V2-16-phone-line-inbound.md).
 
 Dependencies: V2-14 (ingress), V2-15 (approvals on the phone), V2-06 (run engine); V2-13 gate.
 

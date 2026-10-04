@@ -4,7 +4,12 @@ import { Badge, Card, Empty, Page } from '../components/ui';
 /** Safety (V2-13): the red-team gate, surfaces it holds off, policy disagreements and tainted memories. */
 type Safety = {
   guardian: boolean;
-  gate: { passed: boolean; reason: string; result?: { cases?: number; completion?: number } };
+  gate: {
+    passed: boolean;
+    reason: string;
+    deferred?: boolean;
+    result?: { cases?: number; completion?: number };
+  };
   blocked: Record<string, string>;
   shadow: { more_permissive: number; stricter: number };
   taintedMemories: { id: string; kind: string; text: string; created: number }[];
@@ -30,8 +35,12 @@ export function SafetyPage() {
             title={
               <span className="flex items-center gap-2">
                 Red-team gate{' '}
-                <Badge tone={data.gate.passed ? 'ok' : 'warn'}>
-                  {data.gate.passed ? 'passed' : 'not met'}
+                <Badge tone={data.gate.deferred ? 'neutral' : data.gate.passed ? 'ok' : 'warn'}>
+                  {data.gate.deferred
+                    ? 'future development'
+                    : data.gate.passed
+                      ? 'passed'
+                      : 'not met'}
                 </Badge>
               </span>
             }
@@ -42,7 +51,9 @@ export function SafetyPage() {
                 : data.gate.reason}
             </p>
             <p className="mt-2 text-xs text-faint">
-              Remote access, the phone line, channels and the MCP server stay off until this passes.
+              {data.gate.deferred
+                ? 'Qualification enforcement is disabled. Device pairing and action permissions still apply.'
+                : 'Remote access, the phone line, channels and the MCP server stay off until this passes.'}
             </p>
             {Object.keys(data.blocked).length > 0 && (
               <ul className="mt-3 grid gap-1 text-sm">

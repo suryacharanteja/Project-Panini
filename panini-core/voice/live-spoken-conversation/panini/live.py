@@ -57,7 +57,12 @@ class LiveConnection:
                 f"Live voice connection was rejected ({response.status_code}). Check OpenAI model access and billing."
             )
         body = response.json()
-        self.session_id = body["session"]["id"]
+        await self.attach(body["session"]["id"])
+        return body["transport"]["sdp"]
+
+    async def attach(self, session_id):
+        """Attach to an already-created/accepted session; never create or accept it twice."""
+        self.session_id = session_id
         try:
             self.socket = await connect(
                 f"wss://api.openai.com/v1/live/sessions/{self.session_id}/attach",
@@ -72,7 +77,6 @@ class LiveConnection:
         except BaseException:
             await self.close()
             raise
-        return body["transport"]["sdp"]
 
     async def send(self, kind, **values):
         if not self.socket:

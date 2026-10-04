@@ -9,6 +9,7 @@ const methods = [
   'stop',
   'end',
   'media',
+  'voice-personas',
   'media-close',
   'dashboard',
   'admin',

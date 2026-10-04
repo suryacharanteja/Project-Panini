@@ -68,3 +68,64 @@ async def test_lost_voice_stops_task_then_closes_media_without_ending_session():
     owner.stop.assert_awaited_once_with(session)
     owner.close_media.assert_awaited_once_with(session)
     assert session.state == "ready"
+
+
+@pytest.mark.anyio
+async def test_persona_voice_routes_to_specialist_and_revalidates_archive(tmp_path, monkeypatch):
+    from backend.harness.store import Store
+    from backend.personas import Personas
+    from backend.policy.engine import Policy
+
+    monkeypatch.setenv("PANINI_PERSONAS", "true")
+    store = Store(tmp_path / "voice.sqlite3")
+    personas = Personas(
+        store, Policy(store), identity_read=lambda: "Owner identity", identity_write=lambda text: None
+    )
+    personas.create("scout", name="Scout", instructions="Research only", color="cyan", voice="cedar")
+    owner = SimpleNamespace(
+        authorize=lambda *args: None,
+        submit=AsyncMock(),
+        adapters={"agent": SimpleNamespace(harness=SimpleNamespace(personas=personas))},
+    )
+    session = SimpleNamespace(session_id="voice-test", voice_persona_id="scout", state="ready")
+    media = VoiceMedia(owner, session, object(), 1)
+    config = media.connection.configuration()
+    assert config["audio"]["output"]["voice"] == "cedar"
+    assert config["instructions"].startswith("Research only")
+    assert "Owner identity" not in config["instructions"]
+    await media.request("Find papers", "one")
+    assert owner.submit.call_args.args[3].text == "@scout Find papers"
+    await media.request("stop", "two")
+    assert owner.submit.call_args.args[3].text == "stop"
+    media.connection.speak = AsyncMock()
+    personas.archive("scout")
+    await media.request("Find more papers", "three")
+    assert owner.submit.await_count == 2
+    assert "unavailable" in media.connection.speak.call_args.args[0]
+    monkeypatch.setenv("PANINI_PERSONAS", "false")
+    from backend.panini.voice import voice_profile
+
+    with pytest.raises(Fault, match="disabled"):
+        voice_profile(owner, "scout")
+    store.close()
+
+
+@pytest.mark.anyio
+async def test_voice_reconnect_history_is_bounded_and_scoped(monkeypatch):
+    monkeypatch.setenv("PANINI_PERSONAS", "false")
+    owner = SimpleNamespace()
+    session = SimpleNamespace(
+        session_id="s", state="ready", voice_history={}, hub=SimpleNamespace(publish=lambda *args: None)
+    )
+    first = VoiceMedia(owner, session, None, 1)
+    await first.event({"type": "transcript", "role": "user", "delta": "Hello"})
+    await first.event({"type": "transcript", "role": "assistant", "delta": "Hi"})
+    second = VoiceMedia(owner, session, None, 1)
+    assert second.connection.configuration()["input"][0]["content"][0]["text"] == "Hello"
+    assert second.connection.configuration()["input"][1]["content"][0]["type"] == "output_text"
+    session.voice_history["other"] = [{"role": "user", "text": "Other persona private text"}]
+    assert "Other persona private text" not in str(second.connection.configuration())
+    for _ in range(80):
+        await first.event({"type": "transcript", "role": "user", "delta": "u" * 4000})
+        await first.event({"type": "transcript", "role": "assistant", "delta": "a" * 4000})
+    assert sum(len(row["text"]) for row in session.voice_history["panini"]) <= 6000

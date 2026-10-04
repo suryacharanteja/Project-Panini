@@ -73,6 +73,7 @@ class MediaOffer(Control):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
     media_generation: int = Field(ge=1)
     sdp: str = Field(min_length=20, max_length=100000)
+    persona_id: str = Field(default="panini", pattern=r"^[a-z][a-z0-9-]{0,40}$")
 
 
 class MediaClose(Control):

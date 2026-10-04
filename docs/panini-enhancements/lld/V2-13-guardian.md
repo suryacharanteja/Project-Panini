@@ -4,8 +4,10 @@
 | --- | --- |
 | Phase / priority / size | Phase 3 · P0 · M (4–5 days) |
 | Depends on | V2-03 (taint and policy), V2-01 (eval harness) |
-| Flag | `PANINI_GUARDIAN` (default `false`; required before any remote surface is enabled) |
-| Status | Partial; red-team work in progress (2026-10-04) |
+| Flag | `PANINI_GUARDIAN` (default `false`); `PANINI_REDTEAM_ENFORCE` (default `false`) |
+| Status | Red-team qualification disabled and deferred to future development by owner (2026-10-04) |
+
+Owner decision supersedes the original rollout gate below: red-team qualification does not block remote, phone, channel or MCP configuration. The deferred state is explicitly reported and is never presented as a passing evaluation. Future enforcement is opt-in through `PANINI_REDTEAM_ENFORCE`. Pairing, signed decisions, policy and permission checks remain independent runtime requirements.
 
 ## 1. Outcome
 

@@ -33,7 +33,11 @@ async def lifespan(app: FastAPI):
         app.state.harness.start()
         from . import v2flags
 
-        if v2flags.value("PANINI_REMOTE_MODE") != "off":  # Off until the V2-13 red-team gate passes.
+        if v2flags.enabled("PANINI_PHONE_LINE"):
+            from .telephony.inbound import runtime as phone_runtime
+
+            await phone_runtime(app).recover()
+        if v2flags.value("PANINI_REMOTE_MODE") != "off":
             from .fabric.runtime import runtime
 
             await runtime(app).start()
@@ -42,6 +46,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         try:
+            if getattr(app.state, "phone_line", None):
+                await app.state.phone_line.close()
             if app.state.panini:
                 await app.state.panini.close()
             if getattr(app.state, "fabric_runtime", None):

@@ -105,6 +105,8 @@ function App() {
     [message, setMessage] = useState('Preparing your conversation…'),
     [phase, setPhase] = useState('connecting');
   const [persona, setPersona] = useState(presentation(null));
+  const [voicePersona, setVoicePersona] = useState('panini');
+  const [voicePersonas, setVoicePersonas] = useState<ReturnType<typeof presentation>[]>([]);
   const [personaMessages, setPersonaMessages] = useState<
     { name: string; color: string; text: string }[]
   >([]);
@@ -179,10 +181,10 @@ function App() {
   const closeMic = async () => {
     const current = generation.current;
     releaseAudio();
-    await call('media-close', { generation: current });
+    return await call('media-close', { generation: current });
   };
-  const startMic = async () => {
-    if (mic || connectingMic) return;
+  const startMic = async (personaId = voicePersona, reconnect = false) => {
+    if (!reconnect && (mic || connectingMic)) return;
     setConnectingMic(true);
     const current = ++generation.current;
     try {
@@ -249,6 +251,7 @@ function App() {
       if (generation.current !== current) return;
       const answer = await call('media', {
         generation: current,
+        persona_id: personaId,
         sdp: connection.localDescription?.sdp,
       });
       if (!answer || generation.current !== current) {
@@ -356,7 +359,15 @@ function App() {
         setPresence(data.presence);
       } else if (event.type === 'execution.viewer_error') {
         setError(data.message);
+      } else if (event.type === 'media.connected' && data.persona) {
+        setPersona(presentation(data.persona));
       } else if (event.type === 'media.closed' || event.type === 'session.closed') {
+        if (
+          event.type === 'media.closed' &&
+          data.generation != null &&
+          data.generation < generation.current
+        )
+          return;
         releaseAudio();
         if (event.type === 'session.closed') {
           setReady(false);
@@ -424,6 +435,12 @@ function App() {
     );
   useEffect(() => {
     if (ready) loadBrowsers();
+  }, [ready]);
+  useEffect(() => {
+    if (ready)
+      void call('voice-personas').then((value) =>
+        setVoicePersonas((value?.personas || []).map(presentation)),
+      );
   }, [ready]);
   const chosenBrowser = snapshot?.selected_targets?.browser;
   useEffect(() => {
@@ -1042,6 +1059,34 @@ function App() {
                 </label>
                 <button onClick={() => void call('pair')}>Pair browser extension</button>
                 <CredentialSetup />
+                {voicePersonas.length > 0 && (
+                  <label className="microphone-picker">
+                    Voice specialist
+                    <select
+                      aria-label="Voice specialist"
+                      value={voicePersona}
+                      disabled={connectingMic}
+                      onChange={async (event) => {
+                        const id = event.target.value;
+                        setVoicePersona(id);
+                        if (mic) {
+                          const closed = await closeMic();
+                          if (closed !== null) await startMic(id, true);
+                        }
+                      }}
+                    >
+                      {voicePersonas.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <small>
+                      During a call, switching stops current work and reconnects audio in this
+                      conversation.
+                    </small>
+                  </label>
+                )}
                 <label className="microphone-picker">
                   Microphone
                   <select

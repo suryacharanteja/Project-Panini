@@ -31,6 +31,46 @@ class Setting:
 
 
 SETTINGS = [
+    Setting(
+        "PANINI_CALL_MAX_MINUTES",
+        "voice",
+        "Phone call maximum minutes",
+        "int",
+        "Maximum duration of an inbound call.",
+        default="30",
+        minimum=1,
+        maximum=120,
+    ),
+    Setting(
+        "PANINI_CALLS_PER_DAY",
+        "voice",
+        "Phone calls per day",
+        "int",
+        "Maximum accepted inbound calls per UTC day.",
+        default="20",
+        minimum=1,
+        maximum=1000,
+    ),
+    Setting(
+        "PANINI_CALL_MINUTES_PER_DAY",
+        "voice",
+        "Phone minutes per day",
+        "int",
+        "Daily total call duration; a new call is bounded by the remaining allowance.",
+        default="120",
+        minimum=1,
+        maximum=1440,
+    ),
+    Setting(
+        "PANINI_CALL_MAX_RUNS",
+        "voice",
+        "Requests per phone call",
+        "int",
+        "Maximum delegated requests during one call.",
+        default="12",
+        minimum=1,
+        maximum=100,
+    ),
     # Models & keys
     Setting(
         "OPENAI_API_KEY",

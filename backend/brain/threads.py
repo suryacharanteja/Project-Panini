@@ -15,7 +15,15 @@ class Threads:
     def __init__(self, store, sessions, clock=time.time):
         self.store, self.sessions, self.clock = store, sessions, clock
 
-    def bind(self, surface: str, external_id: str, *, title: str = "", origin: str | None = None) -> str:
+    def bind(
+        self,
+        surface: str,
+        external_id: str,
+        *,
+        title: str = "",
+        origin: str | None = None,
+        continue_recent: bool = True,
+    ) -> str:
         row = self.store.one(
             "SELECT b.thread_id FROM thread_bindings b JOIN sessions s ON s.id=b.thread_id "
             "WHERE b.surface=? AND b.external_id=?",
@@ -23,7 +31,9 @@ class Threads:
         )
         if row:
             return row["thread_id"]
-        thread_id = self._continue(surface) or self._create(title, origin or surface)
+        thread_id = (self._continue(surface) if continue_recent else None) or self._create(
+            title, origin or surface
+        )
         self.store.execute(
             "INSERT OR REPLACE INTO thread_bindings(surface, external_id, thread_id, created) VALUES (?,?,?,?)",
             (surface, external_id, thread_id, self.clock()),

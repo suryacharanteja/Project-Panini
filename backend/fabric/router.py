@@ -221,6 +221,33 @@ async def personas(request: Request):
     }
 
 
+@router.get("/calls")
+async def calls(request: Request):
+    _fabric(request)
+    from ..telephony.inbound import runtime
+
+    return runtime(request.app).monitor()
+
+
+@router.post("/calls/{call_id}/{action}")
+async def call_action(call_id: str, action: str, request: Request):
+    _fabric(request)
+    from ..telephony.inbound import runtime
+
+    service = runtime(request.app)
+    if not service.active or service.active.id != call_id:
+        raise HTTPException(409, "This call has ended or changed.")
+    if action == "end":
+        await service.end()
+    elif action == "verify":
+        service.request_verification()
+    elif action == "transfer":
+        await service.transfer()
+    else:
+        raise HTTPException(404, "Unknown call control.")
+    return {"status": "accepted"}
+
+
 @router.get("/threads/{task_id}")
 async def thread(task_id: str, request: Request):
     _fabric(request)

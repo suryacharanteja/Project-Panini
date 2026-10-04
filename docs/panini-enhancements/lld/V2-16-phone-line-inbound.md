@@ -3,9 +3,9 @@
 | Field | Value |
 | --- | --- |
 | Phase / priority / size | Phase 3 · P1 · L (1–1.5 weeks) |
-| Depends on | V2-14 (ingress), V2-15 (approvals on the phone), V2-06 (run engine); V2-13 gate |
+| Depends on | V2-14 (ingress), V2-15 (approvals on the phone), V2-06 (run engine); red-team qualification deferred by owner |
 | Flag | `PANINI_PHONE_LINE` (default `false`) |
-| Status | Not started |
+| Status | In progress; inbound implementation and local qualification, live SIP qualification pending |
 | Decision | Register D2 (SIP trunk provider and number) |
 
 ## 1. Outcome
@@ -206,3 +206,11 @@ the webhook in the OpenAI project); the number stops being answered.
 
 - Should the owner's paired phone number skip the PIN when the push confirmation is approved within 10 s?
   Recommendation: yes (push confirmation is stronger than the PIN).
+
+## 11. Implementation evidence — 2026-10-04
+
+Implemented in `backend/telephony/` and migration `0014_calls.sql`: verified ingress, caller screening, salted PINs, accept/attach/reject/hangup, keypad and paired-device identity verification, dedicated call threads, action approvals, replay protection, caller revocation, bounded call and daily budgets, transcript artifacts, receipts and registered-owner transfer. Admin Phone line stores webhook credentials through DPAPI. Android PWA exposes live call controls and signed Inbox approval. The preview is loopback-only and uses mocked SIP transport.
+
+`backend/tests/telephony/test_inbound.py` covers signed delivery replay, spoofed display names, PIN attempts, unverified refusal, revocation, remaining daily duration, sideband failure/restart, receipt storage failure and actual Agent policy enforcement under global shadow mode. Speech and keypad cannot resolve action approvals; tap cannot resolve verify-level approval. Phone smoke verifies identity on the signed Inbox path and ends a preview call.
+
+No real SIP call has been placed or qualified. Real number/HTTPS ingress, priced cost, unknown-caller ask/message modes, later transcript finalization cases and full run-engine surface integration remain open. Duration/provider usage are recorded. [Current qualification evidence](../qualification-2026-10-04.md) lists exact test scope and provider limits. This LLD remains **In progress**.

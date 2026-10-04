@@ -1,13 +1,15 @@
 """The remote fabric runtime (V2-14): one object that owns identity, devices, sessions, push and ingress, and starts
 the transport chosen by PANINI_REMOTE_MODE (off | lan | tailscale | relay).
 
-Remote modes refuse to start until the V2-13 red-team gate passes (v2flags reads gated flags as off until then).
+Red-team qualification is deferred by default; explicit future enforcement uses the V2-13 gate.
 `off` closes listeners and the relay socket; devices stay registered.
 """
 
 import asyncio
+import base64
 import json
 import logging
+import secrets
 
 from .. import v2flags
 from .devices import Devices, PcIdentity
@@ -28,7 +30,16 @@ class Fabric:
         self.push = Push(store, secrets_store)
         self.server.push_key = self.push.public_key
         self.settings_path = settings_path
-        self.ingress = Ingress(store, self.settings().get("hooks", {}))
+        hooks = self.settings().get("hooks", {})
+        self.ingress = Ingress(
+            store,
+            {
+                key: {**hook, "secret": self.secrets.get(hook["secret_ref"]) or ""}
+                if hook.get("secret_ref")
+                else hook
+                for key, hook in hooks.items()
+            },
+        )
         self._tailscale = tailscale
         self.listener = None
         self.listener_job = None
@@ -48,7 +59,7 @@ class Fabric:
 
     @property
     def mode(self) -> str:
-        return v2flags.value("PANINI_REMOTE_MODE")  # "off" until the red-team gate passes.
+        return v2flags.value("PANINI_REMOTE_MODE")
 
     @property
     def tailscale(self):
@@ -158,6 +169,24 @@ class Fabric:
         self.settings_path.parent.mkdir(parents=True, exist_ok=True)
         self.settings_path.write_text(json.dumps(value), encoding="utf-8")
         return value
+
+    def configure_phone_webhook(self, secret):
+        if not isinstance(secret, str) or not secret.startswith("whsec_"):
+            raise ValueError("Enter the OpenAI webhook signing secret.")
+        try:
+            if len(base64.b64decode(secret[6:], validate=True)) < 16:
+                raise ValueError()
+        except ValueError:
+            raise ValueError("Invalid webhook signing secret.") from None
+        settings = self.settings()
+        hooks = settings.setdefault("hooks", {})
+        path_secret = hooks.get("phone", {}).get("path_secret") or secrets.token_urlsafe(24)
+        self.secrets.set("phone_webhook", secret)
+        hooks["phone"] = {"kind": "openai", "path_secret": path_secret, "secret_ref": "phone_webhook"}
+        self.settings_path.parent.mkdir(parents=True, exist_ok=True)
+        self.settings_path.write_text(json.dumps(settings), encoding="utf-8")
+        self.ingress.hooks["phone"] = {**hooks["phone"], "secret": secret}
+        return {"path": f"/hooks/phone/{path_secret}"}
 
     def watch_interrupts(self, interrupts) -> None:
         """Push each new approval or question to paired phones (title and level only; details over the fabric)."""
