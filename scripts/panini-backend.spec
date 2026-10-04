@@ -13,6 +13,13 @@ runtime_paths = [
 # imports must be discoverable at collection time as well as analysis time.
 sys.path[:0] = runtime_paths
 datas, binaries, hiddenimports = [(str(root / "backend/tasks.json"), "backend")], [], []
+# SQL and Python migrations are discovered as files, including inside a frozen build.
+datas += [
+    (str(p), "backend/harness/migrations")
+    for p in (root / "backend/harness/migrations").iterdir()
+    if p.is_file() and p.name[:4].isdigit() and p.suffix in {".sql", ".py"}
+]
+datas += [(str(root / "backend/harness/persona.md"), "backend/harness")]
 # Built-in agent skills are data files (SKILL.md), not modules.
 datas += [
     (str(p), str(p.parent.relative_to(root)))

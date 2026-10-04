@@ -15,8 +15,24 @@ if __name__ == "__main__":
 
     if sys.argv[1:2] == ["--check-runtime"]:
         from backend.fabric.passkeys import Passkeys  # noqa: F401
+        from backend.fabric.transports.listener import PHONE
+        from backend.harness.learning import persona
         from backend.harness.runtime import Harness  # noqa: F401
 
+        if not persona() or not (PHONE / "lib/passkeys.mjs").is_file():
+            raise RuntimeError("The packaged identity or phone application is missing.")
+        for table in ("schema_migrations", "pages", "device_passkeys", "passkey_ceremonies"):
+            if not app.state.harness.store.one(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
+            ):
+                raise RuntimeError(f"The packaged database is missing {table}.")
+        from backend.registry.registry import Registry
+
+        registry = Registry()
+        if registry.errors or not {"browser_v2", "sandbox", "live"}.issubset(
+            {manifest.id for manifest in registry.manifests}
+        ):
+            raise RuntimeError(f"The packaged capability inventory is incomplete: {registry.errors}")
         print("PANINI_BACKEND_RUNTIME_IMPORTS_OK", flush=True)
         raise SystemExit(0)
 

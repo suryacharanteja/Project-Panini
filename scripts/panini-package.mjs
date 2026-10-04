@@ -103,6 +103,37 @@ await run(join(root, '.venv/Scripts/python.exe'), [
 await cp(join(root, 'artifacts/panini-frozen/Panini.Backend'), join(runtime, 'backend'), {
   recursive: true,
 });
+// Serve the same phone application and capability manifests from the installed runtime.
+const phoneDestination = join(runtime, 'panini-core/apps/phone');
+await mkdir(phoneDestination, { recursive: true });
+for (const name of [
+  'index.html',
+  'app.css',
+  'app.js',
+  'sw.js',
+  'manifest.webmanifest',
+  'lib',
+  'screens',
+  'icons',
+])
+  await cp(join(root, 'panini-core/apps/phone', name), join(phoneDestination, name), {
+    recursive: true,
+  });
+for (const capability of await readdir(join(root, 'panini-core/capabilities'), {
+  withFileTypes: true,
+})) {
+  if (!capability.isDirectory()) continue;
+  const manifests = join(root, 'panini-core/capabilities', capability.name, 'manifests');
+  try {
+    await stat(manifests);
+  } catch (error) {
+    if (error.code === 'ENOENT') continue;
+    throw error;
+  }
+  await cp(manifests, join(runtime, 'panini-core/capabilities', capability.name, 'manifests'), {
+    recursive: true,
+  });
+}
 await run(join(root, '.venv/Scripts/python.exe'), [
   '-m',
   'PyInstaller',
@@ -135,7 +166,15 @@ if (process.platform === 'win32') {
     join(runtime, 'backend/Panini.Backend.exe'),
     ['--check-runtime'],
     runtime,
-    isolatedPath,
+    {
+      ...isolatedPath,
+      PANINI_DATA_DIR: join(root, 'artifacts/panini-backend-import-smoke'),
+      PANINI_RUNTIME_ROOT: runtime,
+      PANINI_HARNESS_ENABLED: '1',
+      PANINI_CAPABILITY_ROUTER_ENABLED: 'false',
+      JEV_REV_DESKTOP_ENABLED: 'false',
+      PANINI_CLI_ENABLED: 'false',
+    },
     'PANINI_BACKEND_RUNTIME_IMPORTS_OK',
   );
   await run(

@@ -56,3 +56,13 @@ Evidence: `artifacts/phone/passkeys-release-check.log`, `passkeys-targeted.log`,
 
 The committed source/built-surface bundle is a local development increment. An unsigned installer,
 if built, remains a development candidate. Neither is full LLD delivery or production qualification.
+
+## Frozen runtime correction
+
+The first installer attempt failed before distribution: the frozen backend lacked the SQL and Python
+migration files needed to initialize its database. Packaging now includes every numbered migration and
+the built-in identity, ships the current phone assets and all capability manifests, and resolves the
+phone application relative to the configured installed runtime. The frozen import check uses isolated
+test data and checks migrated tables, identity, phone assets and the browser/sandbox/live inventory.
+A regression test verifies the spec includes every migration, including dynamically loaded Python files.
+The targeted package, fabric transport and migration checks passed (11 tests).
