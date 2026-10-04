@@ -110,6 +110,21 @@ class Replayer:
             row, replay = self.bundles.current(name)
             values = input_values(replay, supplied)
             patch = copy.deepcopy(replay.model_dump())
+            if replay.kind == "desktop":
+                # Native Stop fences its task. Give the replay its own task so cleanup cannot
+                # stop the invoking agent's existing desktop session or its later actions.
+                parent = ctx
+                ctx = ToolContext(
+                    principal=parent.principal,
+                    view=parent.view,
+                    run_id=identifier,
+                    agent=parent.agent,
+                    confirm=parent.confirm,
+                    confirm_decision=parent.confirm_decision,
+                    calls=parent.calls,
+                    taint=parent.taint,
+                )
+                ctx.occurrences = parent.__dict__.setdefault("occurrences", {})
             self.active = asyncio.current_task()
             self.active_name = name
             previous_binding = getattr(ctx, "teach_binding", None)
@@ -117,11 +132,11 @@ class Replayer:
             state, failure, heals, evidence = "failed", "", 0, []
             desktop = replay.kind == "desktop"
             snapshot_tool = "desktop_snapshot" if desktop else "browser_snapshot"
-            self.h.store.execute(
-                "INSERT INTO skill_runs(id,name,version,state,inputs_digest,started) VALUES (?,?,?,'running',?,?)",
-                (identifier, name, row["version"], digest(values), time.time()),
-            )
             try:
+                self.h.store.execute(
+                    "INSERT INTO skill_runs(id,name,version,state,inputs_digest,started) VALUES (?,?,?,'running',?,?)",
+                    (identifier, name, row["version"], digest(values), time.time()),
+                )
                 if desktop:
                     choices = (await self.call(ctx, "desktop_windows", {})).data["windows"]
                     choices = [

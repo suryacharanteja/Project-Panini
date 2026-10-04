@@ -383,3 +383,38 @@ async def test_keyboard_replay_refuses_focus_on_a_private_field(world):
     assert result.data["state"] == "failed"
     assert not any(p["op"] == "fine_action" and p["action"]["kind"] == "keypress" for p in h.pipe.calls)
     assert not h.desktop_fine.sessions
+
+
+@pytest.mark.anyio
+async def test_replay_cleanup_preserves_invoking_agents_desktop_session(world):
+    h = world
+    await h.registry.call(h.ctx, "desktop_snapshot", {"window": "fixture"})
+    parent = h.desktop_fine.sessions[h.ctx.run_id]
+    seed(h)
+    result = await h.teach.replayer.run(h.ctx, "desktop-demo", {})
+    assert result.data["state"] == "passed"
+    assert h.desktop_fine.sessions == {h.ctx.run_id: parent}
+    stops = [p for p in h.pipe.calls if p["op"] == "stop"]
+    assert stops[-1]["task_id"] == result.data["id"] != h.ctx.run_id
+    assert (await h.registry.call(h.ctx, "desktop_snapshot", {})).outcome == "ok"
+    assert not getattr(h.ctx, "teach_binding", None)
+
+
+@pytest.mark.anyio
+async def test_run_database_failure_does_not_leave_teach_locked(world, monkeypatch):
+    h = world
+    seed(h)
+    original = h.store.execute
+
+    def failing(sql, *args):
+        if sql.startswith("INSERT INTO skill_runs"):
+            raise RuntimeError("database unavailable")
+        return original(sql, *args)
+
+    monkeypatch.setattr(h.store, "execute", failing)
+    result = await h.teach.replayer.run(h.ctx, "desktop-demo", {})
+    assert result.outcome == "failed"
+    assert not h.teach.replayer.active and not h.desktop_fine.sessions
+    assert not any(p["op"] == "fine_action" for p in h.pipe.calls)
+    monkeypatch.setattr(h.store, "execute", original)
+    assert (await h.teach.replayer.run(h.ctx, "desktop-demo", {})).outcome == "ok"

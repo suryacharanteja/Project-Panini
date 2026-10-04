@@ -176,8 +176,17 @@ async def main():
 
         with tempfile.TemporaryDirectory(prefix="panini-teach-desktop-") as folder:
             os.environ["PANINI_DATA_DIR"] = str(Path(folder) / "data")
+            model_requests = []
+
+            class NoModel:
+                async def respond(self, *args, **kwargs):
+                    model_requests.append(True)
+                    raise AssertionError("The native smoke must not call a model provider")
+
             h = Harness(
-                Store(Path(folder) / "state.sqlite3"), skills=Skills(user_root=Path(folder) / "skills")
+                Store(Path(folder) / "state.sqlite3"),
+                skills=Skills(user_root=Path(folder) / "skills"),
+                model_factory=NoModel,
             )
             h.adapters["desktop"] = Adapter()
             h.artifacts = Artifacts(h.store, Path(folder) / "artifacts")
@@ -260,6 +269,7 @@ async def main():
                 await worker("action", {"name": "Draft text", "kind": "set_value", "text": "reset"})
                 result = await h.teach.replayer.run(ctx, "windows-taught", {}, window="fixture")
                 assert result.outcome == "ok" and result.data["state"] == "passed", result
+                assert not model_requests and result.data["heals"] == 0
                 assert reviews and not h.desktop_fine.sessions
                 receipts = h.store.all(
                     "SELECT tool,effect,outcome,dispatched FROM receipts WHERE tool LIKE 'desktop_%'"
@@ -347,7 +357,7 @@ async def main():
                 report = {
                     "passed": True,
                     "kind": "real Windows hooks / WPF UIA / registry replay",
-                    "modelCalls": 0,
+                    "modelCalls": len(model_requests),
                     "recordedSteps": len(replay["steps"]),
                     "reviews": reviews,
                     "receipts": receipts,

@@ -25,6 +25,8 @@ Keyboard replay uses `desktop_focus`, a separately receipted SetFocus operation,
 before pressing keys. Focusing a button does not invoke it. Desktop element expectations may bind a current
 ref to its native anchor, so a replacement control cannot satisfy the assertion solely by sharing a name.
 Cleanup uncertainty prevents a passing replay result.
+Each desktop replay owns a separate native task, so its cleanup cannot fence the invoking agent's desktop
+session or later actions. A regression test preserves an existing session across a replay.
 
 Admin → Build → Skills includes a Windows source, explicit window selection, reviewed application and
 ancestry display, desktop expectations and an application-filtered replay picker. Stop remains usable
