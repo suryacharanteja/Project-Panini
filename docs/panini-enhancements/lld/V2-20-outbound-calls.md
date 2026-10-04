@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 5 · P2 · L (1.5 weeks) |
 | Depends on | V2-16 (telephony foundation), V2-13 (callee-injection cases), V2-15 (approvals) |
 | Flag | `PANINI_OUTBOUND_CALLS` (default `false`) |
-| Status | In progress: reviewed outbound SIP lifecycle and owner controls built; real calls, keypad automation and outcome qualification pending |
+| Status | In progress: reviewed SIP lifecycle, scheduled calling windows, owner controls and usage receipts built; real calls, keypad automation and interpreted outcomes pending |
 | Decision | Register D7 (call scope); compliance checklist signed by the owner before enabling |
 
 ## 1. Outcome
@@ -24,7 +24,7 @@ listen in or take over, and reports the outcome with a transcript.
 - Not in scope: marketing or bulk calling (never), recording audio by default, calls to emergency or premium
   numbers (blocked), automatic retries without approval.
 
-## 3. Current state
+## 3. State when this LLD was written
 
 V2-16 provides accepted inbound calls, `PhoneConnection` (attach, DTMF events), call records, budgets and
 receipts. No outbound capability.
@@ -109,8 +109,9 @@ message) in the record.
   <owner> — one moment" and ask the owner (below); if no answer within 60 seconds, use the fallback.
 - If asked "Are you a robot / AI?", answer truthfully.
 - If the callee asks not to be called again, apologize, confirm, end the call, and record do-not-call.
-- Phone menus: listen and use `transport.dtmf.send` with the digits that match the brief (for example
-  "press 2 for appointments"); never enter account numbers or PINs.
+- Phone menus: use a supported provider/hosted tool to select menu options that match the brief; never
+  enter account numbers or PINs. `transport.dtmf.send` is a notification, not a client command. The
+  supported sending mechanism and real menu qualification remain pending.
 - Voicemail: leave a short message with the purpose and the callback number only if `voicemail=leave_message`.
 
 ### 5.6 Brain during the call
@@ -226,3 +227,32 @@ Sources: [SIP guide](https://developers.openai.com/api/docs/guides/voice-sip),
 Fake-provider integration and real browser checks are development evidence. No real SIP call, audible
 disclosure, physical Android device, transfer completion or production qualification is claimed.
 Red-team work remains disabled and deferred by the owner.
+
+## 12. Scheduled calling and usage increment — 2026-10-04
+
+Migration 0027 adds one durable schedule to the reviewed brief. The owner or owner agent can select an
+explicit ISO time with an offset, at most seven days ahead, or the next permitted calling window. The
+exact computed UTC time, every possible destination timezone and the latest start (at most fifteen
+minutes later, never past any 20:00 cutoff) are included in the approval digest and preview. Changing
+either the brief or time replaces its approval. The review itself expires after at most one hour;
+resolved approval remains bound to its original start window. Immediate calling remains the default.
+
+Approved calls persist as scheduled until due. Restart can resume an unattempted approved call within
+that same window. Missed windows cancel and notify; they never slide to a later day. The dispatcher
+rechecks the exact brief/time digest, policy/approval strength, calling hours, setup, flags, pause,
+do-not-call and daily attempt limit. Setup changes invalidate scheduled calls; pause/disable, blocks
+and policy changes cancel them when observed. A busy line cannot extend the reviewed deadline.
+Ambiguous provider creation remains single-use and is never retried. PC and paired PWA show reviewed
+local time and provide pending-call cancellation. PANINI must be running during the reviewed window.
+
+Receipts retain cumulative observed voice seconds and separately record final provider usage only
+when session closure reports it. Final events arriving during shutdown are preserved. Invalid usage
+never becomes billing evidence; USD cost remains unavailable without verified pricing/trunk charges.
+Ringing watchdog expiry has a no-answer outcome; other provider failures keep only a bounded code,
+never a provider message. Keypad notifications are observed and deduplicated without storing digits;
+observing them does not implement or qualify outbound IVR tones.
+
+Development checks use isolated fake SIP/voice and real storage, reviews, UI and ledger. Live audible
+disclosure, SIP/IVR, actual takeover, interpreted task outcomes, approved read-only brain lookups,
+physical Android and production release qualification remain open. See the
+[qualification report](../qualification-outbound-scheduling-2026-10-04.md).

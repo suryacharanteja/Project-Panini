@@ -34,6 +34,7 @@ os.environ["AI_GATEWAY_API_KEY"] = ""
 def main():
     mimetypes.add_type("text/javascript", ".mjs")
     import uvicorn
+    from fastapi import HTTPException, Request
     from fastapi.responses import FileResponse
     from fastapi.staticfiles import StaticFiles
     from panini_cli.agent.model import ScriptedModel
@@ -72,12 +73,14 @@ def main():
         async def close(self):
             pass
 
+    now = [datetime(2026, 10, 4, 16, tzinfo=UTC).timestamp()]
     h.outbound = OutboundCalls(
         h,
         provider=provider,
         connection_factory=Connection,
-        clock=lambda: datetime(2026, 10, 4, 16, tzinfo=UTC).timestamp(),
+        clock=lambda: now[0],
     )
+    h.interrupts.clock = lambda: now[0]
     app = create_app(console_token="panini-outbound-preview-only", harness_factory=lambda: h)
     public = ROOT / "frontend/public/admin"
     app.mount("/phone", StaticFiles(directory=ROOT / "panini-core/apps/phone"))
@@ -91,6 +94,20 @@ def main():
     @app.get("/preview/state")
     async def state():
         return {"observed": observed, "status": h.outbound.status()}
+
+    @app.post("/preview/advance")
+    async def advance(request: Request):
+        if request.headers.get("x-panini-console") != "panini-outbound-preview-only":
+            raise HTTPException(401, "Preview control token required.")
+        payload = await request.json()
+        at = payload.get("at")
+        if type(at) not in {int, float} or not now[0] <= at <= now[0] + 7 * 86400:
+            raise HTTPException(422, "Advance the isolated preview clock by at most seven days.")
+        now[0] = at
+        await h.outbound.tick()
+        if h.outbound.work:
+            await h.outbound.work
+        return h.outbound.status()
 
     uvicorn.run(app, host="127.0.0.1", port=3236, access_log=False)
 

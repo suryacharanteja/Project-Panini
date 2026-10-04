@@ -67,6 +67,11 @@ def main():
         ]
         if args.profile == "outbound":
             included.append("android-calls.png")
+            included.extend(
+                name
+                for name in ("final-backend.log", "program-qualification.json")
+                if (evidence / name).is_file()
+            )
     licenses = [
         ("node_modules/marked/LICENSE.md", "marked-LICENSE.txt"),
         ("node_modules/dompurify/LICENSE", "dompurify-LICENSE.txt"),

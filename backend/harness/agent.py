@@ -585,13 +585,17 @@ class Agent:
             and self.persona_id == "panini"
             and self.surface not in {"telegram", "slack", "email", "whatsapp", "phone_line"}
         ):
-            from ..telephony.brief import CallBrief
+            from ..telephony.brief import CallBrief, tool_schema
+            from ..telephony.schedule import CallSchedule
 
             offered.append(
                 _tool(
                     "place_call",
-                    "Draft one outbound call for owner review. This does not dial until its exact brief is approved on the PC or paired phone.",
-                    {"brief": CallBrief.model_json_schema()},
+                    "Draft one outbound call for owner review. Optional schedule fixes one call time within seven days or the next calling window; missed windows cancel. Nothing dials until the exact brief and time are approved on the PC or paired phone.",
+                    {
+                        "brief": tool_schema(CallBrief),
+                        "schedule": {"anyOf": [tool_schema(CallSchedule), {"type": "null"}]},
+                    },
                 )
             )
         if v2flags.enabled("PANINI_PERSONAS") and self.private and not self.depth:
@@ -1292,7 +1296,7 @@ class Agent:
         if name == "place_call":
             from ..brain.control_tools import place_call
 
-            return place_call(self, a["brief"]), None
+            return place_call(self, a["brief"], a.get("schedule")), None
         if name in {"delegate_to_persona", "run_team"}:
             from ..brain.control_tools import delegate_to_persona, run_team
 

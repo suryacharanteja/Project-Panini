@@ -41,10 +41,14 @@ def add_outbound(router, guard, *, configurable=False):
     async def draft(request: Request):
         calls = service(request)
         try:
+            payload = await request.json()
+            schedule = payload.pop("schedule", None)
             return calls.draft(
-                await request.json(), surface="phone_app" if router.prefix == "/api/remote" else "avatar"
+                payload,
+                schedule=schedule,
+                surface="phone_app" if router.prefix == "/api/remote" else "avatar",
             )
-        except (ValueError, ValidationError):
+        except (ValueError, ValidationError, AttributeError, TypeError):
             raise HTTPException(
                 422, "Check all call brief fields, destination and permitted commitments."
             ) from None
@@ -53,8 +57,10 @@ def add_outbound(router, guard, *, configurable=False):
     async def edit(identifier: str, request: Request):
         calls = service(request)
         try:
-            return calls.draft(await request.json(), identifier=identifier)
-        except (ValueError, ValidationError):
+            payload = await request.json()
+            schedule = payload.pop("schedule", None)
+            return calls.draft(payload, identifier=identifier, schedule=schedule)
+        except (ValueError, ValidationError, AttributeError, TypeError):
             raise HTTPException(
                 422, "Check all call brief fields, destination and permitted commitments."
             ) from None

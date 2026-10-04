@@ -40,9 +40,16 @@ if __name__ == "__main__":
             ):
                 raise RuntimeError(f"The packaged database is missing {table}.")
         from backend.telephony.numbers import calling_window
+        from backend.telephony.schedule import CallSchedule
 
         if not calling_window("+442079460018", 1791100800)["timezones"]:
             raise RuntimeError("Packaged phone-number or timezone metadata is missing.")
+        if not app.state.harness.store.one(
+            "SELECT name FROM pragma_table_info('outbound_briefs') WHERE name='schedule'"
+        ):
+            raise RuntimeError("The packaged outbound schedule migration is missing.")
+        if not CallSchedule(mode="next_window").resolve("+442079460018", 1791100800)["latest_start"]:
+            raise RuntimeError("The packaged outbound scheduler is missing.")
         from backend.registry.registry import Registry
 
         registry = Registry()

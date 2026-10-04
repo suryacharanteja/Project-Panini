@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import ipaddress
 import json
+import math
 import os
 import re
 import time
@@ -22,6 +23,7 @@ from ..panini.contracts import Fault
 from .brief import CallBrief
 from .inbound import SESSION_ID, limit
 from .numbers import calling_window, validate
+from .schedule import CallSchedule
 
 CHECKLIST = (
     "personal_tasks_only",
@@ -55,12 +57,15 @@ def trunk_url(value):
 
 class OutboundConnection(LiveConnection):
     async def handle_event(self, event):
-        if str(event.get("type", "")).startswith("transport."):
+        if (
+            str(event.get("type", "")).startswith("transport.")
+            or event.get("type") == "session.usage.updated"
+        ):
             await self.on_event(event)
             return
         await super().handle_event(event)
         if event.get("type") == "session.closed":
-            await self.on_event({"type": "call.closed", "usage": self.usage})
+            await self.on_event({"type": "call.closed", "usage": self.usage, "reason": event.get("reason")})
 
 
 class OutboundCalls:
@@ -115,16 +120,32 @@ class OutboundCalls:
         # Changing the trunk or identity requires the owner to acknowledge it again.
         changed = old["config"] != config or username is not None
         signed = self.clock() if checklist is not None else (old["signed_at"] if not changed else None)
+        if changed:
+            # Revoke dispatch durably before touching the separately persisted credential vault.
+            # A crash/vault failure must not leave old approvals valid with a new trunk identity.
+            with self.store.lock:
+                self.store.execute("BEGIN IMMEDIATE")
+                try:
+                    self.store.execute(
+                        "UPDATE outbound_settings SET checklist=NULL,signed_at=NULL WHERE id=1"
+                    )
+                    for row in self.store.all(
+                        "SELECT id,interrupt_id FROM outbound_briefs WHERE state IN ('review','scheduled')"
+                    ):
+                        self.h.interrupts.cancel(
+                            row["interrupt_id"], "Outbound setup changed; review a new brief."
+                        )
+                        self.update(row["id"], "cancelled", "Outbound setup changed; review a new brief.")
+                    self.store.execute("COMMIT")
+                except BaseException:
+                    self.store.execute("ROLLBACK")
+                    raise
         if username is not None:
             self.secrets.set("trunk", {"username": username, "password": password})
         self.store.execute(
             "INSERT INTO outbound_settings VALUES (1,?,?,?) ON CONFLICT(id) DO UPDATE SET config=excluded.config,checklist=excluded.checklist,signed_at=excluded.signed_at",
             (json.dumps(config), json.dumps(dict.fromkeys(CHECKLIST, True)) if signed else None, signed),
         )
-        if changed:
-            for row in self.store.all("SELECT id,interrupt_id FROM outbound_briefs WHERE state='review'"):
-                self.h.interrupts.cancel(row["interrupt_id"], "Outbound setup changed; review a new brief.")
-                self.update(row["id"], "cancelled", "Outbound setup changed; review a new brief.")
         return self.settings()
 
     def enabled(self):
@@ -139,7 +160,7 @@ class OutboundCalls:
         row = self.store.one("SELECT * FROM outbound_briefs WHERE id=?", (identifier,))
         if not row:
             raise Fault("CALL_UNKNOWN", "This call brief is unavailable.", 404)
-        for key in ("brief", "outcome"):
+        for key in ("brief", "outcome", "schedule"):
             if row[key]:
                 row[key] = json.loads(row[key])
         return row
@@ -218,11 +239,16 @@ class OutboundCalls:
             )
         return {**window, "decision": decision}
 
-    def draft(self, data, *, thread_id=None, identifier=None, surface="avatar"):
+    def draft(self, data, *, thread_id=None, identifier=None, surface="avatar", schedule=None):
         brief = CallBrief.model_validate(data)
         if identifier:
             surface = self.get(identifier)["surface"]
         policy = self.check(brief, hours=False, surface=surface)["decision"]
+        plan = (
+            CallSchedule.model_validate(schedule).resolve(brief.number, self.clock())
+            if schedule is not None
+            else None
+        )
         if identifier:
             old = self.get(identifier)
             if old["state"] != "review":
@@ -252,28 +278,29 @@ class OutboundCalls:
                         raise Fault("CALL_CHANGED", "The brief has already been answered.", 409)
                     self.h.interrupts.cancel(old["interrupt_id"], "Brief edited; review the replacement.")
                     thread_id = old["thread_id"]
-                action = {"call_brief_id": identifier, "brief": brief.model_dump(), "surface": surface}
+                action = self.call_action(identifier, brief, surface, plan)
                 review = self.h.interrupts.open(
                     InterruptSpec(
                         "review",
                         "outbound_call",
                         "Review outbound call",
-                        "Review the whole brief. Editing replaces this approval. Approving places one call within calling hours.",
+                        "Review the whole brief and call time. Editing replaces this approval. Approving permits one attempt; a missed scheduled window cancels it without retrying.",
                         preview={
                             "brief": brief.model_dump(),
                             "effect": "transact" if brief.may_commit else "communicate",
+                            "schedule": plan,
                         },
                         action=action,
                         response_schema=APPROVAL_SCHEMA,
                         level=level,
-                        ttl_s=3600,
+                        ttl_s=min(3600, plan["latest_start"] - now) if plan else 3600,
                     ),
                     run_id=identifier,
                     thread_id=thread_id,
                     owner_principal={"surface": "avatar"},
                 )
                 self.store.execute(
-                    "INSERT INTO outbound_briefs(id,brief,digest,interrupt_id,thread_id,created,updated,surface) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET brief=excluded.brief,digest=excluded.digest,interrupt_id=excluded.interrupt_id,updated=excluded.updated",
+                    "INSERT INTO outbound_briefs(id,brief,digest,interrupt_id,thread_id,created,updated,surface,schedule) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET brief=excluded.brief,digest=excluded.digest,interrupt_id=excluded.interrupt_id,updated=excluded.updated,schedule=excluded.schedule",
                     (
                         identifier,
                         json.dumps(brief.model_dump()),
@@ -283,6 +310,7 @@ class OutboundCalls:
                         now,
                         now,
                         surface,
+                        json.dumps(plan) if plan else None,
                     ),
                 )
                 self.store.execute("COMMIT")
@@ -290,6 +318,57 @@ class OutboundCalls:
                 self.store.execute("ROLLBACK")
                 raise
         return self.get(identifier)
+
+    @staticmethod
+    def call_action(identifier, brief, surface, plan):
+        action = {"call_brief_id": identifier, "brief": brief.model_dump(), "surface": surface}
+        return {**action, "schedule": plan} if plan is not None else action
+
+    def approval(self, row, brief):
+        answer = self.h.interrupts.get(row["interrupt_id"])
+        if (
+            answer["status"] != "resolved"
+            or answer.get("decision", {}).get("payload", {}).get("approved") is not True
+            or answer["action_digest"] != row["digest"]
+            or digest(answer["action"]) != row["digest"]
+            or digest(self.call_action(row["id"], brief, row["surface"], row["schedule"])) != row["digest"]
+        ):
+            raise Fault("APPROVAL_REQUIRED", "The exact call brief and time need owner approval.", 403)
+        policy = self.check(brief, hours=False, surface=row["surface"])["decision"]
+        if policy.level not in {ApprovalLevel.NONE, ApprovalLevel.TAP} and str(
+            policy.level
+        ) not in SATISFIES.get(answer.get("decided_by", {}).get("method", "tap"), set()):
+            raise Fault(
+                "APPROVAL_CHANGED", "Current policy needs a stronger approval. Review a new brief.", 403
+            )
+        return policy
+
+    def cancel_pending(self, identifier, reason):
+        row = self.get(identifier)
+        if row["state"] not in {"review", "scheduled"}:
+            raise Fault("CALL_CHANGED", "Only a pending call can be cancelled here.", 409)
+        self.h.interrupts.cancel(row["interrupt_id"], reason)
+        self.update(identifier, "cancelled", reason)
+
+    def prune_scheduled(self):
+        for record in self.store.all("SELECT id FROM outbound_briefs WHERE state='scheduled'"):
+            row = self.get(record["id"])
+            try:
+                self.approval(row, CallBrief.model_validate(row["brief"]))
+                if not row["schedule"] or self.clock() >= row["schedule"]["latest_start"]:
+                    raise Fault(
+                        "CALL_WINDOW_MISSED",
+                        "The approved call window expired. Review a new call; no retry was made.",
+                    )
+            except (Fault, ValueError, KeyError, TypeError) as error:
+                reason = getattr(error, "message", "The approved call schedule changed.")
+                self.cancel_pending(row["id"], reason)
+                self.h.notices.add(
+                    "call_cancelled",
+                    "Scheduled call cancelled",
+                    reason,
+                    dedupe="outbound-cancel:" + row["id"],
+                )
 
     async def _provider(self, action, session_id=None, body=None):
         if session_id and not SESSION_ID.fullmatch(session_id):
@@ -306,6 +385,7 @@ class OutboundCalls:
         return response.json() if action == "create" else None
 
     async def tick(self):
+        self.prune_scheduled()
         if self.active:
             call = self.active
             try:
@@ -318,6 +398,7 @@ class OutboundCalls:
                         "TRANSFER_UNCONFIRMED", "Transfer completion was not confirmed within thirty seconds."
                     )
                 if self.clock() - call["started"] > 180 and call["answered"] is None:
+                    call["result_status"] = "no_answer"
                     raise Fault("RING_TIMEOUT", "The callee did not answer.")
                 if call["answered"] is not None:
                     if not call["disclosed"] and self.clock() - call["answered"] >= 10:
@@ -333,7 +414,9 @@ class OutboundCalls:
             if not self.enabled() or self.h.policy.paused():
                 self.work.cancel()
             return
-        for row in self.store.all("SELECT id FROM outbound_briefs WHERE state='review' ORDER BY created"):
+        for row in self.store.all(
+            "SELECT id FROM outbound_briefs WHERE state IN ('review','scheduled') ORDER BY created"
+        ):
             brief = self.get(row["id"])
             answer = self.h.interrupts.get(brief["interrupt_id"])
             if answer["status"] == "open":
@@ -350,6 +433,8 @@ class OutboundCalls:
             if answer["action_digest"] != brief["digest"] or digest(answer["action"]) != brief["digest"]:
                 self.update(brief["id"], "cancelled", "The approved brief changed.")
                 continue
+            if brief["state"] == "scheduled" and self.clock() < brief["schedule"]["not_before"]:
+                continue
             self.work = asyncio.create_task(self.dial(brief["id"]))
             self.work.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
             break
@@ -363,39 +448,30 @@ class OutboundCalls:
     async def dial(self, identifier):
         async with self.lock:
             row = self.get(identifier)
-            if row["state"] != "review" or self.active:
+            if row["state"] not in {"review", "scheduled"} or self.active:
                 return
             receipt = None
             try:
                 brief = CallBrief.model_validate(row["brief"])
-                answer = self.h.interrupts.get(row["interrupt_id"])
-                if (
-                    answer["status"] != "resolved"
-                    or answer.get("decision", {}).get("payload", {}).get("approved") is not True
-                    or answer["action_digest"] != row["digest"]
-                    or digest(answer["action"]) != row["digest"]
-                    or digest(
-                        {"call_brief_id": identifier, "brief": brief.model_dump(), "surface": row["surface"]}
-                    )
-                    != row["digest"]
-                ):
-                    raise Fault("APPROVAL_REQUIRED", "The exact call brief needs owner approval.", 403)
-                policy = self.check(brief, surface=row["surface"])["decision"]
-                if policy.level not in {ApprovalLevel.NONE, ApprovalLevel.TAP} and str(
-                    policy.level
-                ) not in SATISFIES.get(answer.get("decided_by", {}).get("method", "tap"), set()):
-                    raise Fault(
-                        "APPROVAL_CHANGED",
-                        "Current policy needs a stronger approval. Review a new brief.",
-                        403,
-                    )
+                policy = self.approval(row, brief)
+                if row["schedule"]:
+                    if self.clock() >= row["schedule"]["latest_start"]:
+                        raise Fault(
+                            "CALL_WINDOW_MISSED", "The approved call window expired. Review a new call."
+                        )
+                    if self.clock() < row["schedule"]["not_before"]:
+                        self.update(
+                            identifier, "scheduled", "Approved for one attempt in the reviewed window."
+                        )
+                        return
+                self.check(brief, surface=row["surface"])
                 if self.inbound and self.inbound.active:
                     raise Fault("CALL_BUSY", "The inbound phone line is busy.")
                 day = self.clock() - self.clock() % 86400
                 with self.store.lock:
                     self.store.execute("BEGIN IMMEDIATE")
                     try:
-                        if self.get(identifier)["state"] != "review":
+                        if self.get(identifier)["state"] not in {"review", "scheduled"}:
                             self.store.execute("ROLLBACK")
                             return
                         count = self.store.one(
@@ -414,7 +490,7 @@ class OutboundCalls:
                             principal={"kind": "owner", "surface": "avatar", "verified": True},
                         )
                         self.store.execute(
-                            "UPDATE outbound_briefs SET state='creating',receipt_id=?,updated=?,attempted_at=? WHERE id=? AND state='review'",
+                            "UPDATE outbound_briefs SET state='creating',receipt_id=?,updated=?,attempted_at=? WHERE id=? AND state IN ('review','scheduled')",
                             (receipt["id"], self.clock(), self.clock(), identifier),
                         )
                         self.h.ledger.decision(
@@ -472,6 +548,12 @@ class OutboundCalls:
                     "closing": False,
                     "connection": None,
                     "requests": set(),
+                    "event_ids": set(),
+                    "usage_seconds": None,
+                    "final_usage_seconds": None,
+                    "finalization_confirmed": False,
+                    "keypad": {"received": 0, "sent": 0},
+                    "provider_error_code": None,
                 }
                 self.active = call
                 call["connection"] = self.connection_factory(
@@ -498,6 +580,13 @@ class OutboundCalls:
                     self.update(
                         identifier, "cancelled", getattr(error, "message", "Call prerequisites were not met.")
                     )
+                    if row["schedule"]:
+                        self.h.notices.add(
+                            "call_cancelled",
+                            "Scheduled call cancelled",
+                            getattr(error, "message", "Call prerequisites were not met."),
+                            dedupe="outbound-cancel:" + identifier,
+                        )
 
     def finish_unknown(self, identifier, receipt):
         self.update(
@@ -519,9 +608,38 @@ class OutboundCalls:
         )
 
     async def event(self, call, event):
-        if call["closing"] or self.active is not call:
+        if self.active is not call:
             return
         kind = event.get("type")
+        if event.get("session_id") and event["session_id"] != call["session"]:
+            return
+        identifier = event.get("event_id")
+        if isinstance(identifier, str):
+            if identifier in call["event_ids"]:
+                return
+            if len(call["event_ids"]) < 1024:
+                call["event_ids"].add(identifier)
+        # Final usage can arrive while hangup is draining. It must reach the receipt even when closing.
+        if kind in {"session.usage.updated", "call.closed"}:
+            usage = event.get("usage")
+            seconds = usage.get("seconds") if isinstance(usage, dict) else None
+            valid = type(seconds) in {int, float} and math.isfinite(seconds) and 0 <= seconds <= 7200
+            if valid:
+                call["usage_seconds"] = max(call["usage_seconds"] or 0, seconds)
+            if kind == "call.closed":
+                call["finalization_confirmed"] = True
+                call["final_usage_seconds"] = seconds if valid else None
+                call["connection"].finalized.set()
+        if call["closing"]:
+            return
+        if kind in {"transport.dtmf.received", "transport.dtmf.send"}:
+            if (
+                isinstance(event.get("event"), str)
+                and len(event["event"]) == 1
+                and event["event"] in "0123456789*#ABCD"
+            ):
+                call["keypad"]["received" if kind.endswith("received") else "sent"] += 1
+            return
         if kind == "transport.ringing":
             if call["answered"] is None:
                 self.update(call["id"], "ringing")
@@ -530,8 +648,13 @@ class OutboundCalls:
                 call["answered"] = self.clock()
                 self.update(call["id"], "answered")
         elif kind in {"transport.failed", "call.closed", "disconnected", "error"}:
-            if kind == "call.closed":
-                call["connection"].finalized.set()
+            if kind == "transport.failed":
+                code = (
+                    (event.get("error") or {}).get("code") if isinstance(event.get("error"), dict) else None
+                )
+                call["provider_error_code"] = (
+                    code if isinstance(code, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", code) else None
+                )
             asyncio.create_task(
                 self.end(
                     reason="Provider closed the transferred session; actual owner takeover is unconfirmed."
@@ -640,6 +763,9 @@ class OutboundCalls:
             call["pending"].discard(review["id"])
 
     async def control(self, identifier, action, text=None):
+        if action == "cancel":
+            self.cancel_pending(identifier, "Cancelled by the owner before dialing.")
+            return
         call = self.active
         if not call or call["id"] != identifier or call["closing"]:
             raise Fault("CALL_CHANGED", "This call has ended or changed.", 409)
@@ -686,7 +812,11 @@ class OutboundCalls:
                 except Exception:
                     state, reason = "unknown", "Remote hangup could not be confirmed. " + reason
             if call["connection"]:
-                await call["connection"].close()
+                try:
+                    await call["connection"].close()
+                except Exception as error:
+                    safe_failure(error)
+                    state, reason = "unknown", "Sideband cleanup could not be confirmed. " + reason
         finally:
             try:
                 transcript = self.h.artifacts.put(
@@ -696,12 +826,18 @@ class OutboundCalls:
                     run_id=call["id"],
                 )
                 outcome = {
-                    "status": "failed" if state != "ended" else "partial",
+                    "status": "failed" if state != "ended" else call.get("result_status", "partial"),
                     "summary": reason + " Task achievement and commitments remain unconfirmed.",
                     "commitments": [],
                     "follow_ups": [],
                     "duration_s": max(0, self.clock() - call["started"]),
                     "cost_usd": None,
+                    "cost_confirmed": False,
+                    "usage_seconds": call["usage_seconds"],
+                    "final_usage_seconds": call["final_usage_seconds"],
+                    "finalization_confirmed": call["finalization_confirmed"],
+                    "keypad_events": call["keypad"],
+                    "provider_error_code": call["provider_error_code"],
                     "transcript_artifact_id": transcript,
                 }
                 self.h.ledger.end(

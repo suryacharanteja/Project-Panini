@@ -5,6 +5,7 @@ import { chromium } from 'playwright';
 
 const origin = 'http://127.0.0.1:3236';
 const headers = { 'x-panini-console': 'panini-outbound-preview-only' };
+const evidence = process.env.PANINI_OUTBOUND_EVIDENCE_DIR || 'artifacts/outbound';
 const server = spawn('.venv/Scripts/python.exe', ['scripts/panini-outbound-preview.py'], {
   windowsHide: true,
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -99,16 +100,82 @@ try {
     ['create', 'session.instructions.append', 'hangup'],
   );
   assert(preview.status.briefs[0].receipt_id && preview.status.briefs[0].transcript_artifact_id);
-  await mkdir('artifacts/outbound', { recursive: true });
+  // Schedule through the actual Admin form; approval preserves the reviewed time without dialing early.
+  await page.getByLabel('Call timing', { exact: true }).selectOption('at');
+  const chosen = new Date('2026-10-04T17:00:00Z');
+  const local = new Date(chosen.getTime() - chosen.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+  await page.getByLabel('Call time (your local timezone)', { exact: true }).fill(local);
+  for (const [label, value] of [
+    ['Callee name', 'Scheduled preview'],
+    ['Destination number', '+14155552671'],
+    ['Call purpose', 'Ask about next-week appointments'],
+    ['Your first name', 'Alex'],
+    ['Acceptable outcomes', 'An afternoon slot next week'],
+  ])
+    await page.getByLabel(label, { exact: false }).fill(value);
+  await page.getByRole('button', { name: 'Send brief to Inbox' }).click();
+  await page
+    .getByRole('button', { name: 'Cancel pending call to Scheduled preview', exact: true })
+    .waitFor();
+  status = await request('/api/harness/outbound');
+  const planned = status.briefs.find((row) => row.brief.callee_name === 'Scheduled preview');
+  assert.equal(planned.schedule.not_before, chosen.getTime() / 1000);
+  const plannedReview = await request('/api/harness/interrupts/' + planned.interrupt_id);
+  assert.deepEqual(plannedReview.preview.schedule, planned.schedule);
+  await request('/api/harness/interrupts/' + plannedReview.id, 'POST', {
+    nonce: plannedReview.nonce,
+    action_digest: plannedReview.action_digest,
+    status: 'resolved',
+    payload: { approved: true },
+  });
+  for (let i = 0; i < 30; i++) {
+    if (
+      (await request('/preview/state')).status.briefs.find((row) => row.id === planned.id)
+        ?.state === 'scheduled'
+    )
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(
+    (await request('/preview/state')).observed.filter((row) => row.action === 'create').length,
+    1,
+  );
+  await request('/preview/advance', 'POST', { at: planned.schedule.not_before });
+  await page.getByRole('button', { name: 'End outbound call' }).waitFor();
+  await page.getByRole('button', { name: 'End outbound call' }).click();
+  await page.getByRole('button', { name: 'End outbound call' }).waitFor({ state: 'hidden' });
+  const pending = await request('/api/harness/outbound/briefs', 'POST', {
+    ...planned.brief,
+    callee_name: 'Cancelled preview',
+    schedule: { mode: 'at', at: '2026-10-04T18:00:00Z' },
+  });
+  await page
+    .getByRole('button', { name: 'Cancel pending call to Cancelled preview', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Cancel pending call to Cancelled preview', exact: true })
+    .waitFor({ state: 'hidden' });
+  assert.equal(
+    (await request('/api/harness/outbound')).briefs.find((row) => row.id === pending.id).state,
+    'cancelled',
+  );
+  const phonePending = await request('/api/harness/outbound/briefs', 'POST', {
+    ...planned.brief,
+    callee_name: 'Phone cancellation preview',
+    schedule: { mode: 'at', at: '2026-10-04T18:00:00Z' },
+  });
+  await mkdir(evidence, { recursive: true });
   await page.evaluate(() => scrollTo(0, 0));
-  await page.screenshot({ path: 'artifacts/outbound/admin-desktop.png', fullPage: true });
+  await page.screenshot({ path: `${evidence}/admin-desktop.png`, fullPage: true });
   await page.setViewportSize({ width: 412, height: 915 });
   await page.evaluate(() => scrollTo(0, 0));
   await page.waitForFunction(
     () => document.querySelector('aside').getBoundingClientRect().right <= 0,
   );
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-  await page.screenshot({ path: 'artifacts/outbound/admin-mobile.png', fullPage: true });
+  await page.screenshot({ path: `${evidence}/admin-mobile.png`, fullPage: true });
   assert.deepEqual(errors, []);
   const first = preview.status.briefs[0].brief;
   const phoneBrief = await request('/api/harness/outbound/briefs', 'POST', {
@@ -162,12 +229,22 @@ try {
   await page.getByLabel('Owner call note').fill('Keep the original brief');
   await page.getByRole('button', { name: 'Send owner note' }).click();
   await page.waitForFunction(() => document.querySelector('.outbound-note').value === '');
-  await page.screenshot({ path: 'artifacts/outbound/android-calls.png', fullPage: true });
+  await page.screenshot({ path: `${evidence}/android-calls.png`, fullPage: true });
+  await page
+    .getByRole('button', { name: 'Cancel pending call to Phone cancellation preview', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Cancel pending call to Phone cancellation preview', exact: true })
+    .waitFor({ state: 'hidden' });
+  assert.equal(
+    (await request('/api/harness/outbound')).briefs.find((row) => row.id === phonePending.id).state,
+    'cancelled',
+  );
   await page.getByRole('button', { name: 'Transfer to my phone' }).click();
   await page.getByRole('heading', { name: 'No active call' }).waitFor();
   assert.deepEqual(errors, []);
   console.log(
-    'PASS real setup, credential clearing, draft/edit replacement, exact review approval, fake SIP create/disclosure/note/hangup, transcript and receipt; desktop/mobile fit; real phone screen note/transfer through a fake fabric adapter. No real call or physical device.',
+    'PASS real setup, credential clearing, draft/edit replacement, exact review approval, chosen time, no early dispatch, scheduled fake SIP dispatch, PC/PWA cancellation, fake SIP create/disclosure/note/hangup, transcript and receipt; desktop/mobile fit; real phone screen note/transfer through a fake fabric adapter. No real call or physical device.',
   );
 } catch (error) {
   console.error(JSON.stringify(await request('/preview/state')));
@@ -175,7 +252,7 @@ try {
     await browser
       .contexts()[0]
       .pages()[0]
-      .screenshot({ path: 'artifacts/outbound/admin-error.png', fullPage: true });
+      .screenshot({ path: `${evidence}/admin-error.png`, fullPage: true });
   throw error;
 } finally {
   await browser?.close();

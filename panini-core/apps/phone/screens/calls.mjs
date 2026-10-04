@@ -18,6 +18,9 @@ export async function calls(app) {
     if (document.activeElement?.classList.contains('outbound-note')) return;
     const reply = await app.fabric.request('GET', '/calls');
     if (reply.status !== 200) throw new Error(reply.body?.detail || 'Call status is unavailable.');
+    const outbound = await app.fabric.request('GET', '/outbound');
+    if (outbound.status !== 200)
+      throw new Error(outbound.body?.detail || 'Outbound status is unavailable.');
     const active = reply.body.active;
     panel.replaceChildren(h('h3', { text: active ? 'Call connected' : 'No active call' }));
     if (active) {
@@ -111,7 +114,54 @@ export async function calls(app) {
           text: `${call.state} · ${Math.round(call.duration_s)} seconds · ${call.reason || ''}`,
         }),
         call.summary ? h('p', { text: call.summary }) : null,
+        call.direction === 'outbound'
+          ? h('p.muted', {
+              text: `Voice usage: ${call.final_usage_seconds != null ? `${call.final_usage_seconds} seconds (final provider report)` : call.usage_seconds != null ? `${call.usage_seconds} seconds observed; final usage unconfirmed` : 'unavailable'}. Session finalization ${call.finalization_confirmed ? 'confirmed' : 'unconfirmed'}. Cost unavailable.`,
+            })
+          : null,
         call.receipt_id ? savedSources.get(call.receipt_id) : null,
+      );
+    }
+    const pending = (outbound.body.briefs || []).filter((row) =>
+      ['review', 'scheduled'].includes(row.state),
+    );
+    if (pending.length) panel.append(h('h3', { text: 'Pending outbound calls' }));
+    for (const row of pending) {
+      panel.append(
+        h('p', { text: `${row.brief.callee_name} · ${row.state}` }),
+        h('p.muted', {
+          text: row.schedule
+            ? `Reviewed time: ${new Date(row.schedule.not_before * 1000).toLocaleString()} (${Intl.DateTimeFormat().resolvedOptions().timeZone}). Start before ${new Date(row.schedule.latest_start * 1000).toLocaleString()}. Calling hours apply to the destination. Missed windows cancel; no retry.`
+            : 'Review the full brief in Inbox. One attempt only within calling hours.',
+        }),
+        h(
+          'button.wide',
+          {
+            onclick: (event) =>
+              action(event.currentTarget, async () => {
+                const restored = await app.fabric.request('GET', '/outbound');
+                const current = restored.body?.briefs?.find((item) => item.id === row.id);
+                if (
+                  restored.status !== 200 ||
+                  !current ||
+                  !['review', 'scheduled'].includes(current.state) ||
+                  current.digest !== row.digest
+                )
+                  throw new Error(
+                    'This pending call has ended or changed. Refresh before cancelling.',
+                  );
+                const result = await app.fabric.request(
+                  'POST',
+                  `/outbound/${encodeURIComponent(row.id)}/cancel`,
+                );
+                if (result.status !== 200)
+                  throw new Error(result.body?.detail || 'Cancellation failed.');
+                toast('Pending call cancelled.');
+                await refresh();
+              }),
+          },
+          `Cancel pending call to ${row.brief.callee_name}`,
+        ),
       );
     }
   }

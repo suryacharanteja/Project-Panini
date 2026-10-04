@@ -36,7 +36,13 @@ type Row = {
   brief: any;
   reason?: string;
   receipt_id?: string;
-  outcome?: { summary: string };
+  outcome?: {
+    summary: string;
+    usage_seconds?: number | null;
+    final_usage_seconds?: number | null;
+    finalization_confirmed?: boolean;
+  };
+  schedule?: { mode: string; at_utc: string; not_before: number; latest_start: number };
 };
 type Status = {
   enabled: boolean;
@@ -59,6 +65,8 @@ export function OutboundPanel() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [brief, setBrief] = useState<Brief>(emptyBrief);
   const [editing, setEditing] = useState<string | null>(null);
+  const [timing, setTiming] = useState('now');
+  const [callAt, setCallAt] = useState('');
   const [note, setNote] = useState('');
   const [blockedNumber, setBlockedNumber] = useState('');
   useEffect(() => {
@@ -181,8 +189,8 @@ export function OutboundPanel() {
       <Card title={editing ? 'Edit call brief' : 'Prepare one call'}>
         <p className="text-sm text-faint">
           Emergency, premium, service and unknown-timezone numbers are blocked. Calls outside
-          09:00–20:00 require a fresh review during the permitted window. Give PANINI only the facts
-          it may disclose.
+          09:00–20:00 can be scheduled for the next permitted window. Give PANINI only the facts it
+          may disclose.
         </p>
         <form
           className="mt-4 grid gap-3"
@@ -193,6 +201,12 @@ export function OutboundPanel() {
                 method: editing ? 'PUT' : 'POST',
                 body: {
                   ...brief,
+                  schedule:
+                    timing === 'now'
+                      ? null
+                      : timing === 'at'
+                        ? { mode: 'at', at: new Date(callAt).toISOString() }
+                        : { mode: 'next_window' },
                   may_disclose: brief.may_disclose
                     .split('\n')
                     .map((s) => s.trim())
@@ -205,10 +219,42 @@ export function OutboundPanel() {
               });
               setBrief(emptyBrief);
               setEditing(null);
+              setTiming('now');
+              setCallAt('');
               resource.reload();
             });
           }}
         >
+          <label>
+            Call timing
+            <select
+              className={inputClass}
+              aria-label="Call timing"
+              value={timing}
+              onChange={(event) => setTiming(event.target.value)}
+            >
+              <option value="now">After approval, within calling hours</option>
+              <option value="next_window">Next permitted calling window</option>
+              <option value="at">Choose a time</option>
+            </select>
+          </label>
+          {timing === 'at' && (
+            <label>
+              Call time (your local timezone)
+              <input
+                className={inputClass}
+                type="datetime-local"
+                required
+                value={callAt}
+                onChange={(event) => setCallAt(event.target.value)}
+              />
+            </label>
+          )}
+          <p className="text-xs text-faint">
+            Scheduled calls need approval within one hour. The review fixes the call time and a
+            start window of up to 15 minutes; missed windows cancel without retrying. PANINI must be
+            running. All destination timezones must permit the call.
+          </p>
           {(['callee_name', 'number', 'purpose', 'owner_first_name'] as const).map((key) => (
             <label key={key}>
               {
@@ -328,6 +374,8 @@ export function OutboundPanel() {
                 onClick={() => {
                   setEditing(null);
                   setBrief(emptyBrief);
+                  setTiming('now');
+                  setCallAt('');
                 }}
               >
                 Cancel edit
@@ -382,10 +430,26 @@ export function OutboundPanel() {
                 </div>
               ))}
             </dl>
+            {row.schedule && (
+              <p className="mt-2 text-sm">
+                Reviewed call time: {new Date(row.schedule.not_before * 1000).toLocaleString()}.
+                Start before {new Date(row.schedule.latest_start * 1000).toLocaleString()} (
+                {row.schedule.at_utc} UTC reference).
+              </p>
+            )}
             {row.state === 'review' && (
               <Button
                 onClick={() => {
                   setEditing(row.id);
+                  setTiming(row.schedule ? 'at' : 'now');
+                  if (row.schedule) {
+                    const date = new Date(row.schedule.not_before * 1000);
+                    setCallAt(
+                      new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+                        .toISOString()
+                        .slice(0, 16),
+                    );
+                  } else setCallAt('');
                   setBrief({
                     ...row.brief,
                     may_disclose: row.brief.may_disclose.join('\n'),
@@ -396,8 +460,30 @@ export function OutboundPanel() {
                 Edit unapproved brief
               </Button>
             )}
+            {['review', 'scheduled'].includes(row.state) && (
+              <Button
+                onClick={() =>
+                  act(`cancel-${row.id}`, `/outbound/${encodeURIComponent(row.id)}/cancel`)
+                }
+              >
+                Cancel pending call to {row.brief.callee_name}
+              </Button>
+            )}
             {row.reason && <p className="mt-2">{row.reason}</p>}
             {row.outcome && <p>{row.outcome.summary}</p>}
+            {row.outcome && (
+              <p className="mt-2 text-xs text-faint">
+                Voice usage:{' '}
+                {row.outcome.final_usage_seconds != null
+                  ? `${row.outcome.final_usage_seconds} seconds (final provider report)`
+                  : row.outcome.usage_seconds != null
+                    ? `${row.outcome.usage_seconds} seconds observed; final usage unconfirmed`
+                    : 'unavailable'}
+                . Session finalization{' '}
+                {row.outcome.finalization_confirmed ? 'confirmed' : 'unconfirmed'}. Cost
+                unavailable; task achievement remains unconfirmed.
+              </p>
+            )}
             {row.receipt_id && <p className="text-xs text-faint">Receipt {row.receipt_id}</p>}
           </article>
         ))}

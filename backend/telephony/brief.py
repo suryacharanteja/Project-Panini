@@ -10,6 +10,15 @@ EXCLUSIONS = ["payment card details", "government ID numbers", "home address", "
 COMMITMENTS = {"confirm a new appointment time", "confirm a reservation", "request a callback"}
 
 
+def tool_schema(model):
+    """Strict function schemas require every property; nullable optional fields carry explicit null."""
+    schema = model.model_json_schema()
+    schema["required"] = list(schema["properties"])
+    for field in schema["properties"].values():
+        field.pop("default", None)
+    return schema
+
+
 class CallBrief(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     callee_name: Text
