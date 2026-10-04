@@ -24,6 +24,7 @@ from .brief import CallBrief
 from .inbound import SESSION_ID, limit
 from .numbers import calling_window, validate
 from .outcomes import OutcomeReports
+from .reads import CallReads
 from .schedule import CallSchedule
 
 CHECKLIST = (
@@ -82,6 +83,7 @@ class OutboundCalls:
         self.loop, self.work, self.active, self.inbound = None, None, None, None
         self.lock = asyncio.Lock()
         self.reports = OutcomeReports(self)
+        self.reads = CallReads(self)
 
     def settings(self):
         row = self.store.one("SELECT * FROM outbound_settings WHERE id=1")
@@ -166,6 +168,12 @@ class OutboundCalls:
             if row[key]:
                 row[key] = json.loads(row[key])
         row["outcome_report"] = self.reports.get(identifier)
+        row["lookup_receipt_ids"] = [
+            r["receipt_id"]
+            for r in self.store.all(
+                "SELECT receipt_id FROM outbound_reads WHERE call_id=? ORDER BY created", (identifier,)
+            )
+        ]
         return row
 
     def status(self):
@@ -174,6 +182,7 @@ class OutboundCalls:
             "flag": v2flags.enabled("PANINI_OUTBOUND_CALLS"),
             "enabled": bool(self.enabled()),
             "active": self.monitor(),
+            "lookup_sources": self.reads.sources(),
             "briefs": [
                 self.get(r["id"])
                 for r in self.store.all("SELECT id FROM outbound_briefs ORDER BY created DESC LIMIT 50")
@@ -244,6 +253,7 @@ class OutboundCalls:
 
     def draft(self, data, *, thread_id=None, identifier=None, surface="avatar", schedule=None):
         brief = CallBrief.model_validate(data)
+        self.reads.bind(brief)
         if identifier:
             surface = self.get(identifier)["surface"]
         policy = self.check(brief, hours=False, surface=surface)["decision"]
@@ -701,6 +711,13 @@ class OutboundCalls:
         ):
             return
         identifier = delegation_id or uuid4().hex
+        if (
+            not isinstance(text, str)
+            or not 1 <= len(text.strip()) <= 2000
+            or not isinstance(identifier, str)
+            or not 1 <= len(identifier) <= 200
+        ):
+            return
         if identifier in call["requests"] or len(call["requests"]) >= 12:
             return
         call["requests"].add(identifier)
@@ -715,13 +732,16 @@ class OutboundCalls:
             )
             await self.end(reason="Callee requested do-not-call.")
             return
-        # No memories, connectors or desktop effects are offered to the third-party voice session.
-        # Every additional request is held for an owner decision; payments stay forbidden.
+        # Payments remain forbidden before any model or connector is invoked.
         if re.search(r"\b(payment|deposit|card|password|pin|otp)\b", normalized):
             await call["connection"].speak(
                 "I cannot provide credentials or agree to payments. Please arrange that directly with the owner.",
                 delegation_id=delegation_id,
             )
+            return
+        if await self.reads.answer(call, text, identifier):
+            return
+        if self.active is not call or call["closing"] or call.get("transfer_requested") is not None:
             return
         await call["connection"].speak(
             "Let me check with the owner — one moment.", delegation_id=delegation_id
@@ -810,6 +830,11 @@ class OutboundCalls:
         if not call or call["closing"]:
             return
         call["closing"] = True
+        readers = [task for task in call.get("read_tasks", set()) if task is not asyncio.current_task()]
+        for task in readers:
+            task.cancel()
+        if readers:
+            await asyncio.wait(readers, timeout=2)
         for iid in list(call["pending"]):
             self.h.interrupts.cancel(iid, "Call ended.")
         try:
@@ -875,6 +900,7 @@ class OutboundCalls:
                 self.active = None
 
     async def recover(self):
+        self.reads.recover()
         self.reports.recover()
         for row in self.store.all(
             "SELECT * FROM outbound_briefs WHERE state IN ('creating','connecting','ringing','answered','transferring')"

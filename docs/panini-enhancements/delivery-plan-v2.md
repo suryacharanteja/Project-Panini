@@ -246,7 +246,7 @@ Dependencies: V2-05 (reviews), V2-07 (shared UI and Admin conversations); V2-18 
 
 ### V2-20: Outbound calls on your behalf
 
-Implementation register: **In progress**. Reviewed SIP lifecycle, scheduling, usage receipts and quote-cited interpretations are built; real SIP/IVR, read-only brain lookups, live outcomes, billing and physical Android qualification remain open. [Source LLD](lld/V2-20-outbound-calls.md).
+Implementation register: **In progress**. Reviewed SIP lifecycle, scheduling, usage receipts, quote-cited interpretations and scoped availability reads are built; real SIP/IVR, live lookup/outcome accuracy, billing and physical Android qualification remain open. [Source LLD](lld/V2-20-outbound-calls.md).
 
 Dependencies: V2-16 (telephony foundation), V2-13 (callee-injection cases), V2-15 (approvals).
 

@@ -122,6 +122,9 @@ export async function calls(app) {
           : null,
         call.receipt_id ? savedSources.get(call.receipt_id) : null,
         call.outcome_report ? callReport(app, call.id, call.outcome_report) : null,
+        call.lookup_receipt_ids?.length
+          ? h('p.muted', { text: `Call lookup receipts: ${call.lookup_receipt_ids.join(', ')}` })
+          : null,
       );
     }
     const pending = (outbound.body.briefs || []).filter((row) =>

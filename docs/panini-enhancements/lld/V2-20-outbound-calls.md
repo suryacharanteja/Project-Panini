@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 5 · P2 · L (1.5 weeks) |
 | Depends on | V2-16 (telephony foundation), V2-13 (callee-injection cases), V2-15 (approvals) |
 | Flag | `PANINI_OUTBOUND_CALLS` (default `false`) |
-| Status | In progress: reviewed SIP lifecycle, scheduled calling windows, owner controls and usage receipts built; quote-cited interpretations built; real calls, keypad automation and live outcome qualification pending |
+| Status | In progress: reviewed SIP lifecycle, scheduled calling windows, owner controls and usage receipts built; quote-cited interpretations and scoped availability reads built; real calls, keypad automation and live qualification pending |
 | Decision | Register D7 (call scope); compliance checklist signed by the owner before enabling |
 
 ## 1. Outcome
@@ -283,3 +283,40 @@ The 25 new deterministic checks, full repository checks and real browser/fake-pr
 evidence. No live model outcome benchmark, actual booking, real audible SIP call or physical Android test is
 claimed. V2-20 and production qualification remain open; red-team remains disabled and deferred. See the
 [qualification report](../qualification-outbound-outcomes-2026-10-04.md).
+
+
+## 14. Scoped call reads — 2026-10-04
+
+Migration 0029 persists a single read attempt per call/delegation ID with a linked receipt. A fresh,
+tool-free selector receives only the callee question, reviewed purpose, permitted facts and reviewed
+time windows. It never constructs the owner agent or reads memory, sessions, notebook content, a general
+connector catalogue or desktop tools. The backend speaks an exact allowed fact or a validated free/busy
+result. Unclear, invalid and unavailable results return to the existing owner-decision path.
+
+The optional `availability_checks` brief field permits at most three future windows, each at most four
+hours and within seven days. Admin supports adding/removing/editing them. Exact offset times, connector,
+tool and backend-computed configuration/catalogue fingerprint enter the owner approval digest. Changing
+a window replaces the approval. Empty scope is omitted from stored brief serialization to preserve old
+approval and report source digests; strict model functions still require an explicit empty array.
+
+A configured MCP adapter must expose a read-only, non-destructive tool accepting exactly `start` and `end`,
+with an owner background-read grant. A call also requires explicit review of these windows. Read metadata,
+source fingerprint and external phone-line policy are checked before and after dispatch, including after
+connector initialization. Owner policy grants are not inherited by the third-party principal. No new grants
+are created. Source changes or revocation discard the result; no new availability is inferred.
+
+The adapter returns the exact window, `complete: true`, and busy intervals only. Extra event fields,
+incomplete/mismatched coverage, malformed data and oversized results are rejected. Only the computed
+free/busy value reaches the voice and receipt; event titles, attendees and raw connector content do not.
+Availability never verifies or creates a booking. This is an adapter contract, not a preconfigured Google
+or Outlook integration; a production adapter/account still needs live qualification.
+
+Model output is capped at 300 tokens; routing, connector lock/init/read and reply share a twenty-second
+deadline. Existing twelve-request-per-call and daily call caps bound work. Ending a call cancels its reads.
+Interrupted reads recover as unavailable without re-dispatch; completed receipts remain immutable. Admin
+and paired PWA expose lookup receipt IDs; PWA cache advances to v10. Generic owner effects and mid-call
+approval remain separate.
+
+See [the scoped-read qualification report](../qualification-outbound-reads-2026-10-04.md) for the adapter
+contract, deterministic and browser evidence, and outstanding live/physical/release requirements.
+Red-team remains disabled and deferred.

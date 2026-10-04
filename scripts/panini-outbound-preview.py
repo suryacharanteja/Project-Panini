@@ -58,8 +58,53 @@ def main():
         ],
         "follow_ups": ["review_calendar_entry"],
     }
-    h = Harness(model_factory=lambda: ScriptedModel([{"text": json.dumps(proposal)}]))
+
+    class PreviewModel:
+        async def respond(self, instructions, items, tools, **options):
+            selected = {"kind": "availability", "index": 0}
+            result = (
+                selected if "kind" in options.get("output_schema", {}).get("properties", {}) else proposal
+            )
+            return await ScriptedModel([{"text": json.dumps(result)}]).respond(
+                instructions, items, tools, **options
+            )
+
+    h = Harness(model_factory=PreviewModel)
     observed = []
+    spoken = []
+
+    class Calendar:
+        name = "preview-calendar"
+        spec = {"command": "isolated-preview-only", "background_read_only": ["free_busy"]}
+        tools = [
+            {
+                "name": "free_busy",
+                "read_only": True,
+                "annotations": {"readOnlyHint": True},
+                "input_schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {"start": {"type": "string"}, "end": {"type": "string"}},
+                    "required": ["start", "end"],
+                },
+            }
+        ]
+
+        def __init__(self):
+            self.lock, self.seen = asyncio.Lock(), []
+
+        async def start(self):
+            pass
+
+        async def request(self, method, parameters):
+            self.seen.append({"method": method, **parameters})
+            return {"structuredContent": {**parameters["arguments"], "complete": True, "busy": []}}
+
+        async def close(self):
+            pass
+
+    calendar = Calendar()
+    h.connectors.servers = {calendar.name: calendar}
 
     async def provider(action, session_id=None, body=None):
         observed.append({"action": action, "session": session_id})
@@ -82,7 +127,7 @@ def main():
             await self.on_event({"type": "transcript", "role": "user", "delta": quote})
 
         async def speak(self, text, **kwargs):
-            pass
+            spoken.append(text)
 
         async def send(self, kind, **kwargs):
             observed.append({"action": kind})
@@ -110,7 +155,22 @@ def main():
 
     @app.get("/preview/state")
     async def state():
-        return {"observed": observed, "status": h.outbound.status()}
+        return {
+            "observed": observed,
+            "status": h.outbound.status(),
+            "lookup_calls": calendar.seen,
+            "spoken": spoken,
+        }
+
+    @app.post("/preview/delegate")
+    async def delegate(request: Request):
+        if request.headers.get("x-panini-console") != "panini-outbound-preview-only":
+            raise HTTPException(401, "Preview control token required.")
+        payload = await request.json()
+        if not h.outbound.active:
+            raise HTTPException(409, "No isolated preview call is active.")
+        await h.outbound.request(h.outbound.active, payload["text"], payload["id"])
+        return {"lookup_calls": calendar.seen, "spoken": spoken}
 
     @app.post("/preview/advance")
     async def advance(request: Request):

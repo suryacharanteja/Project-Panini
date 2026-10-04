@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react';
 import { api, harness, useResource } from '../api';
 import { Badge, Button, Card, inputClass, useAction } from '../components/ui';
 import { OutboundReport, type CallReport } from './OutboundReport';
+import {
+  AvailabilityInputs,
+  localTime,
+  type AvailabilityDraft,
+  type LookupSource,
+} from './AvailabilityInputs';
 
 const acknowledgements = {
   personal_tasks_only: 'Personal tasks only; no marketing or bulk calling.',
@@ -29,6 +35,7 @@ const emptyBrief = {
   fallback: 'ask_callback',
   voicemail: 'leave_message',
   language: 'en',
+  availability_checks: [] as AvailabilityDraft[],
 };
 type Brief = typeof emptyBrief;
 type Row = {
@@ -45,6 +52,7 @@ type Row = {
   };
   schedule?: { mode: string; at_utc: string; not_before: number; latest_start: number };
   outcome_report?: CallReport;
+  lookup_receipt_ids?: string[];
 };
 type Status = {
   enabled: boolean;
@@ -55,6 +63,7 @@ type Status = {
   briefs: Row[];
   active?: { id: string; transcript: { role: string; text: string }[] };
   blocked: { number: string }[];
+  lookup_sources: LookupSource[];
 };
 
 export function OutboundPanel() {
@@ -203,6 +212,11 @@ export function OutboundPanel() {
                 method: editing ? 'PUT' : 'POST',
                 body: {
                   ...brief,
+                  availability_checks: brief.availability_checks.map((item) => ({
+                    ...item,
+                    start: new Date(item.start).toISOString(),
+                    end: new Date(item.end).toISOString(),
+                  })),
                   schedule:
                     timing === 'now'
                       ? null
@@ -327,6 +341,11 @@ export function OutboundPanel() {
               </label>
             ))}
           </fieldset>
+          <AvailabilityInputs
+            checks={brief.availability_checks}
+            sources={data?.lookup_sources || []}
+            change={(availability_checks) => setBrief({ ...brief, availability_checks })}
+          />
           <p className="text-xs text-faint">
             Payments, card details, government IDs, home addresses, passwords and codes remain
             excluded.
@@ -427,7 +446,16 @@ export function OutboundPanel() {
                 <div key={key}>
                   <dt className="text-faint">{key.replaceAll('_', ' ')}</dt>
                   <dd className="break-words">
-                    {Array.isArray(value) ? value.join('; ') || 'None' : String(value)}
+                    {key === 'availability_checks' && Array.isArray(value)
+                      ? value
+                          .map(
+                            (item) =>
+                              `${item.server} · ${item.tool}: ${new Date(item.start).toLocaleString()} to ${new Date(item.end).toLocaleString()} (free/busy only)`,
+                          )
+                          .join('; ')
+                      : Array.isArray(value)
+                        ? value.join('; ') || 'None'
+                        : String(value)}
                   </dd>
                 </div>
               ))}
@@ -454,6 +482,14 @@ export function OutboundPanel() {
                   } else setCallAt('');
                   setBrief({
                     ...row.brief,
+                    availability_checks: (row.brief.availability_checks || []).map(
+                      (item: AvailabilityDraft) => ({
+                        server: item.server,
+                        tool: item.tool,
+                        start: localTime(item.start),
+                        end: localTime(item.end),
+                      }),
+                    ),
                     may_disclose: row.brief.may_disclose.join('\n'),
                     acceptable_outcomes: row.brief.acceptable_outcomes.join('\n'),
                   });
@@ -487,6 +523,11 @@ export function OutboundPanel() {
               </p>
             )}
             {row.receipt_id && <p className="text-xs text-faint">Receipt {row.receipt_id}</p>}
+            {!!row.lookup_receipt_ids?.length && (
+              <p className="break-words text-xs text-faint">
+                Call lookup receipts: {row.lookup_receipt_ids.join(', ')}
+              </p>
+            )}
             {row.outcome_report && (
               <OutboundReport
                 report={row.outcome_report}

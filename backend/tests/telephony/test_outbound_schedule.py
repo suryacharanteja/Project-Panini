@@ -238,6 +238,8 @@ async def test_owner_agent_schedules_through_review_and_channel_has_no_call_tool
     from backend.telephony.brief import CallBrief
 
     arguments = {"brief": CallBrief.model_validate(BRIEF).model_dump(), "schedule": {**later(now[0])}}
+    # The strict model function includes empty opt-in scope; stored legacy briefs omit it.
+    arguments["brief"]["availability_checks"] = []
     jsonschema.validate(arguments, tool["parameters"])
     for model in (
         tool["parameters"]["properties"]["brief"],

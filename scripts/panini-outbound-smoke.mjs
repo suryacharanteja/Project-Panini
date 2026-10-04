@@ -72,6 +72,27 @@ try {
     ['Acceptable outcomes', 'An afternoon slot next week'],
   ])
     await page.getByLabel(label, { exact: false }).fill(value);
+  await page.getByRole('button', { name: 'Add availability window' }).click();
+  const availabilityTime = (value) => {
+    const date = new Date(value);
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+  await page
+    .getByLabel('Availability start 1 (your local timezone)')
+    .fill(availabilityTime('2026-10-08T20:00:00Z'));
+  await page
+    .getByLabel('Availability end 1 (your local timezone)')
+    .fill(availabilityTime('2026-10-08T21:00:00Z'));
+  await mkdir(evidence, { recursive: true });
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.waitForFunction(
+    () => document.querySelector('aside').getBoundingClientRect().right <= 0,
+  );
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page
+    .getByRole('group', { name: 'Permitted availability checks' })
+    .screenshot({ path: `${evidence}/availability-mobile.png` });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: 'Send brief to Inbox' }).click();
   await page.getByRole('button', { name: 'Edit unapproved brief' }).waitFor();
   let status = await request('/api/harness/outbound');
@@ -90,6 +111,22 @@ try {
     payload: { approved: true },
   });
   await page.getByRole('button', { name: 'End outbound call' }).waitFor();
+  const lookup = await request('/preview/delegate', 'POST', {
+    text: 'Is the reviewed appointment window free?',
+    id: 'browser-read',
+  });
+  await request('/preview/delegate', 'POST', { text: 'Replay this read', id: 'browser-read' });
+  assert.equal(lookup.lookup_calls.length, 1);
+  assert.deepEqual(lookup.lookup_calls[0], {
+    method: 'tools/call',
+    name: 'free_busy',
+    arguments: { start: '2026-10-08T20:00:00.000Z', end: '2026-10-08T21:00:00.000Z' },
+  });
+  assert(lookup.spoken[0].includes('free') && lookup.spoken[0].includes('not a reservation'));
+  const checkedBrief = (await request('/api/harness/outbound')).briefs[0];
+  assert.equal(checkedBrief.lookup_receipt_ids.length, 1);
+  assert(checkedBrief.brief.availability_checks[0].source_digest);
+
   await page.getByLabel('Owner note', { exact: true }).fill('Afternoon slots only');
   await page.getByRole('button', { name: 'Send note' }).click();
   await page.getByRole('button', { name: 'End outbound call' }).click();
@@ -256,6 +293,7 @@ try {
                   receipt_id: row.receipt_id,
                   summary: row.outcome.summary,
                   outcome_report: row.outcome_report,
+                  lookup_receipt_ids: row.lookup_receipt_ids,
                 })),
             },
           };
@@ -311,7 +349,7 @@ try {
   await page.getByRole('heading', { name: 'No active call' }).waitFor();
   assert.deepEqual(errors, []);
   console.log(
-    'PASS real setup, credential clearing, draft/edit replacement, exact review approval, chosen time, no early dispatch, scheduled fake SIP dispatch, PC/PWA cancellation, fake SIP create/disclosure/note/hangup, transcript and receipt; desktop/mobile fit; quote-cited report, PC owner assessment and phone restore-before-review; real phone screen note/transfer through a fake fabric adapter. No real call or physical device.',
+    'PASS real setup, credential clearing, draft/edit replacement, exact review approval, chosen time, no early dispatch, scheduled fake SIP dispatch, PC/PWA cancellation, fake SIP create/disclosure/note/hangup, transcript and receipt; desktop/mobile fit; quote-cited report, PC owner assessment and phone restore-before-review; reviewed availability form, exact granted free/busy query and no replay; real phone screen note/transfer through a fake fabric adapter. No real call or physical device.',
   );
 } catch (error) {
   console.error(JSON.stringify(await request('/preview/state')));

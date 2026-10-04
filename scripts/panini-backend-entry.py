@@ -35,6 +35,7 @@ if __name__ == "__main__":
             "outbound_briefs",
             "outbound_do_not_call",
             "outbound_reports",
+            "outbound_reads",
         ):
             if not app.state.harness.store.one(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
