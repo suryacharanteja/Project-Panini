@@ -21,8 +21,10 @@ state again before dispatch. Key chords additionally require the same focused no
 The registry hand delivers `desktop_windows`, `desktop_snapshot`, `desktop_click`, `desktop_type`,
 `desktop_select`, `desktop_toggle`, `desktop_scroll`, `desktop_press` and text/value/element assertions.
 Every effect refreshes the target before and after review. Reviews use the actual app, role, label and
-bounds; current policy is enforced even in general shadow/off mode. Stronger approval levels remain
-available through the decision-aware confirmation callback. Pause, tighter permissions, flag disable and
+bounds; current policy is enforced even in general shadow/off mode. The foreground agent, AG-UI and
+persona children preserve stronger approval levels through a decision-aware callback into durable reviews.
+The approval level is included in the action digest. Legacy two-argument callers refuse stronger reviews
+instead of reducing them to tap. Android and the generic policy hook use the same rule. Pause, tighter permissions, flag disable and
 native uncertainty stop the operation rather than retrying it. Each action invalidates published refs.
 
 Fine pointer actions use bounds and hierarchy for UIA hit-testing; they bypass `FromPoint` and use paced
@@ -51,6 +53,9 @@ remains in use during actions. Further preview presentation and overlay qualific
 - Focused backend tests exercise shadow-mode enforcement, exact review binding, decline, changed
   label/value/title/focus, stronger local reviews, pause/disable, credential focus, principal isolation,
   stale refs, replacement assertions, uncertain dispatch and cancellation with native Stop.
+- Real foreground coordinator and AG-UI round trips exercise verify/local approvals, reject insufficient
+  phone/AG-UI tap decisions, and verify single dispatch after PC approval. Persona delegation preserves
+  the same PC-only review. These use scripted models and disposable data, with no live provider claims.
 
 Evidence lives under `artifacts/desktop-fine/`, including native framework IDs, snapshots, logs, exact
 source qualification and packaged release verification. Repository gates and package hashes are added

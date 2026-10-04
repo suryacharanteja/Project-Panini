@@ -63,6 +63,7 @@ class ToolContext:
     decision: object | None = None  # the policy decision for the current call
     preapproved: bool = False
     v1_asked: bool = False
+    confirm_decision: object | None = None  # async (summary, detail, policy_decision) -> bool
 
     def check(self):
         """Stop before an effect when PANINI is paused (V2-03 grant epochs)."""

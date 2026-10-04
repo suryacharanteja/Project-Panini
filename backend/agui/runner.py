@@ -360,8 +360,11 @@ class AguiRuns:
 
         ledger_run = plan["ledger_run"]
 
-        async def confirm(summary, detail):
+        async def confirm(summary, detail, decision=None):
             action = {"summary": str(summary)[:500], "detail": str(detail)[:3000]}
+            level = decision.level.value if decision else "tap"
+            if decision is not None:
+                action["approval_level"] = level
             key = digest(action)
             approved = self.preapproved.get(thread, [])
             if key in approved:
@@ -378,7 +381,7 @@ class AguiRuns:
                     f"PANINI wants to: {summary}",
                     preview={"detail": str(detail)[:3000]},
                     action=action,
-                    level="tap",
+                    level=level,
                     ttl_s=APPROVAL_TTL_S,
                 ),
                 run_id=ledger_run,
@@ -457,6 +460,7 @@ class AguiRuns:
             persona_id=plan.get("persona_id"),
         )
         agent.run_id, agent.thread_id = ledger_run, thread
+        agent.confirm_decision = confirm
         agent.observe = publish
         agent.durable = True  # Run records and checkpoints, so a parked run resumes in place.
         agent.before_model = lambda: self._page(thread)

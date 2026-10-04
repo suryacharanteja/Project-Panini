@@ -221,6 +221,32 @@ async def test_denied_approval_never_dispatches(world):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("level", ["verify", "local"])
+async def test_android_stronger_review_requires_decision_aware_callback(world, level):
+    from backend.policy import new_grant
+
+    h, r, ctx, asked = world
+    h.policy.put_grant(new_grant(tools=("android_tap",), levels={"communicate": level}))
+    h.android.driver.xml = xml("Send")
+    ref = await snapshot(r, ctx)
+    result = await r.call(ctx, "android_tap", {"ref": ref})
+    assert result.outcome == "blocked" and "stronger approval" in result.content
+    assert not asked and not any(e[0] == "tap" for e in h.android.driver.events)
+
+    decisions = []
+
+    async def review(title, detail, decision):
+        decisions.append(decision.level.value)
+        return True
+
+    ctx.confirm_decision = review
+    ref = await snapshot(r, ctx)
+    result = await r.call(ctx, "android_tap", {"ref": ref})
+    assert result.outcome == "ok" and decisions == [level]
+    assert len([e for e in h.android.driver.events if e[0] == "tap"]) == 1
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     "change", [xml("Other"), xml(x=10), xml(duplicate=True), xml(password=True), xml(package="com.bank.app")]
 )

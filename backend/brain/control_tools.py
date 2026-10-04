@@ -99,6 +99,12 @@ async def delegate_to_persona(lead, persona_id, task, share_context=False, *, sl
             return await lead.confirm(f"{persona['name']} wants to: {summary}", detail)
 
         child.confirm = confirm
+    if richer := getattr(lead, "confirm_decision", None):
+
+        async def confirm_decision(summary, detail, decision):
+            return await richer(f"{persona['name']} wants to: {summary}", detail, decision)
+
+        child.confirm_decision = confirm_decision
     request = [persona_id, task, share_context]
     if checkpoint:
         task = checkpoint["goal"]

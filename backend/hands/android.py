@@ -215,9 +215,16 @@ class Android:
                 return decision
             if not (ctx.preapproved and previous and previous.effect == decision.effect):
                 detail = json.dumps({**real, "device": self.config["serial"]}, ensure_ascii=False)
-                if ctx.confirm is None or not await ctx.confirm(
-                    f"{spec.title}: {decision.effect.value}", detail[:3000]
-                ):
+                richer = getattr(ctx, "confirm_decision", None)
+                if not richer and decision.level.value != "tap":
+                    raise ValueError("This caller cannot present the required stronger approval.")
+                title = f"{spec.title}: {decision.effect.value}"
+                approved = (
+                    await richer(title, detail[:3000], decision)
+                    if richer
+                    else ctx.confirm is not None and await ctx.confirm(title, detail[:3000])
+                )
+                if not approved:
                     raise ValueError("The owner did not approve this Android action.")
         ctx.check()
         if self.h.policy.paused():

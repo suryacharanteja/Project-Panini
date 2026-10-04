@@ -245,12 +245,14 @@ class TaskContext:
         self.emit("verifying", summary, evidence_id=record["evidence_id"])
         return record["evidence_id"]
 
-    async def confirm(self, action, application, effect, data):
+    async def confirm(self, action, application, effect, data, *, level="tap"):
         self.check()
         from ..policy import note_v1_confirmation, preapproved
 
         note_v1_confirmation()
         fingerprint = digest(action)
+        if level not in {"tap", "verify", "local"}:
+            raise Fault("CONFIRMATION_LEVEL", "This approval level cannot authorize an action.")
         if preapproved.get():
             # The person already approved this exact tool call through the v2 policy (asked once).
             return fingerprint
@@ -258,8 +260,10 @@ class TaskContext:
 
         if interrupts.active():
             return await self._confirm_interrupt(
-                interrupts.active(), action, application, effect, data, fingerprint
+                interrupts.active(), action, application, effect, data, fingerprint, level=level
             )
+        if level != "tap":
+            raise Fault("NEEDS_DURABLE_REVIEW", "Enable durable reviews for this stronger approval level.")
         confirmation_id, nonce = identifier(), secrets.token_urlsafe(32)
         future = asyncio.get_running_loop().create_future()
         self.session.confirmations[confirmation_id] = {
@@ -292,7 +296,9 @@ class TaskContext:
         finally:
             self.session.confirmations.pop(confirmation_id, None)
 
-    async def _confirm_interrupt(self, service, action, application, effect, data, fingerprint):
+    async def _confirm_interrupt(
+        self, service, action, application, effect, data, fingerprint, *, level="tap"
+    ):
         """V2-05: the same confirmation as a durable interrupt; the shell's dialog and routes are unchanged."""
         from ..interrupts import InterruptSpec
 
@@ -304,7 +310,7 @@ class TaskContext:
                 effect[:1000],
                 preview={"application": application[:160], "effect": effect[:1000], "data": data[:4000]},
                 action=action,
-                level="tap",
+                level=level,
                 ttl_s=60,
             ),
             run_id=self.task.task_id,

@@ -266,6 +266,28 @@ def test_enforce_refuses_deny_park_and_declines(tmp_path):
     assert "nobody" in nobody.content and "Not allowed" in denied.content
 
 
+@pytest.mark.parametrize("level", ["verify", "local"])
+def test_legacy_callback_cannot_downgrade_stronger_policy_review(policy, level):
+    from backend.policy.hook import PolicyHook
+    from backend.registry.context import ToolContext
+
+    asked = []
+
+    async def confirm(*args):
+        asked.append(args)
+        return True
+
+    policy.put_grant(new_grant(tools=("run_command",), levels={"local_exec": level}))
+    ctx = ToolContext(confirm=confirm)
+    result = asyncio.run(
+        PolicyHook("enforce", policy).before(
+            ctx, spec("run_command", "local_exec", capability="computer"), {"command": "Write-Output ok"}
+        )
+    )
+    assert result.outcome == "blocked" and "stronger approval" in result.content
+    assert not asked and not ctx.preapproved
+
+
 def test_shadow_records_only_disagreements(tmp_path):
     store = Store(tmp_path / "h.sqlite3")
     policy = Policy(store)

@@ -146,6 +146,39 @@ def team_world(tmp_path, monkeypatch, mode="team"):
     return app, h, calls, models
 
 
+@pytest.mark.parametrize("mode", ["team", "delegate"])
+def test_persona_preserves_pc_only_review_through_lead_callback(tmp_path, monkeypatch, mode):
+    from backend.core_contracts import ApprovalLevel
+
+    app, h, calls, _ = team_world(tmp_path, monkeypatch, mode)
+    hand = h.registry.hands["use_capability"]
+    original = hand.call
+
+    async def dispatch(ctx, spec, args):
+        if args["capability"] == "code":
+            await ctx.confirm_decision(
+                "Append a paragraph", "Review on the PC", SimpleNamespace(level=ApprovalLevel.LOCAL)
+            )
+        return await original(ctx, spec, args)
+
+    hand.call = dispatch
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        first = events(client.post("/api/agui/agents/panini/run", json=body(), headers=HEADERS))
+        interrupt = first[-1]["outcome"]["interrupts"][0]
+        review = h.interrupts.get(interrupt["id"])
+        assert review["level"] == "local" and review["action"]["approval_level"] == "local"
+        assert review["title"].startswith("quill wants to:") and calls["write"] == 0
+        second = events(
+            client.post(
+                "/api/agui/agents/panini/run",
+                headers=HEADERS,
+                json=body(run="r2", messages=[], resume=approve(interrupt)),
+            )
+        )
+        assert second[-1]["type"] == "RUN_ERROR" and calls["write"] == 0
+        assert h.interrupts.get(interrupt["id"])["status"] == "open"
+
+
 @pytest.mark.parametrize("mode", ["team", "delegate", "review"])
 def test_team_resumes_twice_without_repeating_members_or_identical_effects(tmp_path, monkeypatch, mode):
     app, h, calls, models = team_world(tmp_path, monkeypatch, mode)

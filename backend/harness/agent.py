@@ -575,6 +575,7 @@ class Agent:
                 delegate=self.delegate,
                 confirm=self.confirm,
             )
+            self._tool_context.confirm_decision = getattr(self, "confirm_decision", None)
             if self.surface in SURFACES:
                 self._tool_context.taint.add("channel")
         return self._tool_context

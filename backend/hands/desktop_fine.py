@@ -236,6 +236,8 @@ class DesktopFine:
             detail = json.dumps(real, ensure_ascii=False)
             preview = await self.preview(ctx, session, n)
             richer = getattr(ctx, "confirm_decision", None)
+            if not richer and decision.level.value != "tap":
+                raise ValueError("This caller cannot present the required stronger approval.")
             approved = (
                 await richer(spec.title, preview + detail, decision)
                 if richer

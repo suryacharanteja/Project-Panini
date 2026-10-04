@@ -98,9 +98,14 @@ class AgentAdapter:
         browsers = () if _browser_v2() and self.harness.registry is not None else ("browser",)
         capabilities = [name for name in ("search", *browsers, "desktop", "code") if name in self.adapters]
 
-        async def confirm(summary, detail):
+        async def confirm(summary, detail, decision=None):
             try:
-                await context.confirm(summary, "PANINI agent", summary, detail)
+                if decision is None:
+                    await context.confirm(summary, "PANINI agent", summary, detail)
+                else:
+                    level = decision.level.value
+                    action = {"summary": summary, "detail": detail, "approval_level": level}
+                    await context.confirm(action, "PANINI agent", summary, detail, level=level)
             except Fault:
                 return False
             return True
@@ -116,6 +121,7 @@ class AgentAdapter:
         )
 
         agent.run_id = context.task.task_id
+        agent.confirm_decision = confirm
         agent.thread_id = self.sessions[session_key]
         from .. import v2flags
 

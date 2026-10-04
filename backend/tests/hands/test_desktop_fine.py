@@ -337,3 +337,16 @@ async def test_document_navigation_characters_do_not_move_focus_and_continue_typ
     )
     assert result.outcome == "blocked" and not result.dispatched
     assert not any(c["op"] == "fine_action" for c in h.pipe.calls)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("level", ["verify", "local"])
+async def test_legacy_review_cannot_authorize_stronger_desktop_action(world, level):
+    from backend.policy.engine import new_grant
+
+    h = world
+    h.policy.put_grant(new_grant(tools=("desktop_click",), levels={"communicate": level}))
+    session = await snapshot(h)
+    result = await h.registry.call(h.ctx, "desktop_click", {"ref": ref(session, "Apply draft")})
+    assert result.outcome == "blocked" and "stronger approval" in result.content
+    assert not any(c["op"] == "fine_action" for c in h.pipe.calls)

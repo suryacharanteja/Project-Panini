@@ -84,6 +84,8 @@ class PolicyHook(Hooks):
             if decision.reasons:
                 title += " — " + "; ".join(decision.reasons)[:160]
             richer = getattr(ctx, "confirm_decision", None)
+            if richer is None and decision.level.value != "tap":
+                return refuse("This caller cannot present the required stronger approval.")
             approved = (
                 await richer(title[:200], detail[:3000], decision)
                 if richer
