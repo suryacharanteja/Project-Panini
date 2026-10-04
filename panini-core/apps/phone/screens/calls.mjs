@@ -6,6 +6,7 @@ export async function calls(app) {
   const revision = app.viewRevision;
   const panel = h('div.card');
   const savedSources = new Map();
+  let ownerNote = '';
   const view = h(
     'section.screen',
     {},
@@ -14,6 +15,7 @@ export async function calls(app) {
     h('button.wide', { onclick: () => app.show('home') }, 'Back to Home'),
   );
   async function refresh() {
+    if (document.activeElement?.classList.contains('outbound-note')) return;
     const reply = await app.fabric.request('GET', '/calls');
     if (reply.status !== 200) throw new Error(reply.body?.detail || 'Call status is unavailable.');
     const active = reply.body.active;
@@ -23,9 +25,12 @@ export async function calls(app) {
         personaChip(active.persona),
         h('p', { text: active.number }),
         h('p.muted', {
-          text: active.verified
-            ? 'Caller verified'
-            : 'Waiting for keypad PIN or phone confirmation',
+          text:
+            active.direction === 'outbound'
+              ? `Outbound call · ${active.state}. Review additional decisions in Inbox.`
+              : active.verified
+                ? 'Caller verified'
+                : 'Waiting for keypad PIN or phone confirmation',
         }),
       );
       for (const [name, label] of [
@@ -57,6 +62,40 @@ export async function calls(app) {
                 }),
             },
             label,
+          ),
+        );
+      }
+      if (active.direction === 'outbound') {
+        const note = h('textarea.outbound-note', {
+          'aria-label': 'Owner call note',
+          maxLength: 500,
+          value: ownerNote,
+          oninput: (event) => (ownerNote = event.target.value),
+        });
+        note.value = ownerNote;
+        panel.append(
+          h('label', { text: 'Owner call note' }, note),
+          h(
+            'button.wide',
+            {
+              onclick: (event) =>
+                action(event.currentTarget, async () => {
+                  const restored = await app.fabric.request('GET', '/calls');
+                  if (restored.body?.active?.id !== active.id)
+                    throw new Error('This call has ended or changed.');
+                  const result = await app.fabric.request(
+                    'POST',
+                    `/outbound/${encodeURIComponent(active.id)}/note`,
+                    { text: ownerNote },
+                  );
+                  if (result.status !== 200)
+                    throw new Error(result.body?.detail || 'The note was refused.');
+                  ownerNote = '';
+                  note.value = '';
+                  toast('Owner note sent.');
+                }),
+            },
+            'Send owner note',
           ),
         );
       }

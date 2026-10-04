@@ -19,7 +19,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True, help="Verified commit the source patch applies to.")
     parser.add_argument("--label", required=True)
-    parser.add_argument("--profile", choices=("spaces", "phone", "channels"), default="spaces")
+    parser.add_argument("--profile", choices=("spaces", "phone", "channels", "outbound"), default="spaces")
     parser.add_argument(
         "--evidence", required=True, help="Workspace artifact directory with release-check.log."
     )
@@ -56,7 +56,7 @@ def main():
             "android-notebook.png",
             "team-live.json",
         ]
-    if args.profile == "channels":
+    if args.profile in {"channels", "outbound"}:
         included = [
             "release-check.log",
             "browser-smoke.log",
@@ -65,6 +65,8 @@ def main():
             "admin-mobile.png",
             "final-targeted.log",
         ]
+        if args.profile == "outbound":
+            included.append("android-calls.png")
     licenses = [
         ("node_modules/marked/LICENSE.md", "marked-LICENSE.txt"),
         ("node_modules/dompurify/LICENSE", "dompurify-LICENSE.txt"),
@@ -94,6 +96,8 @@ def main():
             if args.profile == "channels"
             else "Enable PANINI_SPACES, PANINI_V2_AGUI and PANINI_V2_INTERRUPTS in Settings for notebook conversations and reviews."
         )
+        if args.profile == "outbound":
+            setup = "Configure the outbound TLS SIP trunk and owner checklist in Admin → Build → Phone line, then opt in with PANINI_OUTBOUND_CALLS. Prepare a brief and approve its exact replacement-safe review in Inbox. Read the outbound qualification document; no real SIP or physical Android result is claimed."
         bundle.writestr(
             "README.txt",
             f"PANINI local development increment {commit}\nPatch base: {base}\n\nApply source.patch to a checkout at the patch base, run npm ci, and use the existing Python development environment. Built Admin, shell and Android PWA assets are included at their repository paths. {setup} Read the included qualification document for remaining requirements.\n\nThis is not a standalone installer, signed production release, physical Android qualification or full LLD completion. No credentials or databases are included.\n",

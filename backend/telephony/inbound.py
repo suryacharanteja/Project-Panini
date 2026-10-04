@@ -166,6 +166,10 @@ class CallService:
                 reason = "Phone line is off."
             elif self.h.policy.paused():
                 reason = "PANINI is paused."
+            elif getattr(self.h, "outbound", None) and (
+                self.h.outbound.active or self.h.outbound.work and not self.h.outbound.work.done()
+            ):
+                reason = "An outbound call is already using the phone line."
             elif not caller or caller["kind"] == "blocked":
                 reason, code = "Caller is not permitted.", 603
             elif self.active or any(not task.done() for task in self.draining):
@@ -700,6 +704,7 @@ def runtime(app):
     service = getattr(app.state, "phone_line", None)
     if service is None:
         service = CallService(app.state.harness)
+        app.state.harness.outbound.inbound = service
         app.state.phone_line = service
         from ..fabric.runtime import runtime as fabric_runtime
 

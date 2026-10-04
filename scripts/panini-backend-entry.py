@@ -31,11 +31,18 @@ if __name__ == "__main__":
             "channel_jobs",
             "channel_outbox",
             "channel_state",
+            "outbound_settings",
+            "outbound_briefs",
+            "outbound_do_not_call",
         ):
             if not app.state.harness.store.one(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
             ):
                 raise RuntimeError(f"The packaged database is missing {table}.")
+        from backend.telephony.numbers import calling_window
+
+        if not calling_window("+442079460018", 1791100800)["timezones"]:
+            raise RuntimeError("Packaged phone-number or timezone metadata is missing.")
         from backend.registry.registry import Registry
 
         registry = Registry()

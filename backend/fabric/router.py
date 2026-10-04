@@ -11,6 +11,7 @@ import json
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..routes.outbound import add_outbound
 from . import crypto
 
 router = APIRouter(prefix="/api/remote")
@@ -31,6 +32,9 @@ def _harness(request: Request):
     if h is None:
         raise HTTPException(404, "The PANINI harness is disabled.")
     return h
+
+
+add_outbound(router, _fabric)
 
 
 def payload_digest(payload: dict | None) -> str:
@@ -327,7 +331,24 @@ async def calls(request: Request):
     _fabric(request)
     from ..telephony.inbound import runtime
 
-    return runtime(request.app).monitor()
+    result = runtime(request.app).monitor()
+    outbound = _harness(request).outbound
+    active = outbound.monitor()
+    if active:
+        result["active"] = {**active, "persona": _harness(request).personas.presentation("panini")}
+    result["calls"] += [
+        {
+            "id": row["id"],
+            "state": row["state"],
+            "duration_s": (row["outcome"] or {}).get("duration_s", 0),
+            "reason": row["reason"],
+            "receipt_id": row["receipt_id"],
+            "summary": (row["outcome"] or {}).get("summary", ""),
+        }
+        for row in outbound.status()["briefs"]
+        if row["receipt_id"]
+    ]
+    return result
 
 
 @router.post("/calls/{call_id}/{action}")
@@ -336,6 +357,10 @@ async def call_action(call_id: str, action: str, request: Request):
     from ..telephony.inbound import runtime
 
     service = runtime(request.app)
+    outbound = _harness(request).outbound
+    if outbound.active and outbound.active["id"] == call_id:
+        await outbound.control(call_id, action)
+        return {"status": "accepted"}
     if not service.active or service.active.id != call_id:
         raise HTTPException(409, "This call has ended or changed.")
     if action == "end":

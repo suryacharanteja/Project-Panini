@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..harness import a2a
 from ..harness.memory import KINDS, MemoryError
+from .outbound import add_outbound
 from .panini import principal
 
 router = APIRouter()
@@ -1032,3 +1033,6 @@ def add_phone(r, guard):
 
 add_phone(console_router, lambda request: None)
 add_phone(shell_router, lambda request: principal(request))
+
+add_outbound(console_router, lambda request: None, configurable=True)
+add_outbound(shell_router, lambda request: principal(request))

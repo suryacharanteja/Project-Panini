@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { OutboundPanel } from './OutboundPanel';
 import { SaveToSpace } from './spaces/SaveToSpace';
 import { api, harness, useResource } from '../api';
 import { Badge, Button, Card, Empty, Field, inputClass, Page, useAction } from '../components/ui';
@@ -43,6 +44,7 @@ export function PhonePage() {
         <Empty>Loading phone setup…</Empty>
       ) : (
         <div className="grid gap-4">
+          <OutboundPanel />
           <Card
             title={
               <span>

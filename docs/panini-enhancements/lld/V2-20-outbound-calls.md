@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 5 · P2 · L (1.5 weeks) |
 | Depends on | V2-16 (telephony foundation), V2-13 (callee-injection cases), V2-15 (approvals) |
 | Flag | `PANINI_OUTBOUND_CALLS` (default `false`) |
-| Status | Not started |
+| Status | In progress: reviewed outbound SIP lifecycle and owner controls built; real calls, keypad automation and outcome qualification pending |
 | Decision | Register D7 (call scope); compliance checklist signed by the owner before enabling |
 
 ## 1. Outcome
@@ -172,7 +172,7 @@ callee as unconfirmed. Follow-ups become suggestions (for example a calendar ent
 
 - [ ] Compliance checklist signed; flag refuses to enable otherwise.
 - [ ] Live test: disclosure spoken first; brief respected; outcome receipt correct.
-- [ ] Emergency and premium numbers impossible to call (tests).
+- [x] Emergency and premium numbers impossible to call (tests).
 - [ ] Take over transfers the call to your phone.
 
 ## 9. Rollout and rollback
@@ -184,3 +184,45 @@ Rollback: flag off; scheduled calls are cancelled.
 
 - Let PANINI call you (the owner) for urgent approvals when you are away from the PC and the phone app is not
   answered? This is presence escalation (V2-24) using this item; recommendation: opt-in, owner number only.
+
+## 11. Development increment — 2026-10-04
+
+Migration 0026 persists outbound settings, checklist acknowledgement, reviewed briefs, single-use dispatch
+attempts and do-not-call numbers. Credentials use the existing Windows DPAPI vault; APIs and validation
+failures expose no credential values. Changing trunk/owner setup cancels prior briefs and requires renewed
+acknowledgement. The raw feature flag does not bypass the effective checklist/credential dispatch gate.
+
+Call briefs are strictly bounded and preserve mandatory exclusions. This first increment supports English
+and a finite set of appointment/reservation/callback commitments. libphonenumber rejects short, emergency,
+premium, shared-cost and service destinations. Calling hours require every possible metadata timezone to
+be inside 09:00–20:00. Outside-hours approvals cancel without dialing; the owner can review a new brief in
+the next window. Automatic scheduling is still pending.
+
+The owner reviews the full brief through existing durable interrupts. Edits replace the nonce and digest.
+Policy, current approval strength, exact persisted brief digest, pause, flag, number blocks and daily attempt
+limits are checked again immediately before dispatch. Owner/contacts start at tap; externally sourced or
+international numbers require verify, raised further by policy. Every provider create attempt consumes the
+brief once. Unknown creation, interruption and restart never automatically create another call.
+
+The adapter creates a Live SIP session and attaches immediately. It tracks ringing/answering/failure,
+checks the first output transcript against the exact AI disclosure and hangs up on a mismatch or ten-second
+deadline. Ringing, connected duration, pause/flag revocation, sideband failure and shutdown are bounded.
+Unknown hangup/finalization remains explicit. The voice receives only the reviewed facts, no owner memories,
+connectors or desktop tools. Additional requests use owner interrupts; payment/credential requests are
+refused. Read-only brain lookups and more complete mid-call outcome interpretation remain pending.
+
+Admin Phone line adds setup/checklist, editable briefs, end/takeover/note controls, transcript, receipts and
+number blocking. The paired Android PWA shares the outbound monitor, end/transfer controls and owner notes.
+Takeover sends a refer to the configured owner number; acceptance by the provider is not claimed as proven
+phone takeover. Receipts link the approved digest and untrusted transcript; summaries mark achievement,
+commitments and costs unconfirmed rather than fabricating them.
+
+The current official SIP documentation calls `transport.dtmf.send` a notification from a hosted tool, not
+a client command. Keypad/IVR automation is therefore pending a supported implementation and qualification.
+Sources: [SIP guide](https://developers.openai.com/api/docs/guides/voice-sip),
+[Create session](https://developers.openai.com/api/reference/resources/live/methods/create),
+[server controls](https://developers.openai.com/api/docs/guides/voice-server-controls).
+
+Fake-provider integration and real browser checks are development evidence. No real SIP call, audible
+disclosure, physical Android device, transfer completion or production qualification is claimed.
+Red-team work remains disabled and deferred by the owner.

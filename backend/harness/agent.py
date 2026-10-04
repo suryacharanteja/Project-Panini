@@ -578,6 +578,22 @@ class Agent:
         offered = self._offered_tools()
         from .. import v2flags
 
+        if (
+            v2flags.enabled("PANINI_OUTBOUND_CALLS")
+            and self.private
+            and not self.depth
+            and self.persona_id == "panini"
+            and self.surface not in {"telegram", "slack", "email", "whatsapp", "phone_line"}
+        ):
+            from ..telephony.brief import CallBrief
+
+            offered.append(
+                _tool(
+                    "place_call",
+                    "Draft one outbound call for owner review. This does not dial until its exact brief is approved on the PC or paired phone.",
+                    {"brief": CallBrief.model_json_schema()},
+                )
+            )
         if v2flags.enabled("PANINI_PERSONAS") and self.private and not self.depth:
             offered += [
                 _tool(
@@ -1273,6 +1289,10 @@ class Agent:
 
     async def _call(self, name, a):
         registry = getattr(self, "registry", None)
+        if name == "place_call":
+            from ..brain.control_tools import place_call
+
+            return place_call(self, a["brief"]), None
         if name in {"delegate_to_persona", "run_team"}:
             from ..brain.control_tools import delegate_to_persona, run_team
 

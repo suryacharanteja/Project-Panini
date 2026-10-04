@@ -6,6 +6,24 @@ from dataclasses import replace
 from .budget import Budget
 
 
+def place_call(lead, brief):
+    if not lead.private or lead.depth or lead.persona_id != "panini":
+        raise ValueError("Only the owner assistant can draft outbound calls.")
+    from ..channels import SURFACES
+
+    if lead.surface in SURFACES or lead.surface == "phone_line":
+        raise ValueError("Draft outbound calls on the PC or paired phone.")
+    if lead.tool_context().taint & {"web", "page", "email", "channel", "shared", "client_context"}:
+        brief = {**brief, "number_source": "web"}
+    row = lead.h.outbound.draft(brief, thread_id=lead.thread_id, surface=lead.surface)
+    return {
+        "call_brief_id": row["id"],
+        "interrupt_id": row["interrupt_id"],
+        "status": "review",
+        "message": "No call has been placed. Review the exact call brief in Inbox before dispatch.",
+    }
+
+
 def _state(lead):
     return lead.persona_calls.setdefault(lead.persona_call_id or "direct", {})
 

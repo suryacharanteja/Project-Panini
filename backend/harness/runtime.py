@@ -104,6 +104,9 @@ class Harness:
         from .secrets_store import SecretStore
 
         self.channels = ChannelManager(self, SecretStore(self.store.path.parent / "channel-secrets.bin"))
+        from ..telephony.outbound import OutboundCalls
+
+        self.outbound = OutboundCalls(self)
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
         agent = Agent(
@@ -288,6 +291,7 @@ class Harness:
         self.worker.start()
         self._mobile_start = asyncio.get_running_loop().create_task(self.mobile.start_if_enabled())
         self._channels_start = asyncio.get_running_loop().create_task(self.channels.start())
+        self.outbound.start()
 
     async def close(self):
         from .. import interrupts, ledger, policy
@@ -302,6 +306,7 @@ class Harness:
         start = getattr(self, "_channels_start", None)
         if start:
             await start
+        await self.outbound.close()
         await self.channels.stop()
         await self.mobile.disable(save=False)
         await self.worker.close()

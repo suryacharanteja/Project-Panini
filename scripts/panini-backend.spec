@@ -38,6 +38,11 @@ for package in ("browser_use", "panini", "uvicorn", "bubus", "cdp_use"):
     datas += data
     binaries += binary
     hiddenimports += imports
+for package in ("phonenumbers", "tzdata"):
+    data, binary, imports = collect_all(package)
+    datas += data
+    binaries += binary
+    hiddenimports += imports
 hiddenimports += collect_submodules("backend", filter=lambda name: ".tests" not in name)
 hiddenimports += collect_submodules("panini_cli")
 browser_root = root / "panini-core/capabilities/browser/runtime"
