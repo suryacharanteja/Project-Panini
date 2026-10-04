@@ -338,11 +338,16 @@
       "name": "desktop_verify_element",
       "hand": "desktop_fine",
       "title": "Verify element on Windows",
-      "description": "Assert that an element with exact accessible role and name is visible in a fresh tree.",
+      "description": "Assert that an element with exact accessible role and name is visible in a fresh tree. An optional current ref binds the assertion to that element's anchor.",
       "input_schema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^w[0-9]+$",
+            "maxLength": 24
+          },
           "role": {
             "type": "string",
             "maxLength": 40
@@ -367,6 +372,37 @@
       ],
       "strict": false,
       "order": 190,
+      "concurrency": "desktop_fine"
+    },
+    {
+      "name": "desktop_focus",
+      "hand": "desktop_fine",
+      "title": "Focus on Windows",
+      "description": "Focus one non-credential control from the latest snapshot without invoking or clicking it. Snapshot afterward and verify focused_ref before pressing keys.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^w[0-9]+$",
+            "maxLength": 24
+          }
+        },
+        "required": [
+          "ref"
+        ]
+      },
+      "effect": "input",
+      "dynamic_effect": true,
+      "requires": [
+        "desktop_fine",
+        "private",
+        "foreground",
+        "ledger"
+      ],
+      "strict": false,
+      "order": 191,
       "concurrency": "desktop_fine"
     }
   ],

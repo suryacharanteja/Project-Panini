@@ -164,6 +164,7 @@ internal static class GroundedInput
             ["ENTER"] = 13, ["RETURN"] = 13, ["TAB"] = 9, ["ESC"] = 27, ["ESCAPE"] = 27,
             ["SPACE"] = 32, ["BACKSPACE"] = 8, ["DELETE"] = 46, ["INSERT"] = 45,
             ["UP"] = 38, ["DOWN"] = 40, ["LEFT"] = 37, ["RIGHT"] = 39,
+            ["ARROWUP"] = 38, ["ARROWDOWN"] = 40, ["ARROWLEFT"] = 37, ["ARROWRIGHT"] = 39,
             ["HOME"] = 36, ["END"] = 35, ["PAGEUP"] = 33, ["PAGEDOWN"] = 34
         };
         var codes = keys.Select(key => map.TryGetValue(key, out var vk) ? vk :

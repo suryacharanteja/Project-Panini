@@ -145,7 +145,9 @@ The [Windows checkpoint report](../qualification-desktop-fine-2026-10-05.md) rec
 WPF fixture runs, plus installed Notepad with Win32/XAML providers. Fine pointer actions use bounded tree
 hit-testing, bypassing UIA `FromPoint`. The Notepad task types, asserts and saves a disposable file; its
 contents are checked on disk. These runs do not establish the coarse-planner comparison gate. Dedicated
-draw/open macros, combined type-and-submit, desktop recording and remaining hand normalizers are pending.
+draw/open macros, combined type-and-submit and remaining hand normalizers are pending. Selected-window
+desktop recording/replay and non-invoking focus are delivered in the [Windows teaching checkpoint](../qualification-teach-desktop-2026-10-05.md);
+remaining recording qualification is explicit there.
 
 ## 9. Rollout and rollback
 

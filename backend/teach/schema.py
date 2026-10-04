@@ -25,10 +25,25 @@ ACTIONS = {
     "manual",
 }
 ASSERTIONS = {"browser_verify_text_visible", "browser_verify_element_visible", "browser_verify_value"}
+DESKTOP_ACTIONS = {
+    "desktop_click",
+    "desktop_type",
+    "desktop_select",
+    "desktop_toggle",
+    "desktop_scroll",
+    "desktop_press",
+    "manual",
+}
+DESKTOP_ASSERTIONS = {"desktop_verify_text", "desktop_verify_value", "desktop_verify_element"}
 
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class Ancestor(Strict):
+    role: str = Field(max_length=80)
+    name: str = Field(max_length=500)
 
 
 class Target(Strict):
@@ -37,6 +52,7 @@ class Target(Strict):
     name_regex: str = Field(default="", max_length=500)
     locator: str = Field(default="", max_length=1500)
     frame: str = Field(default="", max_length=500)
+    ancestors: list[Ancestor] = Field(default_factory=list, max_length=8)
 
     @model_validator(mode="after")
     def bounded(self):
@@ -65,6 +81,7 @@ class Input(Strict):
 class Replay(Strict):
     version: Literal[1] = 1
     kind: Literal["browser", "desktop"] = "browser"
+    desktop_application: str = Field(default="", max_length=100)
     steps: list[Step] = Field(min_length=1, max_length=100)
     expect: list[Step] = Field(default_factory=list, max_length=3)
     inputs: dict[str, Input] = Field(default_factory=dict, max_length=30)
@@ -72,16 +89,22 @@ class Replay(Strict):
 
     @model_validator(mode="after")
     def safe(self):
-        if self.kind != "browser":
-            raise ValueError("Desktop replay is not available yet.")
+        if self.kind == "desktop" and not self.desktop_application:
+            raise ValueError("Desktop replay needs a reviewed application.")
+        if self.kind == "browser" and self.desktop_application:
+            raise ValueError("Browser replay cannot bind a Windows application.")
         ids = [s.id for s in self.steps + self.expect]
         if len(ids) != len(set(ids)):
             raise ValueError("Step IDs must be unique.")
         for step in self.steps + self.expect:
-            allowed = ASSERTIONS if step in self.expect else ACTIONS
+            allowed = (
+                (DESKTOP_ASSERTIONS if step in self.expect else DESKTOP_ACTIONS)
+                if self.kind == "desktop"
+                else (ASSERTIONS if step in self.expect else ACTIONS)
+            )
             if step.tool not in allowed or len(json.dumps(step.args)) > 8000:
                 raise ValueError("Unsupported or oversized replay step.")
-            if any(k in step.args for k in ("target", "element", "function", "code")):
+            if any(k in step.args for k in ("target", "ref", "element", "function", "code")):
                 raise ValueError("Refs, page code and element descriptions are resolved at replay time.")
             if (
                 step.tool
@@ -93,15 +116,17 @@ class Replay(Strict):
                     "browser_press_key",
                     "browser_file_upload",
                 }
-                and not step.target
-            ):
+                or step.tool in DESKTOP_ACTIONS - {"manual"}
+            ) and not step.target:
                 raise ValueError("This step needs a reviewed target.")
+            if self.kind == "desktop" and step.target and (step.target.frame or step.target.locator):
+                raise ValueError("Desktop targets use roles, names and ancestry, not browser locators.")
             if step.target and not (step.target.name or step.target.name_regex):
                 raise ValueError("Targets need an accessible name, not a raw selector alone.")
             if step.target and SENSITIVE.search(str(step.target.model_dump())):
                 raise ValueError("Sensitive controls cannot be replay targets.")
             if step.checked is not None and (
-                step.tool != "browser_click"
+                step.tool not in {"browser_click", "desktop_toggle", "desktop_click"}
                 or not step.target
                 or step.target.role not in {"checkbox", "radio"}
             ):

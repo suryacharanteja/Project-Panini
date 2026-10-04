@@ -7,6 +7,7 @@ from pydantic import Field
 
 from ..core_contracts import Principal
 from ..interrupts import InterruptSpec
+from ..panini.contracts import Fault
 from ..registry.context import ToolContext, ToolView
 from ..teach.schema import Strict
 from .panini import principal
@@ -16,7 +17,9 @@ shell_router = APIRouter(prefix="/api/panini/harness/teach")
 
 
 class Start(Strict):
-    browser: str = Field(pattern="^(managed|chrome)$")
+    kind: str = Field(default="browser", pattern="^(browser|desktop)$")
+    browser: str = Field(default="managed", pattern="^(managed|chrome)$")
+    window: str = Field(default="", max_length=200)
 
 
 class Proposal(Strict):
@@ -30,6 +33,7 @@ class Run(Strict):
     name: str = Field(max_length=63)
     inputs: dict[str, str] = Field(default_factory=dict, max_length=30)
     browser: str = Field(default="managed", pattern="^(managed|chrome)$")
+    window: str = Field(default="", max_length=200)
 
 
 def service(request):
@@ -66,7 +70,7 @@ def context(teach):
     identifier = uuid4().hex
     ctx = ToolContext(
         principal=Principal(surface="avatar"),
-        view=ToolView(managed_browser=True, claw_cdp=True, teach=True, ledger=True),
+        view=ToolView(managed_browser=True, claw_cdp=True, teach=True, ledger=True, desktop_fine=True),
         run_id=identifier,
         confirm=confirm,
     )
@@ -84,7 +88,7 @@ async def status(request: Request):
         "replaying": bool(teach.replayer.active),
         "skills": teach.bundles.list(),
         "recordings": teach.h.store.all(
-            "SELECT id,browser,state,created FROM teach_recordings ORDER BY created DESC LIMIT 20"
+            "SELECT id,kind,browser,state,created FROM teach_recordings ORDER BY created DESC LIMIT 20"
         ),
     }
 
@@ -94,9 +98,27 @@ async def start(payload: Start, request: Request):
     teach = service(request)
     try:
         teach.require()
+        if payload.kind == "desktop":
+            if not payload.window:
+                raise ValueError("Select a Windows application before recording.")
+            return await teach.recorder.start_desktop(context(teach), payload.window)
         return await teach.recorder.start(context(teach), payload.browser)
-    except ValueError as exc:
+    except (ValueError, Fault) as exc:
         raise HTTPException(422, str(exc)) from None
+
+
+@router.get("/windows")
+async def windows(request: Request):
+    teach = service(request)
+    teach.require()
+    ctx = context(teach)
+    try:
+        result = await teach.h.registry.call(ctx, "desktop_windows", {})
+        if result.outcome != "ok":
+            raise HTTPException(422, result.content)
+        return result.data
+    finally:
+        teach.h.desktop_fine.sessions.pop(ctx.run_id, None)
 
 
 @router.post("/stop")
@@ -155,7 +177,9 @@ async def run(payload: Run, request: Request):
     teach = service(request)
     try:
         teach.require()
-        result = await teach.replayer.run(context(teach), payload.name, payload.inputs, payload.browser)
+        result = await teach.replayer.run(
+            context(teach), payload.name, payload.inputs, payload.browser, payload.window
+        )
         return result.model_output()
     except ValueError as exc:
         raise HTTPException(422, str(exc)[:500]) from None

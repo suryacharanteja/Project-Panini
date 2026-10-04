@@ -20,6 +20,7 @@ var permits = new SemaphoreSlim(4);
 var inputPermit = new SemaphoreSlim(1);
 var snapshots = new ConcurrentDictionary<string, (string Target, string Task, long Expires, JsonNode Frame)>();
 var fineSnapshots = new FineSnapshots();
+var recordings = new RecordingSessions(worker);
 // An ordinary request may not outlive 12 seconds. Only a drawing or dragging gesture, which is deliberately
 // paced so applications register a continuous line, may run for up to a minute.
 const long ShortWindowMs = 12000, GestureWindowMs = 60000;
@@ -86,13 +87,32 @@ async Task Handle(NamedPipeServerStream pipe)
             }
             else if (op == "stop")
             {
+                // Fence in-flight starts before waiting on the recording lifecycle lock.
+                stopped[task] = now + 360000;
+                await recordings.Stop(task, null, discard: true);
                 fineSnapshots.Stop(task);
                 foreach (var entry in snapshots.Where(entry => entry.Value.Task == task)) snapshots.TryRemove(entry.Key, out _);
-                stopped[task] = now + 360000;
                 overlay?.Stop();
                 if (active.TryGetValue(task, out var cancel)) await cancel.CancelAsync();
                 if (completed.TryGetValue(task, out var finished)) await finished.Task.WaitAsync(limit.Token);
                 response = JsonNode.Parse("{\"ok\":true,\"result\":{\"stopped\":true}}")!;
+            }
+            else if (op is "record_start" or "record_stop")
+            {
+                await inputPermit.WaitAsync(limit.Token);
+                try
+                {
+                    if (op == "record_start" && (stopped.ContainsKey(task) || DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() > deadline)) response = new JsonObject { ["ok"] = false, ["error"] = "RECORDING_STOPPED" };
+                    else response = op == "record_start"
+                        ? await recordings.Start(request.AsObject())
+                        : await recordings.Stop(task, request["recording_id"]?.GetValue<string>());
+                    if (op == "record_start" && stopped.ContainsKey(task))
+                    {
+                        await recordings.Stop(task, null, discard: true);
+                        response = new JsonObject { ["ok"] = false, ["error"] = "RECORDING_STOPPED" };
+                    }
+                }
+                finally { inputPermit.Release(); }
             }
             else
             {
@@ -102,6 +122,11 @@ async Task Handle(NamedPipeServerStream pipe)
                 try
                 {
                     if (mutates) { await inputPermit.WaitAsync(limit.Token); ownsInput = true; }
+                    if (mutates && recordings.Active)
+                    {
+                        response = new JsonObject { ["ok"] = false, ["error"] = "OWNER_RECORDING" };
+                        await Reply(response); return;
+                    }
                     var visual = op == "visual_action";
                     var kind = action?["kind"]?.GetValue<string>();
                     var needsSnapshot = visual && kind is not "screenshot" and not "wait";

@@ -67,6 +67,7 @@ internal static partial class Program
             if (line is null || line.Length > 4194304) throw new InvalidOperationException("INVALID_REQUEST");
             var request = JsonNode.Parse(line)!.AsObject();
             Interactive();
+            if (request["op"]?.GetValue<string>() == "record") { Record(request); return; }
             object result = request["op"]!.GetValue<string>() switch
             {
                 "health" or "capabilities" => new { protocol = 1, state = "ready", platform = "windows", interactive = Environment.UserInteractive,
@@ -319,6 +320,14 @@ internal static partial class Program
         bool verified = false;
         switch (kind)
         {
+            case "focus":
+                if (action["expected_type"] is null) throw new InvalidOperationException("SNAPSHOT_REQUIRED");
+                element.SetFocus();
+                Target(request);
+                if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED");
+                verified = Automation.Compare(AutomationElement.FocusedElement, element);
+                if (!verified) throw new InvalidOperationException("FOCUS_CHANGED");
+                break;
             case "click":
                 GroundedInput.Click(hwnd, element, () => { Target(request); if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED"); }, 1,
                     action["expected_type"] is not null ? (x, y) => ValidateBoundsHit(root, element, x, y) : null);

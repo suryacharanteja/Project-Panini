@@ -60,7 +60,7 @@ internal sealed class FineSnapshots
         if (node["states"]!.AsArray().Any(s => s!.GetValue<string>() is "password" or "disabled"))
             throw new InvalidOperationException("ELEMENT_UNAVAILABLE");
         var action = request["action"]!.DeepClone().AsObject();
-        if (action["kind"]?.GetValue<string>() is not ("click" or "double_click" or "invoke" or "set_value" or "fine_type" or "select" or "toggle" or "scroll" or "keypress"))
+        if (action["kind"]?.GetValue<string>() is not ("click" or "double_click" or "invoke" or "focus" or "set_value" or "fine_type" or "select" or "toggle" or "scroll" or "keypress"))
             throw new InvalidOperationException("UNSUPPORTED_ACTION");
         action["element_id"] = node["element_id"]!.DeepClone();
         action["expected_name"] = node["name"]!.DeepClone();

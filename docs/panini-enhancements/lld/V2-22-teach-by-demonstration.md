@@ -171,7 +171,9 @@ marked "needs attention" in Admin.
 
 The [browser checkpoint report](../qualification-teach-browser-2026-10-05.md) records real pinned-recorder
 and registry replay evidence. The changed-label repair test uses a deterministic model; live model
-qualification, frame-scoped replay and the desktop recorder remain pending.
+qualification and frame-scoped replay remain pending. The [Windows teaching checkpoint](../qualification-teach-desktop-2026-10-05.md)
+adds selected-window recording, normalization, private-field suppression and genuine WPF replay. Notepad
+recording/save, per-step crops, gestures and the remaining desktop acceptance are not qualified yet.
 
 ## 9. Rollout and rollback
 

@@ -13,6 +13,7 @@ def propose(steps):
         args = step.get("args", {})
         field = {
             "browser_type": "text",
+            "desktop_type": "text",
             "browser_select_option": "values",
             "browser_file_upload": "paths",
         }.get(step["tool"])

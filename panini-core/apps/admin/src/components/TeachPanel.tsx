@@ -6,6 +6,9 @@ import { Badge, Button, Card, Field, inputClass, useAction } from './ui';
 export function TeachPanel() {
   const state = useResource<any>(harness('/teach'), 2500);
   const [browser, setBrowser] = useState('managed');
+  const [windows, setWindows] = useState<any[]>([]);
+  const [window, setWindow] = useState('');
+  const desktop = browser === 'desktop';
   const [draft, setDraft] = useState<any>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -15,9 +18,44 @@ export function TeachPanel() {
   const [result, setResult] = useState<any>(null);
   const { busy, run } = useAction();
   const recording = ['recording', 'starting'].includes(state.data?.recording?.state);
+  const refreshWindows = () =>
+    run('windows', async () => {
+      const choices = (await api(harness('/teach/windows'))).windows;
+      setWindows(choices);
+      setWindow((current) => (choices.some((w: any) => w.choice_id === current) ? current : ''));
+    });
+  const windowPicker = (application = '') => (
+    <div className="flex flex-wrap items-center gap-3">
+      <select
+        aria-label={application ? 'Replay Windows window' : 'Recording Windows window'}
+        className={inputClass + ' max-w-96'}
+        value={window}
+        disabled={recording || state.data?.replaying}
+        onChange={(e) => setWindow(e.target.value)}
+      >
+        <option value="">Select a Windows window</option>
+        {windows
+          .filter((w) => !application || w.application.toLowerCase() === application.toLowerCase())
+          .map((w) => (
+            <option key={w.choice_id} value={w.choice_id}>
+              {w.label} · {w.application}
+            </option>
+          ))}
+      </select>
+      <Button
+        disabled={recording || state.data?.replaying || !state.data?.enabled}
+        busy={busy === 'windows'}
+        onClick={() => void refreshWindows()}
+      >
+        <RefreshCw size={12} /> Refresh windows
+      </Button>
+    </div>
+  );
   const start = () =>
     run('record', async () => {
-      await api(harness('/teach/record/start'), { body: { browser } });
+      await api(harness('/teach/record/start'), {
+        body: desktop ? { kind: 'desktop', window } : { kind: 'browser', browser },
+      });
       setDraft(null);
       await state.reload();
     });
@@ -31,6 +69,7 @@ export function TeachPanel() {
     run('open', async () => {
       const full = await api(harness(`/teach/skills/${skill}`));
       setSelected(full);
+      setWindow('');
       setInputs(
         Object.fromEntries(
           Object.entries(full.replay.inputs).map(([k, v]: [string, any]) => [k, v.default]),
@@ -50,13 +89,13 @@ export function TeachPanel() {
       }
     >
       <p className="mb-4 text-sm text-muted">
-        Show a browser task once, review its inputs and expected result, then replay it. Each action
-        follows your current permissions.
+        Show a browser or Windows task once, review its inputs and expected result, then replay it.
+        Each action follows your current permissions.
       </p>
       {!state.data?.enabled && (
         <p className="mb-4 text-xs text-copper-light">
-          Enable Teach, the action ledger and durable reviews in Settings. Desktop recording is
-          still in development.
+          Enable Teach, the action ledger and durable reviews in Settings. Windows recording also
+          needs fine desktop tools and an allowed application.
         </p>
       )}
       {state.error && (
@@ -67,17 +106,20 @@ export function TeachPanel() {
       <div className="flex flex-wrap items-center gap-3">
         <select
           className={inputClass + ' max-w-64'}
-          aria-label="Recording browser"
+          aria-label="Recording source"
           value={browser}
-          disabled={recording}
+          disabled={recording || state.data?.replaying}
           onChange={(e) => setBrowser(e.target.value)}
         >
           <option value="managed">PANINI browser</option>
           <option value="chrome">My attached Chrome tab</option>
+          <option value="desktop">Windows application</option>
         </select>
         <Button
           tone="primary"
-          disabled={!state.data?.enabled || recording || state.data?.replaying}
+          disabled={
+            !state.data?.enabled || recording || state.data?.replaying || (desktop && !window)
+          }
           busy={busy === 'record'}
           onClick={() => void start()}
         >
@@ -93,10 +135,18 @@ export function TeachPanel() {
         </Button>
         {recording && (
           <span className="text-xs text-muted" role="status">
-            Do the task in the selected browser, then press Stop. Stop before entering credentials.
+            Do the task in the selected{' '}
+            {state.data?.recording?.kind === 'desktop' ? 'Windows window' : 'browser'}, then press
+            Stop. Stop before entering credentials.
           </span>
         )}
       </div>
+      {desktop && <div className="mt-3">{windowPicker()}</div>}
+      {state.data?.recording?.application && recording && (
+        <p className="mt-2 text-xs text-copper-light" role="status">
+          Recording {state.data.recording.application} · ends after 15 minutes.
+        </p>
+      )}
       {state.data?.recordings?.some((r: any) => r.state === 'draft') && !draft && (
         <div className="mt-3 flex flex-wrap gap-2">
           {state.data.recordings
@@ -127,7 +177,14 @@ export function TeachPanel() {
                 const replay = {
                   ...draft,
                   expect: [
-                    { id: 's999', tool: 'browser_verify_text_visible', args: { text: expected } },
+                    {
+                      id: 's999',
+                      tool:
+                        draft.kind === 'desktop'
+                          ? 'desktop_verify_text'
+                          : 'browser_verify_text_visible',
+                      args: { text: expected },
+                    },
                   ],
                 };
                 await api(harness('/teach/propose'), {
@@ -161,6 +218,9 @@ export function TeachPanel() {
               />
             </Field>
           </div>
+          {draft.kind === 'desktop' && (
+            <p className="text-xs text-muted">Reviewed application: {draft.desktop_application}</p>
+          )}
           <ol className="grid gap-2" aria-label="Recorded steps">
             {draft.steps.map((s: any, i: number) => (
               <li
@@ -168,9 +228,14 @@ export function TeachPanel() {
                 className="flex flex-wrap items-center gap-2 rounded-lg border border-line p-3 text-xs"
               >
                 <span className="mono text-copper-light">
-                  {i + 1}. {s.tool.replace('browser_', '')}
+                  {i + 1}. {s.tool.replace(/^(browser|desktop)_/, '')}
                 </span>
                 <span>{s.target?.name ?? s.args?.url ?? s.note}</span>
+                {s.target?.ancestors?.length > 0 && (
+                  <span className="text-muted">
+                    in {s.target.ancestors.map((p: any) => p.name).join(' → ')}
+                  </span>
+                )}
                 {s.tool === 'manual' && <Badge tone="error">Needs correction</Badge>}
                 <Button
                   className="ml-auto"
@@ -295,6 +360,7 @@ export function TeachPanel() {
           <h3 className="text-sm">
             Replay {selected.name} · v{selected.version}
           </h3>
+          {selected.replay.kind === 'desktop' && windowPicker(selected.replay.desktop_application)}
           {Object.keys(inputs).map((key) => (
             <Field key={key} label={key}>
               <input
@@ -309,13 +375,29 @@ export function TeachPanel() {
           </p>
           <Button
             tone="primary"
-            disabled={!state.data?.enabled || recording}
+            disabled={
+              !state.data?.enabled ||
+              recording ||
+              state.data?.replaying ||
+              (selected.replay.kind === 'desktop' &&
+                !windows.some(
+                  (w) =>
+                    w.choice_id === window &&
+                    w.application.toLowerCase() ===
+                      selected.replay.desktop_application.toLowerCase(),
+                ))
+            }
             busy={busy === 'replay'}
             onClick={() =>
               void run('replay', async () => {
                 setResult(
                   await api(harness('/teach/run'), {
-                    body: { name: selected.name, inputs, browser },
+                    body: {
+                      name: selected.name,
+                      inputs,
+                      browser: desktop ? 'managed' : browser,
+                      window: selected.replay.kind === 'desktop' ? window : '',
+                    },
                   }),
                 );
                 await state.reload();

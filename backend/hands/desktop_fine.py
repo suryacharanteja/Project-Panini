@@ -19,7 +19,7 @@ from ..policy.effects import classify_words
 from .snapshot import Node, render, role
 
 KEY = re.compile(
-    r"^(?:(?:Ctrl|Shift|Alt|Win)\+){0,4}(?:[A-Z0-9]|F(?:[1-9]|1[0-2])|Enter|Return|Tab|Escape|Space|Backspace|Delete|Up|Down|Left|Right|Home|End|PageUp|PageDown|Insert)$",
+    r"^(?:(?:Ctrl|Shift|Alt|Win)\+){0,4}(?:[A-Z0-9]|F(?:[1-9]|1[0-2])|Enter|Return|Tab|Escape|Space|Backspace|Delete|(?:Arrow)?(?:Up|Down|Left|Right)|Home|End|PageUp|PageDown|Insert)$",
     re.I,
 )
 
@@ -302,6 +302,14 @@ class DesktopFine:
                             "snapshot": text,
                             "window": session["choice"],
                             "truncated": bool(session["page"].get("truncated")),
+                            "focused_ref": next(
+                                (
+                                    n.ref
+                                    for n, row in session["nodes"].values()
+                                    if row.get("focused") and "password" not in n.states
+                                ),
+                                None,
+                            ),
                         },
                         artifact_ids=[artifact],
                     )
@@ -315,7 +323,23 @@ class DesktopFine:
                             args["text"] in n.name or args["text"] in (n.value or "") for n in visible
                         )
                     elif spec.name == "desktop_verify_element":
-                        passed = any(n.role == args["role"] and n.name == args["name"] for n in visible)
+                        if args.get("ref"):
+                            if old is None:
+                                raise ValueError(
+                                    "Stale desktop ref. Take a snapshot before verifying an element."
+                                )
+                            matching = [
+                                node
+                                for node, row in found.values()
+                                if row["anchor"] == old[1]["anchor"] and "password" not in node.states
+                            ]
+                            passed = (
+                                len(matching) == 1
+                                and matching[0].role == args["role"]
+                                and matching[0].name == args["name"]
+                            )
+                        else:
+                            passed = any(n.role == args["role"] and n.name == args["name"] for n in visible)
                     else:
                         if old is None:
                             raise ValueError("Stale desktop ref. Take a snapshot before verifying a value.")
@@ -349,7 +373,9 @@ class DesktopFine:
                 takeover().gate("desktop", session["choice"], observe=False)
                 n, row = target
                 patterns = set(row["patterns"])
-                if spec.name == "desktop_click":
+                if spec.name == "desktop_focus":
+                    action = {"kind": "focus"}
+                elif spec.name == "desktop_click":
                     action = {
                         "kind": "double_click"
                         if args.get("double")

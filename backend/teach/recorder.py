@@ -10,6 +10,8 @@ from uuid import uuid4
 from ..hands.browser_v2 import _json_in
 from ..hands.playwright_mcp import BrowserDriverError, text_of
 from ..harness.memory import _SECRET
+from ..panini.contracts import Fault
+from . import desktop_events
 from .codegen_parser import parse
 from .parameterize import propose
 
@@ -99,6 +101,86 @@ class Recorder:
         if self.current and self.current["id"] == identifier:
             await self.stop(discard=True)
 
+    async def start_desktop(self, ctx, window):
+        if self.starting:
+            raise ValueError("A recording is already starting.")
+        self.starting = asyncio.current_task()
+        created_context = ctx.run_id not in self.h.desktop_fine.sessions
+        try:
+            async with self.lock:
+                if self.current or self.h.teach.replayer.active:
+                    raise ValueError("Stop the current recording or replay first.")
+                self.h.teach.require()
+                if ctx.principal.kind != "owner":
+                    raise ValueError("Only the owner can start desktop recording.")
+                self.h.desktop_fine.ready(ctx)
+                adapter = self.h.desktop_fine.adapter
+                selected = await adapter.select(window)
+                if not adapter.permits(selected["application"]):
+                    raise ValueError("This application is not allowed.")
+                identifier = uuid4().hex
+                self.starting_session = DesktopRecording(adapter.pipe, identifier)
+                result = await adapter.pipe.call(
+                    {"op": "record_start", "task_id": identifier, "target": selected, "timeout_ms": 12000}
+                )
+                self.h.teach.require()
+                self.h.desktop_fine.ready(ctx)
+                self.current = {
+                    "id": identifier,
+                    "kind": "desktop",
+                    "browser": "desktop",
+                    "session": self.starting_session,
+                    "native_id": result["recording_id"],
+                    "application": selected["application"],
+                    "before": result["before"],
+                    "started": time.time(),
+                }
+                self.store.execute(
+                    "INSERT INTO teach_recordings(id,kind,browser,state,created,updated) VALUES (?,'desktop','desktop','recording',?,?)",
+                    (identifier, time.time(), time.time()),
+                )
+                self.timer = asyncio.create_task(self.expire(identifier))
+                return {
+                    "id": identifier,
+                    "state": "recording",
+                    "kind": "desktop",
+                    "application": selected["application"],
+                    "expires_in": 900,
+                }
+        except BaseException:
+            if self.current and self.current["session"] is self.starting_session:
+                self.current = None
+            if self.starting_session:
+                await self.starting_session.close()
+            raise
+        finally:
+            self.starting = self.starting_session = None
+            if created_context:
+                self.h.desktop_fine.sessions.pop(ctx.run_id, None)
+
+    async def finish_desktop(self, current, discard):
+        if discard:
+            await current["session"].close()
+            return "discarded", {}
+        result = await current["session"].pipe.call(
+            {
+                "op": "record_stop",
+                "task_id": current["id"],
+                "recording_id": current["native_id"],
+                "timeout_ms": 12000,
+            }
+        )
+        if result["state"] != "stopped":
+            return "interrupted", {}
+        data = desktop_events.normalize(result["events"], current["application"])
+        data["recording_artifacts"] = {}
+        for key, value in (("start", current["before"]), ("end", result["after"])):
+            text = desktop_events.snapshot(value)
+            data["recording_artifacts"][key] = self.h.artifacts.put(
+                "snapshot", text.encode(), "text/plain", run_id=current["id"]
+            )
+        return "draft", data
+
     async def stop(self, *, discard=False):
         starting = self.starting
         if starting and starting is not asyncio.current_task():
@@ -114,6 +196,9 @@ class Recorder:
             self.timer = None
             state, data = "interrupted", {}
             try:
+                if current.get("kind") == "desktop":
+                    state, data = await self.finish_desktop(current, discard)
+                    return {"id": current["id"], "state": state, "replay": data}
                 result = await current["session"].call("browser_stop_recording", {}, timeout_s=30)
                 if result.get("isError"):
                     raise BrowserDriverError("Recording did not stop cleanly.")
@@ -139,9 +224,12 @@ class Recorder:
                     state = "draft"
                 else:
                     state = "discarded"
-            except (BrowserDriverError, ValueError):
+            except (BrowserDriverError, ValueError, Fault):
                 # Stop must remain available after disabling the feature or losing the driver.
-                await current["session"].close()
+                try:
+                    await current["session"].close()
+                except (BrowserDriverError, ValueError, Fault, OSError):
+                    pass
             finally:
                 self.store.execute(
                     "UPDATE teach_recordings SET state=?,data=?,updated=? WHERE id=?",
@@ -171,4 +259,16 @@ class Recorder:
             return {"state": "starting"}
         if not self.current:
             return {"state": "idle"}
-        return {k: self.current[k] for k in ("id", "browser", "started")} | {"state": "recording"}
+        return {k: self.current[k] for k in ("id", "browser", "started")} | {
+            "state": "recording",
+            "kind": self.current.get("kind", "browser"),
+            "application": self.current.get("application", ""),
+        }
+
+
+class DesktopRecording:
+    def __init__(self, pipe, identifier):
+        self.pipe, self.identifier = pipe, identifier
+
+    async def close(self):
+        await self.pipe.call({"op": "stop", "task_id": self.identifier, "timeout_ms": 12000})

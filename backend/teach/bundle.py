@@ -58,10 +58,16 @@ class Bundles:
                 )
             spec = self.h.registry.specs.get(step.tool)
             if not spec:
-                raise ValueError("A required browser tool is unavailable.")
+                raise ValueError("A required replay tool is unavailable.")
             args = dict(step.args)
+            if replay.kind == "desktop" and step.target:
+                if step.tool == "desktop_verify_element":
+                    args.update(ref="w1", role=step.target.role, name=step.target.name)
+                elif step.tool != "desktop_press" and step.tool != "desktop_verify_text":
+                    args["ref"] = "w1"
             if step.target and step.tool not in {"browser_press_key", "browser_file_upload"}:
-                args.update(target="e1", element="reviewed target")
+                if replay.kind == "browser":
+                    args.update(target="e1", element="reviewed target")
             error = self.h.registry.validate(spec, args)
             if error:
                 raise ValueError(error)
@@ -204,7 +210,7 @@ class Bundles:
         expectations = "\n".join(
             f"- {s.tool}: {json.dumps(s.args, ensure_ascii=False)}" for s in replay.expect
         )
-        manifest = f"---\nname: {name}\ndescription: {' '.join(row['description'].split())}\nkind: browser\nversion: {row['version']}\n---\n\nWhen Teach is enabled, use `use_skill` with this name and reviewed inputs. Otherwise follow the procedure below through available tools. Each step applies current permissions; stop on ambiguous targets or unknown effects.\n\n## Procedure\n\n{instructions}\n\n## Expected results\n\n{expectations}\n\n## Inputs\n\n```json\n{json.dumps({k: v.model_dump() for k, v in replay.inputs.items()}, indent=2)}\n```\n"
+        manifest = f"---\nname: {name}\ndescription: {' '.join(row['description'].split())}\nkind: {replay.kind}\nversion: {row['version']}\n---\n\nWhen Teach is enabled, use `use_skill` with this name and reviewed inputs. Otherwise follow the procedure below through available tools. Each step applies current permissions; stop on ambiguous targets or unknown effects.\n\n## Procedure\n\n{instructions}\n\n## Expected results\n\n{expectations}\n\n## Inputs\n\n```json\n{json.dumps({k: v.model_dump() for k, v in replay.inputs.items()}, indent=2)}\n```\n"
         history = self.store.all(
             "SELECT version,approved,review_id,digest FROM teach_versions WHERE name=? AND state='approved' ORDER BY version DESC",
             (name,),
