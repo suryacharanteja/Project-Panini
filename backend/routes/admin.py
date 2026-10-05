@@ -5,6 +5,7 @@ Secrets are write-only; responses never contain key values or connector secrets.
 """
 
 import json
+import os
 import platform
 import re
 import sys
@@ -306,6 +307,18 @@ async def test_local_model():
         return {"ok": False, "detail": str(exc)}
     finally:
         await local.close()
+
+
+@router.get("/local-model/qualification")
+async def local_model_qualification():
+    """Show the task classes that have passed comparative local qualification."""
+    from panini_cli.agent.local_quality import CLASSES, qualified
+
+    classes = {}
+    for task_class in sorted(CLASSES):
+        ready, reason = qualified(task_class)
+        classes[task_class] = {"ready": ready, "reason": reason}
+    return {"model": os.getenv("PANINI_LOCAL_MODEL", "").strip(), "classes": classes}
 
 
 @router.get("/audit")

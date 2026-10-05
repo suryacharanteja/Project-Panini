@@ -15,6 +15,14 @@ from backend.capabilities.agent import AgentAdapter
 from backend.panini import planning
 
 
+@pytest.fixture(autouse=True)
+def qualified_fixture_model(monkeypatch):
+    # These tests exercise provider plumbing; comparative admission is tested separately.
+    from panini_cli.agent import local_quality
+
+    monkeypatch.setattr(local_quality, "qualified", lambda task_class: (True, "qualified"))
+
+
 def test_local_endpoint_is_loopback_only():
     assert endpoint("http://127.0.0.1:11434/v1") == "http://127.0.0.1:11434/v1/chat/completions"
     for address in (
@@ -128,6 +136,8 @@ def test_coordinator_uses_validated_local_plan_when_cloud_key_is_missing(monkeyp
 def test_local_planner_rejects_a_claim_mixed_with_effect_steps(monkeypatch):
     monkeypatch.setenv("PANINI_LOCAL_MODE", "fallback")
     monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("PANINI_LOCAL_MODEL", "small-local")
+    monkeypatch.setenv("PANINI_LOCAL_BASE_URL", "http://127.0.0.1:11434/v1")
 
     class Local:
         model = "small-local"

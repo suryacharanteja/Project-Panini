@@ -193,15 +193,14 @@ class DesktopAdapter(UnavailableAdapter):
         if self.enabled:
             try:
                 native = await self.pipe.call({"op": "health"})
-                local_ready = (
-                    os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "fallback"
-                    and config.local_model_configured()
-                )
+                local_ready, local_reason = config.local_model_qualified("desktop")
                 reason = (
                     ""
                     if all(config.configured(key) for key in ("OPENAI_API_KEY", "AI_GATEWAY_API_KEY"))
                     or local_ready
-                    else "Configure OpenAI and AI Gateway credentials or a local fallback model for desktop planning."
+                    else local_reason
+                    if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "fallback"
+                    else "Configure OpenAI and AI Gateway credentials for desktop planning."
                 )
                 if not reason:
                     applications = await self.applications()
@@ -362,10 +361,7 @@ class DesktopAdapter(UnavailableAdapter):
         )
 
     async def run(self, context, instruction, target):
-        fallback_local = (
-            os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "fallback"
-            and config.local_model_configured()
-        )
+        fallback_local = config.local_model_qualified("desktop")[0]
         if (
             getattr(getattr(context, "principal", None), "kind", None) != "mcp_client"
             and os.getenv("PANINI_DESKTOP_VISUAL", "1").lower() not in {"0", "false", "no"}

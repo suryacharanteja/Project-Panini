@@ -198,6 +198,27 @@ def test_local_model_settings_are_loopback_only_and_probe_is_authenticated(clien
     }
 
 
+def test_local_quality_status_is_authenticated_and_reports_each_class(client, monkeypatch):
+    from panini_cli.agent import local_quality
+
+    endpoint = "/api/admin/v1/local-model/qualification"
+    assert client.get(endpoint).status_code in {401, 403}
+    monkeypatch.setenv("PANINI_LOCAL_MODEL", "test-local")
+    monkeypatch.setattr(
+        local_quality,
+        "qualified",
+        lambda task_class: (
+            task_class == "planner",
+            "qualified" if task_class == "planner" else "unqualified",
+        ),
+    )
+    result = client.get(endpoint, headers=HEADERS).json()
+    assert result["model"] == "test-local"
+    assert result["classes"]["planner"]["ready"] is True
+    assert result["classes"]["desktop"]["ready"] is False
+    assert result["classes"]["agent"]["ready"] is False
+
+
 def test_private_local_model_probe_rejects_unsupported_evidence(client, monkeypatch):
     from types import SimpleNamespace
 

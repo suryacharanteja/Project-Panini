@@ -2,6 +2,7 @@ id: chat.calculation
 title: Calculation
 modes:
 - live
+- local
 needs:
 - openai
 turn: What is 17.5% of 2,340?

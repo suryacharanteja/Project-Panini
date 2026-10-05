@@ -117,6 +117,14 @@ SETTINGS = [
         default="",
     ),
     Setting(
+        "PANINI_LOCAL_QUALITY_REPORT",
+        "models",
+        "Local quality report",
+        help="Absolute path to a paired real cloud/local scorecard qualification report for this exact model and source build. Unqualified task classes stay unavailable.",
+        default="",
+        restart=True,
+    ),
+    Setting(
         "PANINI_PLANNER_MODEL",
         "models",
         "Planner model",

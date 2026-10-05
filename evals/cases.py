@@ -7,7 +7,7 @@ import yaml
 
 CASES = Path(__file__).parent / "cases"
 HANDS = {"chat", "computer", "search", "browser", "desktop", "code", "memory", "background", "safety", "web"}
-MODES = {"offline", "live"}
+MODES = {"offline", "live", "local"}
 APPROVALS = {"decline", "approve", "timeout"}
 KNOWN_EXPECT = {
     "outcome_in",

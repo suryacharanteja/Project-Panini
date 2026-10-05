@@ -64,6 +64,13 @@ class _Environment:
                 "OPENAI_API_KEY": "",
                 "AI_GATEWAY_API_KEY": "",
             }
+        elif self.mode == "local":
+            overrides |= {
+                "PANINI_LOCAL_MODE": "fallback",
+                "PANINI_CLI_SCRIPTED_MODEL": "",
+                "OPENAI_API_KEY": "",
+                "AI_GATEWAY_API_KEY": "",
+            }
         for key, value in overrides.items():
             self.saved[key] = os.environ.get(key)
             os.environ[key] = value
@@ -84,7 +91,13 @@ class V1CoordinatorEngine:
     async def run(self, case, mode, *, timeout=240.0) -> tuple[TurnResult, Path]:
         env = _Environment(case, mode, self.flags)
         with env:
-            result = await self._run(case, env, timeout)
+            if mode == "local":
+                from panini_cli.agent.local_quality import evaluation_scope
+
+                with evaluation_scope():
+                    result = await self._run(case, env, timeout)
+            else:
+                result = await self._run(case, env, timeout)
         return result, env.work
 
     async def _run(self, case, env, timeout):

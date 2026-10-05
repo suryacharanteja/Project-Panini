@@ -27,12 +27,13 @@ class AgentAdapter:
         import os
 
         ready = config.configured("OPENAI_API_KEY") or bool(os.getenv("PANINI_CLI_SCRIPTED_MODEL"))
+        reason = "Configure an OpenAI credential or a qualified local fallback model."
         if not ready and os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "fallback":
-            ready = config.local_model_configured()
+            ready, reason = config.local_model_qualified("agent")
         return {
             "capability": self.name,
             "state": "ready" if ready else "unavailable",
-            "reason": "" if ready else "Configure an OpenAI credential or a local fallback model.",
+            "reason": "" if ready else reason,
         }
 
     async def targets(self):

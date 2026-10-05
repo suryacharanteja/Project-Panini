@@ -35,6 +35,14 @@ def local_model_configured() -> bool:
     return True
 
 
+def local_model_qualified(task_class: str) -> tuple[bool, str]:
+    if not local_model_configured():
+        return False, "Configure a loopback local model before using local tasks."
+    from panini_cli.agent.local_quality import qualified
+
+    return qualified(task_class)
+
+
 def jev_gates() -> bool:
     """Jev routing and completion checks (on by default whenever Jev is configured)."""
     if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "private":

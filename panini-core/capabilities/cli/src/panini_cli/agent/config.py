@@ -19,6 +19,11 @@ DEFAULT_ROUTER_MODELS = (
 
 def load_panini_env():
     """The terminal CLI runs in any folder, so the workspace's own .env is never loaded."""
+    if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "fallback":
+        from .local_quality import evaluation_active
+
+        if evaluation_active():
+            return  # The isolated real-local scorecard never imports a saved cloud credential.
     if configured_key():
         return
     roots = [Path(os.environ["PANINI_RUNTIME_ROOT"])] if os.getenv("PANINI_RUNTIME_ROOT") else []

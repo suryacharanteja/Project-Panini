@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 6 · P3 · L (2 weeks) |
 | Depends on | V2-06 (model router) |
 | Flag | `PANINI_LOCAL_MODE` = `off` (default) · `fallback` · `private` |
-| Status | In progress: local model/fallback, coordinator and desktop fallback admission, private-preview refusals and packaged offline STT with shell dictation built; blocking-proxy, TTS, full push-to-talk task and comparative quality guard pending |
+| Status | In progress: local model/fallback, coordinator and desktop admission, comparative quality guard and real-local scorecard path, private-preview refusals and packaged offline STT built; no task class qualified, blocking-proxy, TTS and full push-to-talk task pending |
 
 ## 1. Outcome
 
@@ -129,6 +129,16 @@ malformed general Notepad route and failed safely after bounded retries; the new
 passed a no-action dry run in 0.015 seconds. Its direct Goal/Action schema probe produced valid
 JSON, which does not qualify the full task. A `qwen3` 14B probe timed out. The complete offline
 Notepad acceptance case and comparative quality threshold are still open.
+
+The comparative guard now requires a model- and clean-source-matched report made from paired
+real cloud (`live`) and real local (`local`) scorecards. It refuses scripted offline runs,
+skipped or mismatched cases, safety regressions, fewer than eight cases per task class, and
+local success below 80% of the cloud baseline. Planner, desktop and agent local fallbacks
+report unavailable until their own class qualifies; Admin shows each class status. The
+isolated local evaluator can exercise an unqualified candidate without importing a saved
+cloud credential. On this PC, `qwen2.5:7b-instruct-q4_K_M` passed only 3/8 planner cases and
+the one safety case; it made a wrong arithmetic claim. No matching cloud scorecard was run,
+so no relative ratio or local tier qualification is claimed. The model remains gated off.
 
 ## 9. Rollout and rollback
 

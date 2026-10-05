@@ -76,6 +76,9 @@ class Pipe:
 
 @pytest.fixture
 def harness(monkeypatch):
+    from panini_cli.agent import local_quality
+
+    monkeypatch.setattr(local_quality, "qualified", lambda task_class: (True, "qualified"))
     monkeypatch.setenv("PANINI_DESKTOP_VISUAL", "0")
     adapter = desktop.DesktopAdapter(True)
     adapter.pipe = Pipe()

@@ -19,6 +19,10 @@ async def _parse_local(rules, payload, schema, *, surface):
 
     from .. import usage_log
 
+    allowed, reason = config.local_model_qualified("planner")
+    if not allowed:
+        raise Fault("LOCAL_QUALITY_UNQUALIFIED", reason, 503)
+
     try:
         model = LocalModel(timeout=60)
         try:

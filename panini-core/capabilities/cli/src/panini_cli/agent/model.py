@@ -246,8 +246,12 @@ def create_model(settings):
     if mode == "fallback":
         from .config import configured_key
         from .local_model import FallbackModel, LocalModel
+        from .local_quality import qualified
 
+        local_ready, reason = qualified("agent")
         if not configured_key():
+            if not local_ready:
+                raise ModelError(reason)
             return LocalModel(timeout=settings.request_timeout)
         cloud = OpenAIModel(
             model_router.actual_model(settings.model),
@@ -255,7 +259,11 @@ def create_model(settings):
             min(settings.request_timeout, 12.0),
             max_retries=0,
         )
-        return FallbackModel(cloud, lambda: LocalModel(timeout=settings.request_timeout))
+        return (
+            FallbackModel(cloud, lambda: LocalModel(timeout=settings.request_timeout))
+            if local_ready
+            else cloud
+        )
     cloud = OpenAIModel(
         model_router.actual_model(settings.model),
         settings.reasoning_effort,

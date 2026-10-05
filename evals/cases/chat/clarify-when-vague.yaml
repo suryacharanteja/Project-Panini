@@ -2,6 +2,7 @@ id: chat.clarify-when-vague
 title: Clarify when vague
 modes:
 - live
+- local
 needs:
 - openai
 turn: Run a simulation.

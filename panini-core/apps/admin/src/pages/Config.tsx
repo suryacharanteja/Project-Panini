@@ -327,6 +327,10 @@ export function KeysPage() {
 
 function LocalModelCard() {
   const [result, setResult] = useState<{ ok: boolean; detail: string } | null>(null);
+  const qualification = useResource<{
+    model: string;
+    classes: Record<string, { ready: boolean; reason: string }>;
+  }>(admin('/local-model/qualification'), 10000);
   const { busy, run } = useAction();
   return (
     <Card
@@ -346,10 +350,20 @@ function LocalModelCard() {
     >
       <p className="text-sm text-muted">
         Set the loopback server and model above, then test whether it returns a tool call. Local
-        fallback and private routing are in development. Private mode now refuses unqualified cloud
-        paths and uses the bundled model for reviewed dictation. Full egress, local speech playback,
-        microphone and offline quality qualification remain pending.
+        fallback and private routing are in development. A tool-call test checks connectivity only.
+        Effect-capable local task classes require a paired real cloud/local scorecard report for
+        this model and build. Full egress, speech playback and physical microphone qualification
+        remain open.
       </p>
+      {qualification.data && (
+        <ul className="mt-3 space-y-1 text-sm" aria-label="Local task qualification">
+          {Object.entries(qualification.data.classes).map(([name, state]) => (
+            <li key={name} className={state.ready ? 'text-copper-light' : 'text-muted'}>
+              {name}: {state.ready ? 'qualified' : state.reason}
+            </li>
+          ))}
+        </ul>
+      )}
       {result && (
         <p
           className={`mt-3 text-sm ${result.ok ? 'text-copper-light' : 'text-danger'}`}

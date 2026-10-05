@@ -1,0 +1,14 @@
+id: chat.local-product
+title: Local comparison exact multiplication
+modes:
+- live
+- local
+needs:
+- openai
+turn: What is 7 times 8? Answer with the number.
+files: {}
+expect:
+  message_contains_all:
+  - '56'
+tags:
+- simple

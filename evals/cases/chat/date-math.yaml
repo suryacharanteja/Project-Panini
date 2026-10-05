@@ -2,6 +2,7 @@ id: chat.date-math
 title: Date maths
 modes:
 - live
+- local
 needs:
 - openai
 turn: What day of the week is 25 December 2026?
