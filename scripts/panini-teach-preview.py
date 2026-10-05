@@ -6,6 +6,7 @@ Only the demo browser is attached. No provider requests, user profile or live ac
 import os
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -38,6 +39,7 @@ def main():
     import json
 
     import uvicorn
+    from fastapi import FastAPI
     from fastapi.responses import FileResponse, HTMLResponse
     from fastapi.staticfiles import StaticFiles
 
@@ -106,6 +108,14 @@ def main():
             '<iframe name="Report" title="Report" src="/demo/frame-body"></iframe>'
         )
 
+    @app.get("/demo/frame-cross")
+    async def cross_origin_frame_demo():
+        return HTMLResponse(
+            "<!doctype html><title>Cross-origin framed report demo</title>"
+            '<iframe name="Other" title="Other" src="/demo/frame-body"></iframe>'
+            '<iframe name="Report" title="Report" src="http://127.0.0.1:3249/demo/frame-body"></iframe>'
+        )
+
     @app.get("/demo/frame-body")
     async def frame_body():
         return HTMLResponse(
@@ -113,6 +123,13 @@ def main():
             '<button id="save">Save report</button><p id="result" role="status"></p>'
             '<script>save.onclick=()=>result.textContent="Report ready: "+query.value</script>'
         )
+
+    cross_origin = FastAPI()
+    cross_origin.add_api_route("/demo/frame-body", frame_body, methods=["GET"])
+    threading.Thread(
+        target=lambda: uvicorn.run(cross_origin, host="127.0.0.1", port=3249, access_log=False),
+        daemon=True,
+    ).start()
 
     @app.get("/preview/evidence")
     async def evidence():

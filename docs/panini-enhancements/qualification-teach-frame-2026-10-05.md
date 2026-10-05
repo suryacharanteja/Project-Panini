@@ -23,5 +23,9 @@ Managed-browser replay now allows multiple top-level named iframes when the live
 the fresh Playwright snapshot, the reviewed selector matches one DOM iframe, and its label is unique.
 The binding is rechecked before each effect. The real recorder/replay smoke adds a decoy iframe with
 the same controls before the reviewed Report iframe; replay with a changed input updates only Report.
-Focused tests reject DOM/snapshot label conflicts, duplicate labels and ambiguous matches. Nested,
-hidden and cross-origin frame layouts remain unqualified. Live healer-provider qualification remains open.
+Focused tests reject DOM/snapshot label conflicts, duplicate labels and ambiguous matches. A second
+managed-browser recording/replay used an iframe served from a different loopback port. It reached the
+actual owner effect review, replayed with a changed input, and left the same-controls decoy untouched.
+The recording, replay result and receipts are under `artifacts/teach-browser/`. This qualifies one
+cross-origin loopback layout, not arbitrary external origins, nested/hidden frames, Chrome attachment,
+or a live healer provider.

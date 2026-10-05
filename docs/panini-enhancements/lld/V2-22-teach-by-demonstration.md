@@ -179,7 +179,8 @@ exactly one DOM iframe, and its label is unique. The binding is rechecked before
 adds selected-window recording, normalization, private-field suppression, genuine WPF replay and installed
 Notepad record/type/save replay with a different Unicode input and exact disk verification. Opening an app
 as a recorded step, Save As dialogs, per-step crops, gestures and the remaining requirements are not
-qualified yet. The LLD remains in progress.
+qualified yet. A real managed-browser replay also passes with a reviewed iframe served from a second
+loopback origin; arbitrary external origins and nested frames remain unqualified. The LLD remains in progress.
 
 ## 9. Rollout and rollback
 

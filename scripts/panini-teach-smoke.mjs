@@ -252,6 +252,57 @@ try {
     await demo.frameLocator('iframe[name="Other"]').getByRole('status').textContent(),
     '',
   );
+  // The parent can identify its iframe, while the report document has a different origin.
+  await request('/api/harness/teach/record/start', 'POST', { browser: 'managed' });
+  await demo.goto(origin + '/demo/frame-cross');
+  const crossFrame = demo.frameLocator('iframe[name="Report"]');
+  await crossFrame.getByLabel('Query').fill('pears');
+  await crossFrame.getByRole('button', { name: 'Save report' }).click();
+  await crossFrame.getByText('Report ready: pears').waitFor();
+  assert.notEqual(new URL(demo.frame({ name: 'Report' }).url()).origin, new URL(origin).origin);
+  await demo.waitForTimeout(600);
+  const cross = await request('/api/harness/teach/stop', 'POST', {});
+  await writeFile(evidence + '/cross-origin-recording.json', JSON.stringify(cross, null, 2));
+  assert(cross.replay.steps.some((step) => step.target?.frame));
+  assert(
+    cross.replay.steps.every((step) => step.tool !== 'manual'),
+    JSON.stringify(cross.replay),
+  );
+  cross.replay.expect = [
+    { id: 's99', tool: 'browser_verify_text_visible', args: { text: 'Report ready' } },
+  ];
+  const crossProposal = await request('/api/harness/teach/propose', 'POST', {
+    name: 'cross-origin-report',
+    description: 'Create a report in a cross-origin named iframe',
+    replay: cross.replay,
+  });
+  await approve(crossProposal.review);
+  const crossSkill = await request('/api/harness/teach/skills/cross-origin-report');
+  const crossInput = Object.keys(crossSkill.replay.inputs)[0];
+  const crossPromise = request('/api/harness/teach/run', 'POST', {
+    name: 'cross-origin-report',
+    inputs: { [crossInput]: 'plums' },
+    browser: 'managed',
+  });
+  let crossEffect;
+  for (let i = 0; i < 100; i++) {
+    crossEffect = (await request('/api/harness/interrupts')).interrupts.find(
+      (review) => review.reason === 'teach_effect',
+    );
+    if (crossEffect) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (!crossEffect)
+    throw Error(`Cross-origin replay failed before review: ${JSON.stringify(await crossPromise)}`);
+  await approve(crossEffect);
+  const crossResult = await crossPromise;
+  assert.equal(crossResult.state, 'passed', JSON.stringify(crossResult));
+  await writeFile(evidence + '/cross-origin-replay.json', JSON.stringify(crossResult, null, 2));
+  await crossFrame.getByText('Report ready: plums').waitFor();
+  assert.equal(
+    await demo.frameLocator('iframe[name="Other"]').getByRole('status').textContent(),
+    '',
+  );
   const proof = await request('/preview/evidence');
   await writeFile(evidence + '/real-browser-evidence.json', JSON.stringify(proof, null, 2));
   assert(
@@ -269,6 +320,7 @@ try {
       patch_review: true,
       real_named_iframe_replay: true,
       multiple_frame_scope: true,
+      cross_origin_frame_scope: true,
       healer_provider: 'deterministic fake, no live provider qualification',
       runs: proof.runs.map((r) => ({ state: r.state, heals: r.heals })),
     }),
