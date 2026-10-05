@@ -327,6 +327,16 @@ class DesktopAdapter(UnavailableAdapter):
         await self.pipe.call({"op": "observe", "target": target})
         return dict(target)
 
+    async def window_identity(self, choice_id, task_id):
+        """Verify a cataloged HWND without relying on a GUI provider's UIA tree."""
+        target = self.choices.get(choice_id)
+        if not target or not self.permits(target["application"]):
+            raise Fault("TARGET_CHANGED", "Refresh and select a supported window.")
+        identity = await self.pipe.call({"op": "window", "task_id": task_id, "target": target})
+        if any(identity[key] != target[key] for key in ("hwnd", "pid", "created")):
+            raise Fault("TARGET_CHANGED", "The window identity changed during verification.")
+        return dict(target), identity
+
     async def direct(self, context, instruction, target_query=""):
         """Open or list a known folder (Downloads, Documents, Desktop, ...) straight from the
         file system: instant, and no screen reading or model call. Returns None for anything

@@ -63,6 +63,43 @@
       "concurrency": "desktop_fine"
     },
     {
+      "name": "desktop_applications",
+      "hand": "desktop_fine",
+      "title": "Installed Windows applications",
+      "description": "List fixed, installed and allowed application IDs. Use an ID with desktop_open_application; no path, arguments, document or URL is accepted.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "effect": "observe",
+      "requires": ["desktop_fine", "private", "foreground", "ledger"],
+      "strict": false,
+      "order": 180,
+      "concurrency": "desktop_fine"
+    },
+    {
+      "name": "desktop_open_application",
+      "hand": "desktop_fine",
+      "title": "Open installed Windows application",
+      "description": "Open one reviewed application from desktop_applications. PANINI requires a new native window before claiming success; no path or arguments are accepted.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "application_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,39}$", "maxLength": 40 }
+        },
+        "required": ["application_id"]
+      },
+      "effect": "local_exec",
+      "dynamic_effect": true,
+      "requires": ["desktop_fine", "private", "foreground", "ledger"],
+      "strict": false,
+      "order": 181,
+      "concurrency": "desktop_fine"
+    },
+    {
       "name": "desktop_click",
       "hand": "desktop_fine",
       "title": "Click on Windows",
@@ -442,7 +479,7 @@
   ],
   "prompt": {
     "principles": [
-      "Windows: desktop_windows, then desktop_activate(window=choice_id) to bring an explicitly chosen window forward. desktop_snapshot observes only; it never activates a window. Use only fresh refs and verify after every action.",
+      "Windows: desktop_applications lists reviewed fixed app IDs; desktop_open_application requires owner review and a verified new window. Then desktop_windows and desktop_activate(window=choice_id) select a window. desktop_snapshot observes only; it never activates a window. Use only fresh refs and verify after every action.",
       "Press requires a unique focused non-credential control. Credentials are always reserved for the person. Never guess a ref, window ID or native UIA ID.",
       "Fine desktop tools are opt-in. The coarse drawing planner remains available for canvas tasks."
     ]

@@ -12,7 +12,7 @@ from uuid import uuid4
 from PIL import Image
 
 from .. import v2flags
-from ..core_contracts import EffectClass, Readiness, ToolResult, raise_effect
+from ..core_contracts import LEVEL_ORDER, EffectClass, Readiness, ToolResult, raise_effect
 from ..live import takeover
 from ..panini.contracts import Fault
 from ..policy.effects import classify_words
@@ -290,6 +290,68 @@ class DesktopFine:
         except (Fault, ValueError, OSError, KeyError):
             return ""
 
+    async def open_application(self, ctx, spec, args):
+        """Launch only a fixed native catalog entry and prove a new allowed window exists."""
+        session = self.ready(ctx)
+        requested = args["application_id"]
+        catalog = await self.adapter.applications()
+        matches = [app for app in catalog if app["application_id"] == requested]
+        if len(matches) != 1:
+            raise ValueError("This installed application is unavailable or not allowed.")
+        app = matches[0]
+        concrete = {
+            "application_id": requested,
+            "application": app["application"],
+            "window": app["label"],
+        }
+        decision = self.h.policy.decide(
+            ctx.principal, spec, concrete, taint=ctx.taint, background=ctx.view.background
+        )
+        ctx.desktop_policy, ctx.decision = (spec, concrete), decision
+        if decision.action == "deny":
+            raise ValueError("Application launch denied: " + "; ".join(decision.reasons))
+        # A native process launch always gets a fresh owner decision, including in balanced mode.
+        detail = json.dumps(concrete, ensure_ascii=False)
+        richer = getattr(ctx, "confirm_decision", None)
+        if not richer and decision.level.value != "tap":
+            raise ValueError("This caller cannot present the required stronger approval.")
+        approved = (
+            await richer(spec.title, detail, decision)
+            if richer
+            else ctx.confirm is not None and await ctx.confirm(spec.title, detail)
+        )
+        if not approved:
+            raise ValueError("The owner did not approve this application launch.")
+        self.ready(ctx)
+        current = [row for row in await self.adapter.applications() if row["application_id"] == requested]
+        if current != [app]:
+            raise ValueError("The installed application changed during review.")
+        again = self.h.policy.decide(
+            ctx.principal, spec, concrete, taint=ctx.taint, background=ctx.view.background
+        )
+        if (
+            again.action == "deny"
+            or again.effect != decision.effect
+            or (
+                again.action != "allow"
+                and (
+                    decision.action == "allow"
+                    or again.effect != decision.effect
+                    or again.level != decision.level
+                )
+            )
+            or LEVEL_ORDER.index(again.level) > LEVEL_ORDER.index(decision.level)
+        ):
+            raise ValueError("Application permissions changed during review.")
+        ctx.check()
+        before = {
+            row["choice_id"]
+            for row in await self.adapter.targets()
+            if row["application"].casefold() == app["application"].casefold()
+        }
+        self.ready(ctx)
+        return session, app, before
+
     async def call(self, ctx, spec, args):
         async with self.lock:
             attempted = False
@@ -298,6 +360,52 @@ class DesktopFine:
                 session = self.ready(ctx)
                 if spec.name == "desktop_windows":
                     return ToolResult(data={"windows": await self.adapter.targets()})
+                if spec.name == "desktop_applications":
+                    return ToolResult(data={"applications": await self.adapter.applications()})
+                if spec.name == "desktop_open_application":
+                    session, app, known = await self.open_application(ctx, spec, args)
+                    attempted = True
+                    await self.adapter.pipe.call(
+                        {"op": "launch", "task_id": ctx.run_id, "application_id": app["application_id"]}
+                    )
+                    for _ in range(40):
+                        self.ready(ctx)
+                        ctx.check()
+                        try:
+                            observed = await self.adapter.targets()
+                        except (Fault, OSError):
+                            # GUI providers can be temporarily unavailable during window creation.
+                            # Repeat observation only; never dispatch a second launch.
+                            await asyncio.sleep(0.25)
+                            continue
+                        candidates = [
+                            row
+                            for row in observed
+                            if row["application"].casefold() == app["application"].casefold()
+                            and row["choice_id"] not in known
+                        ]
+                        if len(candidates) == 1:
+                            target, verified = await self.adapter.window_identity(
+                                candidates[0]["choice_id"], ctx.run_id
+                            )
+                            if verified["application"].casefold() == app["application"].casefold() and all(
+                                verified[key] == target[key] for key in ("hwnd", "pid", "created")
+                            ):
+                                return ToolResult(
+                                    data={
+                                        "application_id": app["application_id"],
+                                        "window": candidates[0]["choice_id"],
+                                        "title": verified["title"],
+                                        "verified": True,
+                                    },
+                                    evidence=[{"kind": "assertion", "passed": True}],
+                                    dispatched=True,
+                                )
+                            raise ValueError("The launched window identity changed during verification.")
+                        if len(candidates) > 1:
+                            raise ValueError("Several new windows appeared; the launch result is ambiguous.")
+                        await asyncio.sleep(0.25)
+                    raise ValueError("The launch was dispatched, but no new window could be verified.")
                 if spec.name == "desktop_snapshot":
                     if args.get("window"):
                         target = await self.adapter.select(args["window"])

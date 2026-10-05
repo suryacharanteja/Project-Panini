@@ -20,6 +20,11 @@ state again before dispatch. Key chords additionally require the same focused no
 
 The registry hand delivers `desktop_windows`, `desktop_snapshot`, `desktop_click`, `desktop_type`,
 `desktop_select`, `desktop_toggle`, `desktop_scroll`, `desktop_press` and text/value/element assertions.
+It also exposes the fixed installed application catalog and an owner-reviewed launch macro. Launch
+accepts only a catalog ID, rechecks policy and catalog after approval, dispatches once and verifies a
+new native HWND/process/start identity before claiming success. It accepts no path, argument or document.
+Transient UIA provider errors during observation never trigger a second launch; an unverified window
+remains an unknown effect.
 Every effect refreshes the target before and after review. Reviews use the actual app, role, label and
 bounds; current policy is enforced even in general shadow/off mode. The foreground agent, AG-UI and
 persona children, inbound phone calls, background tasks and channel jobs preserve stronger approval levels
@@ -48,6 +53,9 @@ remains in use during actions. Further preview presentation and overlay qualific
 - `scripts/panini-desktop-fine-smoke.py`: real broker, disposable worker and WPF fixture. Tests hierarchy,
   limits, password suppression/refusal, opaque-ref Unicode input, native stale/cross-run/cross-target
   rejection, Stop, and registry click/type/assert/toggle/select/scroll with concrete reviews and receipts.
+  It now also launches a new File Explorer window through the fine registry tool, verifies its native
+  identity and closes only that HWND. The first native attempt exposed an Explorer UIA provider error
+  after launch; the tool now verifies the native window without requiring the provider's control tree.
 - The same script with `--win32`: genuine Win32 controls in the native fixture, validating a separate UIA
   provider. Win32 static labels and editable controls share names; targets must use the correct role.
 - `scripts/panini-desktop-notepad-smoke.py`: installed Notepad exposing Win32/XAML providers. Opens only a
@@ -70,7 +78,7 @@ after those commands succeed; no unrun command is recorded as passing.
 
 ## Remaining LLD work
 
-Dedicated reviewed open-application/draw macros, combined type-and-submit, broader combo/scroll fallback,
+Dedicated reviewed draw macros, combined type-and-submit, broader combo/scroll fallback,
 target overlay/preview presentation, desktop teaching hooks and normalization, sandbox/browser grammar
 normalizers and the full golden-task comparison are pending. The default can change only after success is
 at least coarse, model calls decrease and p50 latency is no more than coarse plus 10 percent. The single

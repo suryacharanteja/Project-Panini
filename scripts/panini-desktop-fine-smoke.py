@@ -1,6 +1,7 @@
 """Real HMAC broker / UIA tree / opaque-ref actions against a disposable WPF fixture."""
 
 import asyncio
+import ctypes
 import json
 import os
 import secrets
@@ -238,6 +239,37 @@ async def main():
                     + ("/select/scroll" if not win32 else "")
                     + ", concrete owner review and ledger receipts"
                 )
+                installed = await h.registry.call(ctx, "desktop_applications", {})
+                assert installed.outcome == "ok" and any(
+                    app["application_id"] == "explorer" for app in installed.data["applications"]
+                )
+                launch_ops = []
+                original_call = h.adapters["desktop"].pipe.call
+
+                async def trace_launch(payload):
+                    try:
+                        result = await original_call(payload)
+                        launch_ops.append((payload["op"], "ok"))
+                        return result
+                    except Exception as exc:
+                        launch_ops.append((payload["op"], type(exc).__name__, str(exc)))
+                        raise
+
+                h.adapters["desktop"].pipe.call = trace_launch
+                opened = await h.registry.call(
+                    ctx, "desktop_open_application", {"application_id": "explorer"}
+                )
+                assert opened.outcome == "ok" and opened.data["verified"], (opened, launch_ops)
+                launched = h.adapters["desktop"].choices[opened.data["window"]]
+                assert launched["application"].casefold() == "explorer"
+                identity = await h.adapters["desktop"].pipe.call(
+                    {"op": "window", "task_id": ctx.run_id, "target": launched}
+                )
+                assert identity["hwnd"] == launched["hwnd"]
+                assert approvals[-1] == "local_exec"
+                # Close only this newly observed HWND after the broker revalidates its native identity.
+                assert ctypes.windll.user32.PostMessageW(ctypes.c_void_p(launched["hwnd"]), 0x10, 0, 0)
+                checks.append("reviewed fixed-catalog Explorer launch verified as a new native window")
             finally:
                 await h.desktop_fine.close()
                 ledger._ledger = ledger._artifacts = None

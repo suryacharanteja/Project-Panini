@@ -255,6 +255,32 @@ async def test_open_application_verifies_only_a_new_window(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_window_identity_uses_native_target_without_uia_and_rejects_rebinding():
+    target = {"hwnd": 20, "pid": 200, "created": "new", "application": "notepad"}
+
+    class WindowPipe:
+        changed = False
+        calls = []
+
+        async def call(self, request):
+            self.calls.append(request)
+            assert request["op"] == "window" and request["task_id"] == "run"
+            return {**target, "pid": 201 if self.changed else 200, "title": "New document"}
+
+    adapter = desktop.DesktopAdapter(True)
+    adapter.pipe = WindowPipe()
+    adapter.choices = {"new": target}
+    observed, identity = await adapter.window_identity("new", "run")
+    assert observed == target and identity["title"] == "New document"
+    assert [call["op"] for call in adapter.pipe.calls] == ["window"]
+    adapter.pipe.changed = True
+    with pytest.raises(Fault, match="identity changed"):
+        await adapter.window_identity("new", "run")
+    with pytest.raises(Fault, match="Refresh and select"):
+        await adapter.window_identity("missing", "run")
+
+
+@pytest.mark.anyio
 async def test_control_changes_during_confirmation_prevent_dispatch(harness):
     adapter, context, target, *_ = harness
 

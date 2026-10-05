@@ -144,8 +144,11 @@ the macro): success ≥ coarse, fewer model calls per task, p50 latency ≤ coar
 The [Windows checkpoint report](../qualification-desktop-fine-2026-10-05.md) records genuine Win32 and
 WPF fixture runs, plus installed Notepad with Win32/XAML providers. Fine pointer actions use bounded tree
 hit-testing, bypassing UIA `FromPoint`. The Notepad task types, asserts and saves a disposable file; its
-contents are checked on disk. These runs do not establish the coarse-planner comparison gate. Dedicated
-draw/open macros, combined type-and-submit and remaining hand normalizers are pending. Selected-window
+contents are checked on disk. These runs do not establish the coarse-planner comparison gate. The fine
+hand now lists fixed installed application IDs and launches one only after a fresh owner review, with
+policy and catalog checked again before dispatch. It claims success only after a new native window is
+verified. A real registry smoke opened a new File Explorer window and closed only that verified HWND.
+Dedicated draw macros, combined type-and-submit and remaining hand normalizers are pending. Selected-window
 desktop recording/replay and non-invoking focus are delivered in the [Windows teaching checkpoint](../qualification-teach-desktop-2026-10-05.md);
 remaining recording qualification is explicit there.
 Browser snapshots now expose a normalized grammar alongside their original driver output. Sandbox snapshots

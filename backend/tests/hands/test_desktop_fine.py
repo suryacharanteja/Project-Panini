@@ -40,11 +40,28 @@ class Pipe:
         self.title = "Fixture"
         self.document = False
         self.selected_tab = None
+        self.launched = False
+        self.launch_visible = True
 
     async def call(self, payload):
         self.calls.append(payload)
         if payload["op"] == "stop":
             return {"stopped": True}
+        if payload["op"] == "launch":
+            assert payload["application_id"] == "fixture-app"
+            self.launched = True
+            return {"application_id": "fixture-app", "application": "fixture"}
+        if payload["op"] == "window":
+            target = payload["target"]
+            return {
+                "hwnd": target["hwnd"],
+                "pid": target["pid"],
+                "created": target["created"],
+                "application": target["application"],
+                "title": "New Fixture",
+            }
+        if payload["op"] == "observe":
+            return {"observed": True}
         if payload["op"] == "fine_action":
             if self.gate:
                 await self.gate.wait()
@@ -124,12 +141,31 @@ def world(tmp_path, monkeypatch):
             return application == "fixture"
 
         async def targets(self):
-            return [{"choice_id": "fixture", "label": "Fixture", "application": "fixture"}]
+            rows = [{"choice_id": "fixture", "label": "Fixture", "application": "fixture"}]
+            if pipe.launched and pipe.launch_visible:
+                rows.append({"choice_id": "new-fixture", "label": "New Fixture", "application": "fixture"})
+            return rows
+
+        async def applications(self):
+            return [{"application_id": "fixture-app", "label": "Fixture", "application": "fixture"}]
 
         async def select(self, choice):
+            if choice == "new-fixture" and pipe.launched and pipe.launch_visible:
+                return {
+                    "hwnd": 2,
+                    "pid": 11,
+                    "created": "2",
+                    "label": "New Fixture",
+                    "application": "fixture",
+                }
             if choice != "fixture":
                 raise ValueError("Unknown window")
             return {"hwnd": 1, "pid": 10, "created": "1", "label": "Fixture", "application": "fixture"}
+
+        async def window_identity(self, choice, task_id):
+            target = await self.select(choice)
+            identity = await self.pipe.call({"op": "window", "task_id": task_id, "target": target})
+            return target, identity
 
     store = Store(tmp_path / "state.sqlite3")
     h = SimpleNamespace(store=store, adapters={"desktop": Adapter()}, policy=Policy(store))
@@ -154,6 +190,75 @@ async def snapshot(h, **args):
 
 def ref(session, name):
     return next(n.ref for n, _ in session["nodes"].values() if n.name == name)
+
+
+@pytest.mark.anyio
+async def test_catalog_launch_requires_concrete_review_and_verified_new_window(world):
+    h = world
+    listed = await h.registry.call(h.ctx, "desktop_applications", {})
+    assert listed.outcome == "ok" and listed.data["applications"][0]["application_id"] == "fixture-app"
+    refused = await h.registry.call(h.ctx, "desktop_open_application", {"application_id": "unknown"})
+    assert refused.outcome == "blocked" and not h.pipe.launched
+    reviews = []
+
+    async def decline(title, detail, decision):
+        reviews.append((json.loads(detail), decision.effect))
+        return False
+
+    h.ctx.confirm_decision = decline
+    denied = await h.registry.call(h.ctx, "desktop_open_application", {"application_id": "fixture-app"})
+    assert denied.outcome == "blocked" and not h.pipe.launched
+    assert reviews[0][0]["application_id"] == "fixture-app"
+    assert reviews[0][1] == EffectClass.LOCAL_EXEC
+
+    async def approve(*_):
+        return True
+
+    h.ctx.confirm_decision = approve
+    opened = await h.registry.call(h.ctx, "desktop_open_application", {"application_id": "fixture-app"})
+    assert opened.outcome == "ok" and opened.dispatched
+    assert opened.data["verified"] and opened.data["window"] == "new-fixture"
+    assert [call["op"] for call in h.pipe.calls].count("launch") == 1
+    assert [call["op"] for call in h.pipe.calls].count("window") == 1
+
+
+@pytest.mark.anyio
+async def test_launched_application_without_new_window_is_unknown_not_retried(world):
+    h = world
+    h.pipe.launch_visible = False
+
+    async def approve(*_):
+        return True
+
+    h.ctx.confirm_decision = approve
+    result = await h.registry.call(h.ctx, "desktop_open_application", {"application_id": "fixture-app"})
+    assert result.outcome == "unknown_effect" and result.dispatched
+    assert [call["op"] for call in h.pipe.calls].count("launch") == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("change", ["pause", "disable", "catalog"])
+async def test_launch_rechecks_authority_after_owner_review(world, monkeypatch, change):
+    h = world
+    original = h.adapters["desktop"].applications
+
+    async def approve(*_):
+        if change == "pause":
+            h.policy.pause(True)
+        elif change == "disable":
+            monkeypatch.setenv("PANINI_DESKTOP_TOOLS", "coarse")
+        else:
+
+            async def changed():
+                return []
+
+            h.adapters["desktop"].applications = changed
+        return True
+
+    h.ctx.confirm_decision = approve
+    result = await h.registry.call(h.ctx, "desktop_open_application", {"application_id": "fixture-app"})
+    assert result.outcome == "blocked" and not h.pipe.launched
+    h.adapters["desktop"].applications = original
 
 
 @pytest.mark.anyio
