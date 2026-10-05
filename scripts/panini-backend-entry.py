@@ -4,6 +4,26 @@ import os
 import sys
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--check-local-stt"]:
+        import asyncio
+        import io
+        import wave
+
+        from backend import local_stt
+
+        if not local_stt.readiness()["ready"]:
+            raise RuntimeError("The packaged offline speech engine or model is missing.")
+        audio = io.BytesIO()
+        with wave.open(audio, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(16000)
+            wav.writeframes(b"\0" * 32000)
+        result = asyncio.run(local_stt.transcribe_audio_bytes(audio.getvalue()))
+        if result["engine"] != "faster-whisper-local" or result["text"]:
+            raise RuntimeError("Packaged offline speech smoke failed.")
+        print("PANINI_LOCAL_STT_SMOKE_OK")
+        raise SystemExit(0)
     if sys.argv[1:2] == ["panini-cli"]:
         # The frozen backend doubles as PANINI-CLI's runtime (panini-cli app-server --stdio).
         from panini_cli.agent.cli import main

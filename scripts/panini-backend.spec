@@ -33,7 +33,7 @@ datas += [
     for p in (root / "backend/harness/mobile_app").iterdir()
     if p.is_file()
 ]
-for package in ("browser_use", "panini", "uvicorn", "bubus", "cdp_use"):
+for package in ("browser_use", "panini", "uvicorn", "bubus", "cdp_use", "faster_whisper", "ctranslate2", "av"):
     data, binary, imports = collect_all(package)
     datas += data
     binaries += binary
@@ -50,7 +50,7 @@ hiddenimports += [
     ".".join(p.relative_to(browser_root).with_suffix("").parts).removesuffix(".__init__")
     for p in (browser_root / "panini_browser").rglob("*.py")
 ]
-for package in ("browser-use", "pydantic", "openai", "httpx", "fastapi", "mcp", "mcp-types", "httpx2", "jsonschema"):
+for package in ("browser-use", "pydantic", "openai", "httpx", "fastapi", "mcp", "mcp-types", "httpx2", "jsonschema", "faster-whisper", "ctranslate2", "av"):
     datas += copy_metadata(package)
 a = Analysis(
     [str(root / "scripts/panini-backend-entry.py")],

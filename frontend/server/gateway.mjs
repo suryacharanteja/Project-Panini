@@ -122,7 +122,7 @@ export function createGateway({
       res,
       `${backendUrl}${req.originalUrl}`,
       null,
-      req.path.endsWith('/events') ? null : 65000,
+      req.path.endsWith('/events') ? null : req.path.endsWith('/stt/transcribe') ? 95000 : 65000,
     ),
   );
 

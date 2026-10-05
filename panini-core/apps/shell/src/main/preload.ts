@@ -6,6 +6,8 @@ const methods = [
   'targets',
   'select',
   'turn',
+  'speech-status',
+  'transcribe',
   'stop',
   'end',
   'media',

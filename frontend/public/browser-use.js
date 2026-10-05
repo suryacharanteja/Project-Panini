@@ -5,6 +5,7 @@ const escapeHtml = (value) =>
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[c],
   );
 let sttConfigured = false;
+let sttMode = 'unknown';
 let recognition = null,
   recorder = null,
   recordingStream = null,
@@ -104,6 +105,7 @@ function controls() {
   $('record-btn').textContent = recording ? 'Stop recording' : 'Record (Auto STT)';
   for (const id of ['record-btn', 'record-assembly-btn', 'record-webspeech-btn'])
     $(id).disabled = voiceActive || (!ready && !recording) || transcribing || settling;
+  $('record-webspeech-btn').disabled ||= sttMode === 'private' || sttMode === 'unknown';
   window.dispatchEvent?.(new Event('jev-browser-availability'));
 }
 
@@ -112,14 +114,32 @@ async function checkSttStatus() {
     const res = await fetch('/api/stt/status');
     if (!res.ok) throw new Error('Voice service unavailable');
     const data = await res.json();
-    sttConfigured = data.configured;
+    sttMode = data.mode || 'off';
+    sttConfigured =
+      sttMode === 'private'
+        ? !!data.local?.ready
+        : !!data.configured || (sttMode === 'fallback' && !!data.local?.ready);
     $('stt-pill').className = sttConfigured ? 'stt-pill ok' : 'stt-pill warn';
-    $('stt-label').textContent = sttConfigured
-      ? 'AssemblyAI ready'
-      : 'Web Speech available where supported';
-    $('stt-hint').textContent = sttConfigured
-      ? 'Auto records audio for AssemblyAI. Web Speech supports live commands.'
-      : 'Use Web Speech or type a command.';
+    $('stt-label').textContent =
+      sttMode === 'private'
+        ? sttConfigured
+          ? 'Local speech ready'
+          : 'Local speech unavailable'
+        : sttConfigured
+          ? data.active_engine === 'local'
+            ? 'Local speech ready'
+            : 'AssemblyAI ready'
+          : 'Web Speech available where supported';
+    $('stt-hint').textContent =
+      sttMode === 'private'
+        ? 'Private mode uses the bundled model. Web Speech is unavailable here.'
+        : sttConfigured
+          ? 'Record and transcribe a command, or use Web Speech for live commands.'
+          : 'Use Web Speech or type a command.';
+    $('record-assembly-btn').textContent =
+      data.active_engine === 'local' ? 'Local model' : 'AssemblyAI';
+    $('assembly-key-link').hidden = sttMode === 'private';
+    controls();
   } catch (error) {
     debug(error.message);
   }
@@ -287,10 +307,14 @@ async function toggleRecording(mode = 'auto') {
   if (transcribing) return;
   if (!selectedTarget()) return debug('Choose an available browser target first.');
   stopping = false;
-  const engine = mode === 'auto' ? (sttConfigured ? 'assemblyai' : 'webspeech') : mode;
+  const engine = mode === 'auto' ? (sttConfigured ? 'recorded' : 'webspeech') : mode;
   if (engine === 'webspeech') return startWebSpeech();
   if (!sttConfigured)
-    return debug('AssemblyAI is not configured. Choose Web Speech or type a command.');
+    return debug(
+      sttMode === 'private'
+        ? 'Local speech is unavailable. Type a command.'
+        : 'No recording engine is configured. Choose Web Speech or type a command.',
+    );
   const version = ++captureVersion;
   try {
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
@@ -365,11 +389,20 @@ async function toggleRecording(mode = 'auto') {
         if (!res.ok) throw new Error(data.detail || data.error || 'Transcription failed');
         if (!stopping && data.text?.trim()) {
           $('voice-input').value = data.text;
-          enqueue(data.text);
-          debug(`Transcribed in ${data.latency_ms}ms`);
+          if (sttMode !== 'private') enqueue(data.text);
+          $('stat-stt').textContent =
+            data.engine === 'faster-whisper-local' ? 'Local model' : 'AssemblyAI';
+          debug(
+            sttMode === 'private'
+              ? `Transcribed locally in ${data.latency_ms}ms. Review the command before sending.`
+              : `Transcribed in ${data.latency_ms}ms`,
+          );
         } else if (!stopping) debug('No speech detected. Try again.');
       } catch (error) {
-        if (!stopping) debug(`${error.message}. You can choose Web Speech or type a command.`);
+        if (!stopping)
+          debug(
+            `${error.message}. ${sttMode === 'private' ? 'Type a command.' : 'You can choose Web Speech or type a command.'}`,
+          );
       } finally {
         transcribing = false;
         speechController = null;
@@ -379,9 +412,11 @@ async function toggleRecording(mode = 'auto') {
     current.start(500);
     recording = true;
     controls();
-    $('stat-stt').textContent = 'AssemblyAI';
-    debug('Recording. Click again to transcribe (maximum two minutes).');
-    recordingTimer = setTimeout(() => stopRecording(), 120000);
+    $('stat-stt').textContent = sttMode === 'private' ? 'Local model' : 'AssemblyAI';
+    debug(
+      `Recording. Click again to transcribe (maximum ${sttMode === 'private' ? '30 seconds' : 'two minutes'}).`,
+    );
+    recordingTimer = setTimeout(() => stopRecording(), sttMode === 'private' ? 30000 : 120000);
   } catch (error) {
     if (version === captureVersion) {
       stopRecording(true);
@@ -391,6 +426,10 @@ async function toggleRecording(mode = 'auto') {
 }
 
 async function startWebSpeech() {
+  if (sttMode === 'private' || sttMode === 'unknown')
+    return debug(
+      'Web Speech is unavailable in private mode. Use local dictation or type a command.',
+    );
   if (!selectedTarget()) return debug('Choose an available browser target first.');
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition)
@@ -466,7 +505,13 @@ function enqueue(instruction) {
 let voiceMetrics = { steps: 0, latency: 0, cost: 0, confidence: 0 };
 window.JevBrowser = {
   target: selectedTarget,
-  canStartVoice: () => !running && !recording && !transcribing && !settling && !!selectedTarget(),
+  canStartVoice: () =>
+    sttMode !== 'private' &&
+    !running &&
+    !recording &&
+    !transcribing &&
+    !settling &&
+    !!selectedTarget(),
   lockVoice(active) {
     voiceActive = active;
     if (active) {

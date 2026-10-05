@@ -347,7 +347,8 @@ function LocalModelCard() {
       <p className="text-sm text-muted">
         Set the loopback server and model above, then test whether it returns a tool call. Local
         fallback and private routing are in development. Private mode now refuses unqualified cloud
-        paths; full egress, speech and offline quality qualification remain pending.
+        paths and uses the bundled model for reviewed dictation. Full egress, local speech playback,
+        microphone and offline quality qualification remain pending.
       </p>
       {result && (
         <p

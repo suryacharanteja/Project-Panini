@@ -487,6 +487,12 @@ textarea::placeholder {
   color: #e8b89a;
   background: #261a16;
 }
+.dictation-hint {
+  margin: 7px 0 0;
+  color: #a8a8b3;
+  font-size: 11px;
+  line-height: 1.4;
+}
 .ptt {
   display: block;
   margin: 7px auto 0;

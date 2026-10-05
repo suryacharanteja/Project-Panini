@@ -5,7 +5,7 @@ import binascii
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
-from .. import config, stt_service
+from .. import config, local_stt, private_mode, stt_service
 
 router = APIRouter(prefix="/api/stt")
 
@@ -18,12 +18,19 @@ async def status():
 async def transcribe(data: bytes, request: Request):
     if not 500 <= len(data) <= config.MAX_AUDIO_BYTES:
         raise HTTPException(400 if len(data) < 500 else 413, "Audio must be between 500 bytes and 10 MiB")
-    if not stt_service.is_configured():
-        raise HTTPException(503, "AssemblyAI is not configured; use Web Speech or enter text")
+    if not stt_service.can_transcribe():
+        raise HTTPException(503, "No transcription engine is ready for this mode")
     try:
-        return await request.app.state.speech_work.run(lambda: request.app.state.transcribe_service(data))
+        operation = (
+            local_stt.transcribe_audio_bytes
+            if private_mode.active()
+            else request.app.state.transcribe_service
+        )
+        return await request.app.state.speech_work.run(lambda: operation(data))
     except asyncio.TimeoutError as exc:
         raise HTTPException(504, "Transcription timed out") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)[:300]) from exc
     except RuntimeError as exc:
         raise HTTPException(502, str(exc)[:300]) from exc
 

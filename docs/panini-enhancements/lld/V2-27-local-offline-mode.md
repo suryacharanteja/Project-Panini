@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 6 · P3 · L (2 weeks) |
 | Depends on | V2-06 (model router) |
 | Flag | `PANINI_LOCAL_MODE` = `off` (default) · `fallback` · `private` |
-| Status | In progress: loopback local model, transient fallback, strict local evidence gates and private-preview refusals built; blocking-proxy qualification, speech and quality guard pending |
+| Status | In progress: local model/fallback, strict local evidence gates, private-preview refusals and packaged offline STT with shell dictation built; blocking-proxy, TTS, full push-to-talk task and quality guard pending |
 
 ## 1. Outcome
 
@@ -39,8 +39,8 @@ same hands. Complex tasks degrade gracefully with a clear message instead of fai
 | Component | Choice | Notes |
 | --- | --- | --- |
 | Local model server | Any OpenAI-compatible server (Ollama, llama.cpp server, LM Studio) at `PANINI_LOCAL_BASE_URL` | PANINI does not bundle models; Admin checks the server and the model's tool-calling support |
-| Local STT | `faster-whisper` (MIT) with a small model, CPU by default | Push-to-talk on the avatar; ≤ 2 s for a 5 s utterance on a modern CPU |
-| Local TTS | Piper (MIT) voices | Avatar speech in offline mode |
+| Local STT | `faster-whisper` 1.2.1 (MIT) with a pinned base model (MIT), CPU/int8 | A packaged local model transcribes a bounded recording into the shell composer for review; voice/task latency and real microphones still need qualification |
+| Local TTS | Selection pending | The [original Piper repository](https://github.com/rhasspy/piper/blob/master/LICENSE.md) is MIT but archived; the [maintained Piper distribution](https://github.com/OHF-Voice/piper1-gpl/blob/main/setup.py) is GPL-3.0-or-later. Choose and qualify a redistributable engine and voice before bundling. |
 | Local gates | Jev questions answered by the local model with a fixed JSON schema | Same thresholds; slower |
 
 ### 5.2 Modes
@@ -90,9 +90,9 @@ private mode the model factory constructs only the local client and Jev calls ar
 loopback endpoint and model name, then send a synthetic tool-call probe; unit tests use an HTTP mock and assert
 no cloud client construction. The next development increment rejects unqualified v1/v2 agent tools, disables
 remote/channel/phone/trigger startup, marks those tools unavailable in registry inventory, and refuses direct
-browser, voice, transcription, comparison, Android, connector, agent and coordinator execution APIs while
+browser, live voice, comparison, Android, connector, agent and coordinator execution APIs while
 private mode is selected. The setting requires a restart. This remains a preview: the complete process has
-not passed a blocking-proxy or physical offline test; on-device STT/TTS, a qualified desktop hand, local
+not passed a blocking-proxy or physical offline test; on-device TTS, a qualified desktop hand, local
 gate quality and the scorecard quality guard are pending. File and command hands are withheld in private
 mode until network drive and subprocess egress are qualified. Keep this flag off outside development.
 
@@ -101,6 +101,16 @@ private-mode early completion and verified claims. Missing, malformed or unsuppo
 closed. Admin's synthetic probe checks the JSON schema path and rejects a made-up achievement. The
 context-selection optimization still falls back to showing all local tools. These tests exercise a
 mock loopback server, not a qualified real local model; the gate's decision accuracy remains open.
+
+The speech increment pins `faster-whisper==1.2.1` and `av==18.1.0` because PyAV 19 removed the
+`metadata_errors` argument used by this faster-whisper release. Packaging verifies SHA-256 for all
+files of `Systran/faster-whisper-base` at revision `ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66`,
+bundles the model, and runs the frozen backend against one second of local silent audio. Runtime
+transcription passes only an existing local directory; it never passes a model name that could trigger
+a download. Private mode uses that engine even when a cloud operation is injected, and fallback mode
+uses it after a cloud transcription error. The authenticated shell records up to 30 seconds and puts
+the transcript in the composer for review. A synthetic spoken WAV passed locally; physical microphone
+capture, the complete offline Notepad task, TTS playback and whole-process egress remain unqualified.
 
 ## 9. Rollout and rollback
 

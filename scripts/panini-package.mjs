@@ -103,6 +103,12 @@ await run(join(root, '.venv/Scripts/python.exe'), [
 await cp(join(root, 'artifacts/panini-frozen/Panini.Backend'), join(runtime, 'backend'), {
   recursive: true,
 });
+await run(join(root, '.venv/Scripts/python.exe'), ['scripts/panini-local-stt-model.py']);
+const sttSource = join(root, 'artifacts/model-cache/faster-whisper-base');
+const sttDestination = join(runtime, 'models/whisper');
+await mkdir(sttDestination, { recursive: true });
+for (const name of ['config.json', 'model.bin', 'README.md', 'tokenizer.json', 'vocabulary.txt'])
+  await copyFile(join(sttSource, name), join(sttDestination, name));
 // Serve the same phone application and capability manifests from the installed runtime.
 const phoneDestination = join(runtime, 'panini-core/apps/phone');
 await mkdir(phoneDestination, { recursive: true });
@@ -190,6 +196,18 @@ if (process.platform === 'win32') {
       PANINI_CLI_ENABLED: 'false',
     },
     'PANINI_BACKEND_RUNTIME_IMPORTS_OK',
+  );
+  await run(
+    join(runtime, 'backend/Panini.Backend.exe'),
+    ['--check-local-stt'],
+    runtime,
+    {
+      ...isolatedPath,
+      PANINI_RUNTIME_ROOT: runtime,
+      PANINI_DATA_DIR: join(root, 'artifacts/panini-backend-import-smoke'),
+      PANINI_LOCAL_MODE: 'private',
+    },
+    'PANINI_LOCAL_STT_SMOKE_OK',
   );
   await run(
     join(runtime, 'backend/Panini.Backend.exe'),

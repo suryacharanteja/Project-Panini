@@ -942,6 +942,14 @@ function ipc() {
           resume_choice_id: input.resume_choice_id ? text(input.resume_choice_id, 200) : null,
           expected_task_id: input.expected_task_id ? text(input.expected_task_id, 100) : null,
         });
+      case 'speech-status':
+        return client.scoped('/stt/status');
+      case 'transcribe': {
+        const audio = String(input?.audio_b64 || '');
+        if (!audio.startsWith('data:audio/') || audio.length > 14_000_000)
+          throw new Error('Record up to 30 seconds of audio for dictation.');
+        return client.scoped('/stt/transcribe', { audio_b64: audio }, undefined, 95000);
+      }
       case 'feedback':
         return client.scoped('/feedback', {
           command_id: randomUUID(),

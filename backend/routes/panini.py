@@ -6,6 +6,7 @@ import json
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from .. import stt_service
 from ..panini.contracts import (
     ConfirmationDecision,
     Control,
@@ -21,6 +22,8 @@ from ..panini.contracts import (
     TicketExchange,
     Turn,
 )
+from .speech import Base64Audio
+from .speech import encoded as transcribe_encoded
 
 router = APIRouter(prefix="/api/panini")
 
@@ -187,6 +190,18 @@ async def desktop_focus_target(session_id: str, request: Request):
 async def command(session_id: str, payload: Turn, request: Request):
     c, p, s, epoch = session(request, session_id, mutation=True)
     return await c.submit(s, p, epoch, payload)
+
+
+@router.get("/sessions/{session_id}/stt/status")
+async def dictation_status(session_id: str, request: Request):
+    session(request, session_id)
+    return stt_service.get_status()
+
+
+@router.post("/sessions/{session_id}/stt/transcribe")
+async def dictation(session_id: str, payload: Base64Audio, request: Request):
+    session(request, session_id, mutation=True)
+    return await transcribe_encoded(payload, request)
 
 
 @router.get("/sessions/{session_id}/commands/{command_id}")

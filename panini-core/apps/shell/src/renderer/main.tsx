@@ -118,6 +118,12 @@ function App() {
   const [mic, setMic] = useState(false),
     [muted, setMuted] = useState(false),
     [connectingMic, setConnectingMic] = useState(false);
+  const [speechMode, setSpeechMode] = useState('off');
+  const [recording, setRecording] = useState(false),
+    [dictating, setDictating] = useState(false);
+  const recorder = useRef<MediaRecorder | null>(null),
+    recordingStream = useRef<MediaStream | null>(null),
+    recordingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]),
     [microphone, setMicrophone] = useState('');
   const [pin, setPin] = useState(false),
@@ -184,6 +190,81 @@ function App() {
     const current = generation.current;
     releaseAudio();
     return await call('media-close', { generation: current });
+  };
+  const stopDictation = () => {
+    if (recordingTimer.current) clearTimeout(recordingTimer.current);
+    recordingTimer.current = null;
+    if (recorder.current?.state === 'recording') recorder.current.stop();
+  };
+  const startDictation = async () => {
+    if (recording || dictating || mic || !ready || !terminal) return;
+    setError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          ...(microphone ? { deviceId: { exact: microphone } } : {}),
+        },
+        video: false,
+      });
+      if (disposed.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      recordingStream.current = stream;
+      micMeter.current?.close();
+      micMeter.current = levelMeter(stream);
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : '';
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks: BlobPart[] = [];
+      recorder.current = mediaRecorder;
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size) chunks.push(event.data);
+      };
+      mediaRecorder.onerror = () => setError('Microphone recording failed. Try again.');
+      mediaRecorder.onstop = async () => {
+        recordingStream.current?.getTracks().forEach((track) => track.stop());
+        recordingStream.current = null;
+        recorder.current = null;
+        micMeter.current?.close();
+        micMeter.current = null;
+        if (disposed.current) return;
+        setRecording(false);
+        setDictating(true);
+        try {
+          const blob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+          if (blob.size < 500 || blob.size > 10 * 1024 * 1024)
+            throw new Error('Record between a brief utterance and 30 seconds.');
+          const audio = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('Could not read the recording.'));
+            reader.readAsDataURL(blob);
+          });
+          const result = await api.invoke('transcribe', { audio_b64: audio });
+          if (!disposed.current) {
+            if (!result?.text?.trim()) throw new Error('No speech detected. Try again.');
+            setInput((previous) => [previous.trim(), result.text.trim()].filter(Boolean).join(' '));
+            note('LOCAL_DICTATION · REVIEW THE TRANSCRIPT BEFORE SENDING');
+          }
+        } catch (error: any) {
+          if (!disposed.current) setError(error.message || 'Local transcription failed.');
+        } finally {
+          if (!disposed.current) setDictating(false);
+        }
+      };
+      mediaRecorder.start();
+      setRecording(true);
+      recordingTimer.current = setTimeout(stopDictation, 30000);
+    } catch (error: any) {
+      recordingStream.current?.getTracks().forEach((track) => track.stop());
+      recordingStream.current = null;
+      setRecording(false);
+      setError(error.message || 'Microphone unavailable.');
+    }
   };
   const startMic = async (personaId = voicePersona, reconnect = false) => {
     if (!reconnect && (mic || connectingMic)) return;
@@ -406,10 +487,20 @@ function App() {
       disposed.current = true;
       clearInterval(heartbeat);
       unsubscribe();
+      if (recordingTimer.current) clearTimeout(recordingTimer.current);
+      if (recorder.current?.state === 'recording') recorder.current.stop();
+      recordingStream.current?.getTracks().forEach((track) => track.stop());
       local.current?.getTracks().forEach((t) => t.stop());
       peer.current?.close();
     };
   }, []);
+  useEffect(() => {
+    if (!ready) return;
+    void api
+      .invoke('speech-status')
+      .then((status) => setSpeechMode(status?.mode || 'off'))
+      .catch(() => setSpeechMode('off'));
+  }, [ready]);
   useEffect(() => {
     const refreshDevices = async () => {
       try {
@@ -425,9 +516,9 @@ function App() {
   useEffect(() => {
     void api.invoke('window', {
       action: 'microphone-state',
-      value: mic && !muted ? 'on' : mic ? 'muted' : 'off',
+      value: recording || (mic && !muted) ? 'on' : mic ? 'muted' : 'off',
     });
-  }, [mic, muted]);
+  }, [mic, muted, recording]);
   useEffect(() => {
     if (ready)
       void api
@@ -493,7 +584,7 @@ function App() {
     void api.invoke('window', { action: 'delegate', value: activeCap }).catch(() => {});
   }, [activeCap, phase, terminal, delegationOverlay]);
   // The avatar mirrors exactly what PANINI is doing (Visibility of System Status).
-  const avatarState: AvatarState = avatarStateFor({ phase, ready, mic, muted });
+  const avatarState: AvatarState = avatarStateFor({ phase, ready, mic: mic || recording, muted });
   // Minimized and PANINI needs the person: glow and notify once per request.
   const needsYou = avatarState === 'approval' || phase === 'needs_input' || phase === 'blocked';
   const called = useRef(false);
@@ -550,8 +641,16 @@ function App() {
             voiceLevel={() => voiceMeter.current?.read() ?? 0}
             reducedMotion={reduced}
             anchors={anchors}
-            listening={mic}
-            onActivate={() => void (mic ? closeMic() : startMic())}
+            listening={mic || recording}
+            onActivate={() =>
+              void (speechMode === 'private'
+                ? recording
+                  ? stopDictation()
+                  : startDictation()
+                : mic
+                  ? closeMic()
+                  : startMic())
+            }
           />
           <Lexicon log={log} caps={caps} />
           <Capabilities
@@ -598,15 +697,19 @@ function App() {
         <div className="brand">
           <strong title={persona.name}>{persona.name}</strong>
           <span>
-            {mic
-              ? muted
-                ? 'Microphone muted'
-                : 'Listening'
-              : !terminal
-                ? 'Working with you'
-                : ready
-                  ? 'Here when you need me'
-                  : 'Connecting'}
+            {recording
+              ? 'Recording locally'
+              : dictating
+                ? 'Transcribing locally'
+                : mic
+                  ? muted
+                    ? 'Microphone muted'
+                    : 'Listening'
+                  : !terminal
+                    ? 'Working with you'
+                    : ready
+                      ? 'Here when you need me'
+                      : 'Connecting'}
           </span>
         </div>
         {staged && <StageTitle state={avatarState} />}
@@ -757,7 +860,10 @@ function App() {
                 {!item.interrupt && (
                   <button
                     onClick={async () => {
-                      const result = await call('continuity', { action: 'seen', item_id: item.item_id });
+                      const result = await call('continuity', {
+                        action: 'seen',
+                        item_id: item.item_id,
+                      });
                       if (result?.status === 'seen')
                         setContinuityCards((cards) => cards.filter((card) => card.id !== item.id));
                     }}
@@ -993,24 +1099,44 @@ function App() {
               </div>
             </form>
             <div className="actions">
-              <button
-                className={mic ? 'mic active' : 'mic'}
-                disabled={!ready || connectingMic}
-                onClick={() => void (mic ? closeMic() : startMic())}
-              >
-                {connectingMic
-                  ? 'Connecting…'
-                  : mic
-                    ? muted
-                      ? 'Microphone muted · End call'
-                      : 'Listening · End call'
-                    : '◉ Talk to PANINI'}
-              </button>
+              {speechMode !== 'private' && (
+                <button
+                  className={mic ? 'mic active' : 'mic'}
+                  disabled={!ready || connectingMic || recording || dictating}
+                  onClick={() => void (mic ? closeMic() : startMic())}
+                >
+                  {connectingMic
+                    ? 'Connecting…'
+                    : mic
+                      ? muted
+                        ? 'Microphone muted · End call'
+                        : 'Listening · End call'
+                      : '◉ Talk to PANINI'}
+                </button>
+              )}
+              {['private', 'fallback'].includes(speechMode) && (
+                <button
+                  className={recording ? 'mic active' : 'mic'}
+                  disabled={!ready || dictating || mic || (!recording && !terminal)}
+                  onClick={() => void (recording ? stopDictation() : startDictation())}
+                >
+                  {dictating
+                    ? 'Transcribing locally…'
+                    : recording
+                      ? '■ Stop and transcribe'
+                      : '◉ Record locally'}
+                </button>
+              )}
               {mic && <button onClick={() => mute(!muted)}>{muted ? 'Unmute' : 'Mute'}</button>}
               <button className="stop" disabled={!ready} onClick={() => void call('stop')}>
                 ■ Stop
               </button>
             </div>
+            {['private', 'fallback'].includes(speechMode) && (
+              <p className="dictation-hint">
+                Local dictation fills the composer. Review the words before sending.
+              </p>
+            )}
             {mic && (
               <button
                 className="ptt"

@@ -9,7 +9,7 @@ export class PaniniClient {
     readonly base: string,
     readonly instance: string,
   ) {}
-  async call(path: string, body?: object, method = body ? 'POST' : 'GET') {
+  async call(path: string, body?: object, method = body ? 'POST' : 'GET', timeoutMs = 45000) {
     const response = await fetch(`${this.base}/api/panini${path}`, {
       method,
       headers: {
@@ -19,7 +19,7 @@ export class PaniniClient {
         'X-Panini-Lease-Epoch': String(this.epoch),
       },
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const bodyText = await response.text();
     let data;
@@ -34,8 +34,8 @@ export class PaniniClient {
       throw new Error(data.error?.message || `PANINI request failed (${response.status}).`);
     return data;
   }
-  scoped(path: string, body?: object, method?: string) {
-    return this.call(`/sessions/${this.sessionId}${path}`, body, method);
+  scoped(path: string, body?: object, method?: string, timeoutMs?: number) {
+    return this.call(`/sessions/${this.sessionId}${path}`, body, method, timeoutMs);
   }
   async connect(bootstrap: string) {
     this.token = bootstrap;

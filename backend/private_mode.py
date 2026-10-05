@@ -73,7 +73,6 @@ def blocks_http(path: str, method: str) -> bool:
     if path.startswith(
         (
             "/api/voice/",
-            "/api/stt/transcribe",
             "/api/harness/android",
             "/api/harness/teach",
             "/api/panini/harness/teach",

@@ -1,3 +1,4 @@
+import base64
 from uuid import uuid4
 
 import pytest
@@ -29,6 +30,28 @@ def test_disabled_profile_does_not_enable_panini():
     client = TestClient(create_app(panini_settings=Settings()), base_url="http://localhost")
     assert client.get("/api/panini/health").status_code == 404
     assert client.post("/api/browser/stop").status_code == 200
+
+
+def test_authenticated_controller_can_dictate_locally_in_private_mode(runtime, monkeypatch):
+    from backend import local_stt
+
+    client, _, sid, controller = runtime
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+    monkeypatch.setattr(local_stt, "readiness", lambda: {"ready": True})
+
+    async def local(_audio):
+        return {"text": "open Notepad", "engine": "faster-whisper-local"}
+
+    monkeypatch.setattr(local_stt, "transcribe_audio_bytes", local)
+    path = f"/api/panini/sessions/{sid}/stt/transcribe"
+    body = {"audio_b64": base64.b64encode(b"x" * 500).decode()}
+    assert client.post(path, json=body).status_code == 401
+    assert (
+        client.get(f"/api/panini/sessions/{sid}/stt/status", headers=controller).json()["mode"] == "private"
+    )
+    response = client.post(path, headers=controller, json=body)
+    assert response.status_code == 200
+    assert response.json()["text"] == "open Notepad"
 
 
 def test_end_receipt_is_idempotent_after_lease_is_closed(runtime):
