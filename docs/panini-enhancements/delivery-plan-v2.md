@@ -257,7 +257,7 @@ Dependencies: V2-16 (telephony foundation), V2-13 (callee-injection cases), V2-1
 
 ### V2-21: Android hands
 
-Implementation register: **Not started**. [Source LLD](lld/V2-21-android-hands.md).
+Implementation register: **In progress**. The opt-in hand, Admin pairing/setup, policy-bound actions, live frames and stop controls are built. Captures that are malformed or entirely black are refused as evidence. Physical Android golden tasks and Chrome/WebView qualification remain open. [Source LLD](lld/V2-21-android-hands.md).
 
 Dependencies: V2-08 (Node sidecar pattern), V2-03 (policy), V2-12 (live view).
 

@@ -38,7 +38,7 @@ class Driver:
         self.xml = xml()
         self.events = []
         self.fail = None
-        image = Image.new("RGB", (200, 400), "black")
+        image = Image.new("RGB", (200, 400), "navy")
         out = io.BytesIO()
         image.save(out, format="PNG")
         self.image = base64.b64encode(out.getvalue()).decode()
@@ -59,6 +59,17 @@ class Driver:
 
     async def close(self):
         pass
+
+
+def test_screenshot_rejects_protected_and_invalid_captures():
+    protected = io.BytesIO()
+    Image.new("RGB", (100, 100), "black").save(protected, format="PNG")
+    with pytest.raises(ValueError, match="blank or protected"):
+        Android.checked_screenshot(base64.b64encode(protected.getvalue()).decode())
+    with pytest.raises(ValueError, match="Invalid phone screenshot"):
+        Android.checked_screenshot(base64.b64encode(b"not an image").decode())
+    with pytest.raises(ValueError, match="Invalid phone screenshot"):
+        Android.checked_screenshot("bad base64")
 
 
 @pytest.fixture
@@ -306,6 +317,18 @@ async def test_live_frame_does_not_expire_refs_and_hides_credentials(world):
     h.android.driver.xml = xml("secret", password=True)
     with pytest.raises(ValueError, match="credential"):
         await h.android.frame("phone")
+
+
+@pytest.mark.anyio
+async def test_protected_capture_is_not_saved_or_shown_as_live_evidence(world):
+    h, registry, ctx, _ = world
+    blank = io.BytesIO()
+    Image.new("RGB", (100, 100), "black").save(blank, format="PNG")
+    h.android.driver.image = base64.b64encode(blank.getvalue()).decode()
+    with pytest.raises(ValueError, match="blank or protected"):
+        await h.android.frame("phone")
+    result = await registry.call(ctx, "android_screenshot", {})
+    assert result.outcome == "blocked" and not result.artifact_ids
 
 
 @pytest.mark.anyio

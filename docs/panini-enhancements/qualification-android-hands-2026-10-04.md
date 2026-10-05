@@ -43,6 +43,10 @@ saved setup, responsive desktop/mobile layout, pairing-code clearing, an effect 
 live frames and the phone's Stop control. Its phone request adapter uses authenticated loopback routes;
 it does not claim physical Android, WebCrypto pairing or an end-to-end remote-network result.
 
+The screenshot and live-frame paths now validate PNG decoding and dimensions, and refuse an entirely
+black capture as blank or protected rather than saving it as visual evidence. This heuristic can also
+refuse a genuinely blank black screen; physical-device validation is still required.
+
 Exact counts, source commit, package hashes and runtime-integrity results are retained in
 `artifacts/android-hands/`. `release-check.log` must pass before release packaging. The installer remains
 an unsigned local development release.

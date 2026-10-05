@@ -166,16 +166,31 @@ class Android:
             found = await self.snapshot(publish=False)
             if any("password" in n.node.states for n in found.values()):
                 raise ValueError("Live frames are hidden while a credential field is visible.")
-            raw = base64.b64decode(await self.request("screenshot"), validate=True)
-            if len(raw) > 3_000_000:
-                raise ValueError("Phone screenshot too large.")
+            raw = self.checked_screenshot(await self.request("screenshot"))
             with Image.open(io.BytesIO(raw)) as image:
-                if image.width * image.height > 20_000_000:
-                    raise ValueError("Phone screenshot too large.")
                 image.thumbnail((1280, 1280))
                 output = io.BytesIO()
                 image.convert("RGB").save(output, format="JPEG", quality=75)
             return output.getvalue(), {"title": "Android phone", "width": image.width, "height": image.height}
+
+    @staticmethod
+    def checked_screenshot(encoded):
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+            if len(raw) > 3_000_000:
+                raise ValueError("Phone screenshot too large.")
+            with Image.open(io.BytesIO(raw)) as image:
+                if image.format != "PNG" or not 0 < image.width * image.height <= 20_000_000:
+                    raise ValueError("Invalid phone screenshot.")
+                image.load()
+                # Android FLAG_SECURE commonly produces an all-black capture. It is not
+                # evidence of the visible phone state, even if the PNG is valid.
+                extrema = image.convert("RGB").getextrema()
+                if all(low == high == 0 for low, high in extrema):
+                    raise ValueError("Phone capture is blank or protected; inspect the phone directly.")
+            return raw
+        except (TypeError, OSError, base64.binascii.Error) as exc:
+            raise ValueError("Invalid phone screenshot.") from exc
 
     async def authorize(self, ctx, spec, args, target, reviewed=None):
         effect = spec.effect
@@ -285,9 +300,7 @@ class Android:
                     await self.snapshot()
                     if any("password" in n.node.states for n in self.nodes.values()):
                         raise ValueError("Screenshot refused while a credential field is visible.")
-                    raw = base64.b64decode(await self.request("screenshot"), validate=True)
-                    if len(raw) > 3_000_000:
-                        raise ValueError("Phone screenshot too large.")
+                    raw = self.checked_screenshot(await self.request("screenshot"))
                     artifact = self.h.artifacts.put("screenshot", raw, "image/png", run_id=ctx.run_id)
                     return ToolResult(data={"artifact_id": artifact}, artifact_ids=[artifact])
                 if observe:
