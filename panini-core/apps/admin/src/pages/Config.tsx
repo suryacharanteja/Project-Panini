@@ -319,8 +319,45 @@ export function KeysPage() {
           deva="प्रतिरूप"
           description="Which model each part of PANINI uses. Leave a field empty to use the default."
         />
+        <LocalModelCard />
       </div>
     </Page>
+  );
+}
+
+function LocalModelCard() {
+  const [result, setResult] = useState<{ ok: boolean; detail: string } | null>(null);
+  const { busy, run } = useAction();
+  return (
+    <Card
+      title="Local model preview"
+      actions={
+        <Button
+          busy={busy === 'probe'}
+          onClick={() =>
+            run('probe', async () =>
+              setResult(await api(admin('/local-model/test'), { method: 'POST' })),
+            )
+          }
+        >
+          Test local tool calling
+        </Button>
+      }
+    >
+      <p className="text-sm text-muted">
+        Set the loopback server and model above, then test whether it returns a tool call. Local
+        fallback and private routing are in development; private egress and speech qualification are
+        still pending.
+      </p>
+      {result && (
+        <p
+          className={`mt-3 text-sm ${result.ok ? 'text-copper-light' : 'text-danger'}`}
+          role="status"
+        >
+          {result.detail}
+        </p>
+      )}
+    </Card>
   );
 }
 

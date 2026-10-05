@@ -18,6 +18,8 @@ def configured(name: str) -> bool:
 
 def jev_gates() -> bool:
     """Jev routing and completion checks (on by default whenever Jev is configured)."""
+    if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "private":
+        return False
     enabled = os.getenv("PANINI_JEV_GATES", "true").strip().lower() not in {"0", "false", "no", "off"}
     return enabled and configured("AI_GATEWAY_API_KEY")
 

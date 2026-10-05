@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 6 · P3 · L (2 weeks) |
 | Depends on | V2-06 (model router) |
 | Flag | `PANINI_LOCAL_MODE` = `off` (default) · `fallback` · `private` |
-| Status | Not started |
+| Status | In progress: loopback local model, transient fallback and Admin tool-call probe built; private egress, speech and quality gate pending |
 
 ## 1. Outcome
 
@@ -83,6 +83,14 @@ needs the cloud.
 - [ ] With the network disconnected, "open Notepad and type hello" works by push-to-talk in `fallback` mode.
 - [ ] `private` mode makes zero requests to cloud hosts (verified with a blocking proxy in tests).
 - [ ] The quality guard disables local tiers that underperform.
+
+The first development increment adds an OpenAI-compatible chat adapter restricted to loopback HTTP, tool-call
+translation, zero-cost usage records, and transient cloud-to-local fallback that stays local for the run. In
+private mode the model factory constructs only the local client and Jev calls are refused. Admin can save a
+loopback endpoint and model name, then send a synthetic tool-call probe; unit tests use an HTTP mock and assert
+no cloud client construction. This is not a private-mode release: browser, channels, connectors and other
+service egress have not passed a blocking-proxy test; on-device STT/TTS and the scorecard quality gate are
+pending. Keep this flag off outside development.
 
 ## 9. Rollout and rollback
 

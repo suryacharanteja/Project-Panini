@@ -212,6 +212,8 @@ def decide(
 
 
 def route(prompt: str, current_model: str, context_tokens: int = 0) -> RouteDecision:
+    if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "private":
+        return RouteDecision(current_model, "private-local", False)
     options = model_options()
     override = detect_override(prompt, options)
     if override:

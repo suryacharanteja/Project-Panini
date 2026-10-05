@@ -13,6 +13,10 @@ class ModelError(Exception):
     """The model could not respond; the message is safe to show the user."""
 
 
+class TransientModelError(ModelError):
+    """A connection, timeout or provider outage that permits local fallback."""
+
+
 @dataclass
 class ToolCall:
     call_id: str
@@ -112,11 +116,14 @@ class OpenAIModel:
             except openai.RateLimitError:
                 raise ModelError("OpenAI's rate limit or quota was reached. Try again later.") from None
             except openai.APITimeoutError:
-                raise ModelError("The model request timed out.") from None
+                raise TransientModelError("The model request timed out.") from None
             except openai.APIConnectionError:
-                raise ModelError("Could not reach OpenAI. Check the network connection.") from None
+                raise TransientModelError("Could not reach OpenAI. Check the network connection.") from None
             except openai.APIStatusError as exc:
-                raise ModelError(f"OpenAI error {exc.status_code}: {_detail(exc)}") from None
+                error = f"OpenAI error {exc.status_code}: {_detail(exc)}"
+                if exc.status_code >= 500:
+                    raise TransientModelError(error) from None
+                raise ModelError(error) from None
 
     async def _stream(self, request, on_text):
         stream = await self.client.responses.create(**request)
@@ -231,8 +238,18 @@ def create_model(settings):
     script = os.getenv("PANINI_CLI_SCRIPTED_MODEL")
     if script:
         return ScriptedModel.from_file(script)
-    return OpenAIModel(
+    mode = os.getenv("PANINI_LOCAL_MODE", "off").strip().lower()
+    if mode == "private":
+        from .local_model import LocalModel
+
+        return LocalModel(timeout=settings.request_timeout)
+    cloud = OpenAIModel(
         model_router.actual_model(settings.model),
         settings.reasoning_effort,
         settings.request_timeout,
     )
+    if mode == "fallback":
+        from .local_model import FallbackModel, LocalModel
+
+        return FallbackModel(cloud, lambda: LocalModel(timeout=settings.request_timeout))
+    return cloud

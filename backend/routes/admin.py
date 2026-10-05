@@ -271,6 +271,25 @@ async def test_key(which: str, request: Request):
     return {"ok": ok, "detail": detail}
 
 
+@router.post("/local-model/test")
+async def test_local_model():
+    """Probe only the configured loopback endpoint with a synthetic tool call."""
+    from panini_cli.agent.local_model import LocalModel
+    from panini_cli.agent.model import ModelError
+
+    try:
+        local = LocalModel(timeout=10.0)
+    except ModelError as exc:
+        return {"ok": False, "detail": str(exc)}
+    try:
+        result = await local.probe()
+        return {"ok": True, "detail": f"{result['model']} answered the tool-call test."}
+    except ModelError as exc:
+        return {"ok": False, "detail": str(exc)}
+    finally:
+        await local.close()
+
+
 @router.get("/audit")
 async def audit(request: Request):
     return {"entries": admin(request).audit_log()}

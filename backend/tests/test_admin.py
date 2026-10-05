@@ -157,6 +157,47 @@ def test_rejected_keys_are_never_saved(client, env, monkeypatch):
     assert "sk-new" not in json.dumps(entries)
 
 
+def test_local_model_settings_are_loopback_only_and_probe_is_authenticated(client, env, monkeypatch):
+    root = "/api/admin/v1/local-model/test"
+    assert client.post(root).status_code in {401, 403}
+    bad = client.patch(
+        "/api/admin/v1/settings",
+        json={"changes": {"PANINI_LOCAL_BASE_URL": "http://remote.example:11434/v1"}},
+        headers=HEADERS,
+    )
+    assert bad.status_code == 422 and "loopback" in bad.json()["detail"]
+    assert "PANINI_LOCAL_BASE_URL" not in envfile.read(env)
+    saved = client.patch(
+        "/api/admin/v1/settings",
+        json={
+            "changes": {
+                "PANINI_LOCAL_BASE_URL": "http://127.0.0.1:11434/v1",
+                "PANINI_LOCAL_MODEL": "small-local",
+            }
+        },
+        headers=HEADERS,
+    )
+    assert saved.status_code == 200
+
+    class FakeLocal:
+        def __init__(self, timeout):
+            assert timeout == 10.0
+
+        async def probe(self):
+            return {"model": "small-local", "tool_calls": True}
+
+        async def close(self):
+            return None
+
+    from panini_cli.agent import local_model
+
+    monkeypatch.setattr(local_model, "LocalModel", FakeLocal)
+    assert client.post(root, headers=HEADERS).json() == {
+        "ok": True,
+        "detail": "small-local answered the tool-call test.",
+    }
+
+
 def test_connectors_agents_skills_and_hooks_without_files(client, tmp_path, monkeypatch):
     import sys
     from pathlib import Path

@@ -153,6 +153,8 @@ _client = JevClient()
 
 
 def ask(state, questions, timeout=config.PROVIDER_TIMEOUT):
+    if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "private":
+        raise RuntimeError("Jev cloud checks are unavailable in private mode.")
     if not config.configured("AI_GATEWAY_API_KEY"):
         raise RuntimeError("AI_GATEWAY_API_KEY is not configured")
     return _client.ask(state, questions, timeout)

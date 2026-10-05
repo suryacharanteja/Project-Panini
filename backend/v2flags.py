@@ -88,7 +88,7 @@ FLAGS = {
             "V2-27",
             "off",
             ("off", "fallback", "private"),
-            "Local models: fallback when cloud fails, or private (nothing leaves the PC).",
+            "Local model routing (preview): private cloud egress controls are still being qualified.",
         ),
     ]
 }

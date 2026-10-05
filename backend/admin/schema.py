@@ -103,6 +103,20 @@ SETTINGS = [
         default="",
     ),
     Setting(
+        "PANINI_LOCAL_BASE_URL",
+        "models",
+        "Local model server",
+        help="Loopback OpenAI-compatible endpoint, for example http://127.0.0.1:11434/v1. Test tool calling before use.",
+        default="",
+    ),
+    Setting(
+        "PANINI_LOCAL_MODEL",
+        "models",
+        "Local model name",
+        help="Exact model name served by the local endpoint. Local mode remains a development preview.",
+        default="",
+    ),
+    Setting(
         "PANINI_PLANNER_MODEL",
         "models",
         "Planner model",
