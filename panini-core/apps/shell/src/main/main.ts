@@ -954,6 +954,8 @@ function ipc() {
         const spoken = text(input?.text, 500);
         return client.scoped('/tts/synthesize', { text: spoken }, undefined, 30000);
       }
+      case 'synthesize-handoff':
+        return client.scoped('/tts/handoff', {}, undefined, 30000);
       case 'feedback':
         return client.scoped('/feedback', {
           command_id: randomUUID(),

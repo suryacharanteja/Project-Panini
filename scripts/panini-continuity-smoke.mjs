@@ -148,6 +148,24 @@ try {
   checks.push(
     'built Admin routing and quiet-hours editor saves real settings at desktop/mobile widths',
   );
+  const handoffSpeech = await avatar.evaluate(() => window.panini.invoke('synthesize-handoff'));
+  if (
+    handoffSpeech.engine !== 'windows-sapi-local' ||
+    Buffer.from(handoffSpeech.audio_b64, 'base64').subarray(0, 4).toString() !== 'RIFF'
+  )
+    throw Error('Packaged handoff did not synthesize a Windows WAV');
+  await avatar.evaluate(() => {
+    window.paniniHandoffPlays = 0;
+    const original = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (...args) {
+      const result = original.apply(this, args);
+      if (this.src.startsWith('blob:'))
+        Promise.resolve(result).then(() => {
+          window.paniniHandoffPlays++;
+        });
+      return result;
+    };
+  });
   const queued = await admin.evaluate(async (thread_id) => {
     const response = await fetch('/api/harness/presence/handoff', {
       method: 'POST',
@@ -161,6 +179,10 @@ try {
   await avatar.getByLabel('Continued conversation', { exact: true }).waitFor({ timeout: 15000 });
   await avatar.getByText('Previous conversation', { exact: true }).click();
   await avatar.getByText('USER: Keep this original turn', { exact: true }).waitFor();
+  await avatar.waitForFunction(() => window.paniniHandoffPlays > 0, null, { timeout: 30000 });
+  checks.push(
+    'fixed Windows handoff cue synthesizes and renderer playback starts after the native handoff',
+  );
   const binding = JSON.parse(
     execFileSync(
       join(root, '.venv/Scripts/python.exe'),

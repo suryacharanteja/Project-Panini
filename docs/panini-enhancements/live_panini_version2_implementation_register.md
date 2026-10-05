@@ -285,7 +285,7 @@ V2-24 implements expiring native/phone presence, durable configurable routing an
 notification retraction, same-thread native handoff/Live view and a fixed owner-call review.
 Native Electron and encrypted Android-sized Chromium have source integration evidence.
 An opt-in, locally approved urgent responsibility escalation path now exists with a fixed owner brief,
-five-minute timer, caps and revocation; it has fixture-provider evidence only. Spoken/voice handoffs,
-physical Android/Wear OS,
+five-minute timer, caps and revocation; it has fixture-provider evidence only. Native PC handoff now
+plays a fixed local speech cue in the source Electron smoke. Voice-initiated handoffs, physical Android/Wear OS,
 live push/channel and owner SIP qualification remain open. V2-24 remains In progress. See
 [the continuity qualification record](qualification-continuity-2026-10-05.md).

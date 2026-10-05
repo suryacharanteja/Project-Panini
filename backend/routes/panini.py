@@ -223,6 +223,23 @@ async def local_speech(session_id: str, payload: LocalSpeech, request: Request):
         raise Fault("LOCAL_SPEECH_FAILED", str(exc)[:200], 502) from exc
 
 
+@router.post("/sessions/{session_id}/tts/handoff")
+async def handoff_speech(session_id: str, request: Request):
+    session(request, session_id, mutation=True)
+    from .. import v2flags
+
+    if not v2flags.enabled("PANINI_PRESENCE"):
+        raise Fault("HANDOFF_SPEECH_OFF", "Continuity is off.", 503)
+    if not local_tts.readiness()["ready"]:
+        raise Fault("LOCAL_SPEECH_UNAVAILABLE", "Windows local speech is unavailable.", 503)
+    try:
+        return await request.app.state.speech_work.run(
+            lambda: local_tts.synthesize("Continuing from your phone.")
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise Fault("LOCAL_SPEECH_FAILED", str(exc)[:200], 502) from exc
+
+
 @router.get("/sessions/{session_id}/commands/{command_id}")
 async def receipt(session_id: str, command_id: str, request: Request):
     c, p = principal(request, controller=True)

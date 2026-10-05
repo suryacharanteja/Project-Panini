@@ -9,6 +9,7 @@ const methods = [
   'speech-status',
   'transcribe',
   'synthesize-local',
+  'synthesize-handoff',
   'stop',
   'end',
   'media',

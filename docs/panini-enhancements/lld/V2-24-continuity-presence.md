@@ -148,7 +148,13 @@ rotated trunk revokes the grant. The call service rechecks the grant immediately
 dispatch and during an active call. The Admin panel exposes review and revoke controls. The tests use a
 fixture SIP provider; no owner number was dialed in this development increment.
 
-Remaining: spoken avatar/call prompts and voice handoff commands, actual Android/Wear OS
+The PC handoff now requests a fixed "Continuing from your phone" cue through the controller-lease-scoped
+Windows SAPI speech path. The renderer plays its bounded WAV after restoring the original thread and
+offers Stop while it is playing. It skips the cue when microphone audio is active; failure leaves the
+restored conversation available. The source Electron smoke observed a real WAV and resolved playback.
+Physical speaker output and voice-initiated handoff remain unqualified.
+
+Remaining: spoken call prompts and voice handoff commands, actual Android/Wear OS
 push/action/retraction within five seconds, live preferred channel and real owner SIP qualification.
 Urgent call behavior on a physical phone and live provider remains unqualified. The flag remains off
 by default. Red-team remains disabled and deferred. See

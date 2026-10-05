@@ -368,5 +368,6 @@ PC/phone handoff. A real Electron smoke restores the avatar's original agent thr
 Admin rules save through the real gateway/backend at desktop/mobile widths. A manual owner-call request
 remains digest-bound and owner-reviewed. A separate, locally approved standing grant now bounds urgent
 responsibility-failure calls to one per day and three total, after five minutes while away. Fixture
-provider tests pass; voice/spoken handoffs and physical Android/Wear OS/live push/SIP qualification remain pending. See
+provider tests pass. A fixed Windows speech cue now plays after native PC handoff in a source Electron
+smoke; voice-initiated handoff and physical Android/Wear OS/live push/SIP qualification remain pending. See
 [continuity evidence](qualification-continuity-2026-10-05.md). Full-program promotion remains open.

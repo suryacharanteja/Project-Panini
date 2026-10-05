@@ -203,6 +203,17 @@ function App() {
     }
     setLocalSpeaking('idle');
   };
+  const playSpeechAudio = async (result: { audio_b64: string }, request: number) => {
+    if (disposed.current || request !== localSpeechRequest.current) return;
+    const raw = atob(result.audio_b64);
+    const bytes = Uint8Array.from(raw, (character) => character.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+    const spoken = new Audio(url);
+    localSpeech.current = { audio: spoken, url };
+    spoken.onended = () => stopLocalSpeech();
+    await spoken.play();
+    if (request === localSpeechRequest.current) setLocalSpeaking('playing');
+  };
   const playLocalSpeech = async () => {
     if (localSpeaking !== 'idle') {
       stopLocalSpeech();
@@ -213,19 +224,32 @@ function App() {
     setLocalSpeaking('loading');
     try {
       const result = await api.invoke('synthesize-local', { text: message.slice(0, 500) });
-      if (disposed.current || request !== localSpeechRequest.current) return;
-      const raw = atob(result.audio_b64);
-      const bytes = Uint8Array.from(raw, (character) => character.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
-      const spoken = new Audio(url);
-      localSpeech.current = { audio: spoken, url };
-      spoken.onended = () => stopLocalSpeech();
-      await spoken.play();
-      if (request === localSpeechRequest.current) setLocalSpeaking('playing');
+      await playSpeechAudio(result, request);
     } catch (cause: any) {
       if (request === localSpeechRequest.current) {
         stopLocalSpeech();
         setError(cause.message || 'Local speech playback failed.');
+      }
+    }
+  };
+  const speakHandoff = async () => {
+    if (
+      disposed.current ||
+      local.current ||
+      peer.current ||
+      recordingStream.current ||
+      recorder.current?.state === 'recording'
+    )
+      return;
+    stopLocalSpeech();
+    const request = ++localSpeechRequest.current;
+    setLocalSpeaking('loading');
+    try {
+      await playSpeechAudio(await api.invoke('synthesize-handoff'), request);
+    } catch {
+      if (request === localSpeechRequest.current) {
+        stopLocalSpeech();
+        setError('The conversation is ready, but the handoff voice could not play.');
       }
     }
   };
@@ -481,6 +505,7 @@ function App() {
       } else if (event.type === 'continuity.handoff') {
         setContinuation(data);
         setMessage('Continuing from your phone');
+        void speakHandoff();
       } else if (event.type === 'continuity.notification') {
         setContinuityCards((cards) => [
           ...cards.filter((card) => card.id !== data.id).slice(-4),
@@ -1171,15 +1196,17 @@ function App() {
                       : '◉ Record locally'}
                 </button>
               )}
-              {['private', 'fallback'].includes(speechMode) && terminal && message.trim() && (
-                <button disabled={!ready} onClick={() => void playLocalSpeech()}>
-                  {localSpeaking === 'loading'
-                    ? '■ Stop preparing voice'
-                    : localSpeaking === 'playing'
-                      ? '■ Stop local voice'
-                      : '▶ Read reply locally'}
-                </button>
-              )}
+              {(['private', 'fallback'].includes(speechMode) || localSpeaking !== 'idle') &&
+                terminal &&
+                message.trim() && (
+                  <button disabled={!ready} onClick={() => void playLocalSpeech()}>
+                    {localSpeaking === 'loading'
+                      ? '■ Stop preparing voice'
+                      : localSpeaking === 'playing'
+                        ? '■ Stop local voice'
+                        : '▶ Read reply locally'}
+                  </button>
+                )}
               {mic && <button onClick={() => mute(!muted)}>{muted ? 'Unmute' : 'Mute'}</button>}
               <button className="stop" disabled={!ready} onClick={() => void call('stop')}>
                 ■ Stop

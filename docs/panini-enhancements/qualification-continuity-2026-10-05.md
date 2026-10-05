@@ -59,7 +59,10 @@ responsibility failures. The fixed brief, five-minute timer, away-state check, t
 one-per-day/three-total cap, resolution cancellation and pre-dispatch policy/calling-hour checks pass
 fixture-provider tests. The owner API rejects unauthenticated opt-in and revocation. The grant does not
 authorize arbitrary approvals, notices or conversation disclosure. No live SIP call was placed.
-Spoken avatar/call prompts and voice handoff commands are not implemented. Live Android/Wear OS
+The native handoff now requests a fixed local Windows speech cue through its authenticated controller
+lease. The source Electron smoke produced WAV bytes and observed renderer playback resolve after the
+original thread was restored. Audible physical speaker output remains unqualified. Spoken call prompts
+and voice handoff commands are not implemented. Live Android/Wear OS
 push/action/retraction within five seconds, preferred-channel qualification and real SIP owner calls
 remain pending. V2-24 is In progress; full LLD completion, production promotion and Dot equivalence are
 not certified. Red-team remains disabled and deferred, and PANINI_PRESENCE defaults off.
