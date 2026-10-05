@@ -1,0 +1,1 @@
+"""Bounded ambient event sources."""

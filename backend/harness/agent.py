@@ -65,6 +65,8 @@ Work toward the goal step by step with your tools. Principles:
 - When a skill in the catalog fits, load_skill before acting and follow it.
 - For a future or recurring goal, use schedule_task instead of waiting. To be told when
   something changes (a price, a page, a reply), use watch with a clear condition.
+- For an event from a chosen folder, email, calendar, webhook, PC state or schedule, propose
+  a trigger or responsibility. These remain inactive until the person reviews the exact plan.
 - For continuing work across several tasks, create a project, then add specific background
   tasks to it. Project tasks can use prior verified results; background work is read-only.
 - Connector tools (use_connector) reach the person's other apps and services; prefer
@@ -208,6 +210,18 @@ TOOLS = [
         "Check something on a schedule and notify the person only when a condition holds.",
         {"goal": STRING, "condition": STRING, "every_minutes": {"type": "integer"}},
     ),
+    _tool(
+        "create_trigger",
+        "Propose an event rule for owner review; never activate it yourself.",
+        {"rule_json": {"type": "string", "description": "Complete trigger rule as JSON."}},
+    ),
+    _tool("list_triggers", "List the person's event rules and responsibilities.", {}),
+    _tool("pause_trigger", "Pause one active event rule immediately.", {"id": STRING}),
+    _tool(
+        "propose_responsibility",
+        "Propose a persistent responsibility for owner review.",
+        {"spec_json": {"type": "string", "description": "Complete responsibility charter as JSON."}},
+    ),
     _tool("list_projects", "List continuing projects and their IDs.", {}),
     _tool(
         "create_project",
@@ -289,7 +303,14 @@ TOOLS = [
 # capabilities, ask_user, finish) are always offered.
 TOOL_GROUPS = {
     "memory": ("recall", "remember", "forget"),
-    "schedule": ("schedule_task", "watch"),
+    "schedule": (
+        "schedule_task",
+        "watch",
+        "create_trigger",
+        "list_triggers",
+        "pause_trigger",
+        "propose_responsibility",
+    ),
     "projects": (
         "list_projects",
         "create_project",
@@ -509,6 +530,11 @@ class Agent:
 
     def _hidden(self, tool_name):
         """Tools of an optional group Jev did not select for this task."""
+        if tool_name in {"create_trigger", "list_triggers", "pause_trigger", "propose_responsibility"}:
+            from .. import v2flags
+
+            if not (v2flags.enabled("PANINI_TRIGGERS") and v2flags.enabled("PANINI_V2_ONE_BRAIN")):
+                return True
         if self.selection is None:
             return False
         if tool_name == "load_skill":
@@ -673,13 +699,29 @@ class Agent:
             if tool["name"] in ("recall", "remember", "forget") and not self.private:
                 continue
             if (
-                tool["name"] in ("schedule_task", "watch", "ask_agent", *TOOL_GROUPS["projects"])
+                tool["name"]
+                in (
+                    "schedule_task",
+                    "watch",
+                    "ask_agent",
+                    "create_trigger",
+                    "list_triggers",
+                    "pause_trigger",
+                    "propose_responsibility",
+                    *TOOL_GROUPS["projects"],
+                )
                 and not self.private
             ):
                 continue
-            if tool["name"] in ("schedule_task", "watch", *TOOL_GROUPS["projects"]) and (
-                self.h.tasks is None or self.depth or self.background
-            ):
+            if tool["name"] in (
+                "schedule_task",
+                "watch",
+                "create_trigger",
+                "list_triggers",
+                "pause_trigger",
+                "propose_responsibility",
+                *TOOL_GROUPS["projects"],
+            ) and (self.h.tasks is None or self.depth or self.background):
                 continue
             if tool["name"] == "run_subagents" and (self.depth or not self.capabilities):
                 continue
@@ -1463,6 +1505,33 @@ class Agent:
             self.evidence.append(f"task:{task['id']}")
             self.emit("scheduled", f"Watching: {task['title']}")
             return {"ok": True, "task_id": task["id"]}, None
+        if name == "create_trigger":
+            proposed = self.h.triggers.propose(json.loads(a["rule_json"]))
+            self.evidence.append(f"trigger-proposal:{proposed['id']}")
+            return {
+                "ok": True,
+                "id": proposed["id"],
+                "review_id": proposed["review_id"],
+                "status": "proposed",
+            }, None
+        if name == "list_triggers":
+            return {
+                "rules": self.h.triggers.list(),
+                "responsibilities": self.h.triggers.responsibilities.list(),
+            }, None
+        if name == "pause_trigger":
+            paused = self.h.triggers.pause(a["id"])
+            self.evidence.append(f"trigger-paused:{paused['id']}")
+            return {"ok": True, "id": paused["id"], "status": paused["status"]}, None
+        if name == "propose_responsibility":
+            proposed = self.h.triggers.responsibilities.propose(json.loads(a["spec_json"]))
+            self.evidence.append(f"responsibility-proposal:{proposed['id']}")
+            return {
+                "ok": True,
+                "id": proposed["id"],
+                "review_id": proposed["review_id"],
+                "status": "proposed",
+            }, None
         if name == "list_projects":
             return {
                 "projects": [

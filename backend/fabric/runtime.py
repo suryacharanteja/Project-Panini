@@ -201,6 +201,25 @@ class Fabric:
         self.ingress.hooks["phone"] = {**hooks["phone"], "secret": secret}
         return {"path": f"/hooks/phone/{path_secret}"}
 
+    def configure_trigger_hook(self, name):
+        from ..triggers.rules import SLUG
+
+        if not isinstance(name, str) or not SLUG.fullmatch(name):
+            raise ValueError("Choose a short webhook name with letters, numbers or hyphens.")
+        hook_id = "generic:" + name
+        hooks = self.settings().get("hooks", {})
+        if hook_id in hooks:
+            raise ValueError("This webhook already exists; its signing secret cannot be shown again.")
+        secret, path_secret = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
+        hooks[hook_id] = {"kind": "generic", "path_secret": path_secret, "secret_ref": "trigger:" + name}
+        self.secrets.set("trigger:" + name, secret)
+        self.settings_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.settings_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps({**self.settings(), "hooks": hooks}), encoding="utf-8")
+        temporary.replace(self.settings_path)
+        self.ingress.hooks[hook_id] = {**hooks[hook_id], "secret": secret}
+        return {"path": f"/hooks/{hook_id}/{path_secret}", "signing_secret": secret}
+
     def watch_interrupts(self, interrupts) -> None:
         """Push each new approval or question to paired phones (title and level only; details over the fabric)."""
 
@@ -249,5 +268,9 @@ def runtime(app) -> "Fabric":
         fabric.watch_interrupts(h.interrupts)
         if hasattr(h, "continuity"):
             h.continuity.fabric = fabric
+        if hasattr(h, "triggers"):
+            from ..triggers.sources.webhooks import handler
+
+            fabric.ingress.on("generic", handler(h.triggers))
         app.state.fabric_runtime = fabric
     return fabric

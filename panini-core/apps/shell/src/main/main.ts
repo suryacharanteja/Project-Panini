@@ -1084,23 +1084,39 @@ if (locked)
     tray = new Tray(icon);
     trayMenu();
     setInterval(() => void pollHarness(), 5000);
+    const signalTrigger = (kind: string) =>
+      void client.call('/harness/triggers/os', { kind }).catch(() => {});
+    let wasOnline = net.isOnline();
+    setInterval(() => {
+      const online = net.isOnline();
+      if (online !== wasOnline) {
+        wasOnline = online;
+        signalTrigger(online ? 'online' : 'offline');
+      }
+    }, 2000);
     pcLocked = powerMonitor.getSystemIdleState(120) === 'locked';
     powerMonitor.on('lock-screen', () => {
       pcLocked = true;
       void signalPresence();
+      signalTrigger('locked');
     });
     powerMonitor.on('unlock-screen', () => {
       pcLocked = false;
       void signalPresence();
+      signalTrigger('unlocked');
     });
     powerMonitor.on('suspend', () => {
       pcSuspended = true;
       void signalPresence();
+      signalTrigger('suspended');
     });
     powerMonitor.on('resume', () => {
       pcSuspended = false;
       void signalPresence();
+      signalTrigger('resumed');
     });
+    powerMonitor.on('on-ac', () => signalTrigger('on_ac'));
+    powerMonitor.on('on-battery', () => signalTrigger('on_battery'));
     win.on('show', () => void signalPresence());
     win.on('hide', () => void signalPresence());
     void signalPresence();

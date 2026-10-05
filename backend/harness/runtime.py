@@ -121,6 +121,9 @@ class Harness:
         from ..fabric.routing import Continuity
 
         self.continuity = Continuity(self)
+        from ..triggers import TriggerBus
+
+        self.triggers = TriggerBus(self)
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
         agent = Agent(
@@ -204,7 +207,7 @@ class Harness:
     def _on_interrupt(self, event, view):
         """Background interrupts reach the inbox; a decision resumes or ends the parked task (V2-05)."""
         task_id = view.get("task_id")
-        if not task_id:
+        if not task_id or task_id.startswith(("trigger-proposal:", "responsibility-proposal:")):
             return
         if event == "interrupt.opened":
             self.notices.add(
@@ -335,11 +338,13 @@ class Harness:
         self._channels_start = asyncio.get_running_loop().create_task(self.channels.start())
         self.outbound.start()
         self.continuity.start()
+        self.triggers.start()
 
     async def close(self):
         from .. import interrupts, ledger, policy
 
         await self.continuity.close()
+        await self.triggers.close()
         # Uninstall the process-wide v2 services this harness installed.
         if interrupts._service is self.interrupts:
             interrupts._service = None
@@ -436,10 +441,37 @@ class Harness:
             surface=channel_account["channel"]
             if channel_account
             else ("phone_app" if task.get("origin") in {"phone", "phone-share"} else "background"),
+            persona_id=task.get("persona_id"),
         )
         agent.run_id = task["id"]
         agent.confirm_decision = agent.confirm
         agent.thread_id = channel_job["thread_id"] if channel_job else task["id"]
+        if task.get("kind") in {"trigger", "responsibility"}:
+            from dataclasses import replace
+
+            from ..brain.budget import Budget
+
+            agent.budget_override = replace(
+                Budget.for_mode(True), max_usd=min(float(task["budget_usd"]), Budget.for_mode(True).max_usd)
+            )
+
+            def check_trigger():
+                if not self.triggers.enabled or not tasks.owns(task["id"], task["lease_id"]):
+                    raise Fault("TRIGGER_STOPPED", "This automation was paused or disabled.", 409)
+                if task["kind"] == "trigger":
+                    rule_id = task["origin"].removeprefix("trigger:")
+                    rule = self.triggers.get(rule_id)
+                    if rule["status"] != "active":
+                        raise Fault("TRIGGER_STOPPED", "This trigger was paused.", 409)
+                    owner = self.triggers.responsibilities.owner_of(rule_id)
+                    if owner and self.triggers.responsibilities.get(owner)["status"] != "active":
+                        raise Fault("TRIGGER_STOPPED", "Its responsibility was paused.", 409)
+                else:
+                    responsibility_id = task["origin"].removeprefix("responsibility:")
+                    if self.triggers.responsibilities.get(responsibility_id)["status"] != "active":
+                        raise Fault("TRIGGER_STOPPED", "This responsibility was paused.", 409)
+
+            agent.before_model = check_trigger
         if channel_job:
             agent.registry = self.registry
             agent.durable = True

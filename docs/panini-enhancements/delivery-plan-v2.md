@@ -300,7 +300,7 @@ Dependencies: V2-14 (fabric), V2-15 (phone app), V2-16 (phone line), V2-17 (chan
 
 ### V2-25: Ambient triggers and responsibilities
 
-Implementation register: **Not started**. [Source LLD](lld/V2-25-triggers-responsibilities.md).
+Implementation register: **In progress**. [Source LLD](lld/V2-25-triggers-responsibilities.md).
 
 Dependencies: V2-06 (run engine), V2-14 (webhook ingress), V2-18 (personas); V2-19 for digests.
 

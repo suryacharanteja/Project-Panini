@@ -4,6 +4,7 @@ import { InterruptCard } from '../../../shared-ui/cards';
 import '../../../shared-ui/tokens.css';
 import { ago, api, harness, useResource, when } from '../api';
 import { SaveToSpace } from './spaces/SaveToSpace';
+import { TriggerPanel } from './TriggerPanel';
 import {
   Badge,
   Button,
@@ -622,6 +623,7 @@ export function AutomationsPage() {
           )}
         </Card>
       </div>
+      <TriggerPanel />
     </Page>
   );
 }

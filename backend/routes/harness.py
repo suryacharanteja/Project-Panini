@@ -17,6 +17,7 @@ from ..harness.memory import KINDS, MemoryError
 from .outbound import add_outbound
 from .panini import principal
 from .presence import add_presence
+from .triggers import add_triggers
 
 router = APIRouter()
 
@@ -965,6 +966,9 @@ def add_interrupts(r, guard, surface):
 
 add_interrupts(console_router, lambda request: None, "console")
 add_interrupts(shell_router, lambda request: principal(request), "avatar")
+
+add_triggers(console_router, lambda request: None)
+add_triggers(shell_router, lambda request: principal(request, controller=True), shell=True)
 
 
 class PhoneCaller(Strict):

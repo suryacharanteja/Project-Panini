@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 5 · P2 · L (1.5 weeks) |
 | Depends on | V2-06 (run engine), V2-14 (webhook ingress), V2-18 (personas); V2-19 for digests |
 | Flag | `PANINI_TRIGGERS` (default `false`) |
-| Status | Not started |
+| Status | In progress: development implementation and fixture tests; live source qualification pending |
 
 ## 1. Outcome
 
@@ -45,13 +45,12 @@ model-free suggestions. No event sources.
 | --- | --- |
 | `backend/triggers/bus.py` | Event bus: normalize, dedupe, match rules, enqueue |
 | `backend/triggers/sources/files.py` | `watchfiles` (already in the lock) on chosen folders, debounced 2 s |
-| `backend/triggers/sources/email.py` | IMAP IDLE (V2-17 account) or connector polling |
-| `backend/triggers/sources/calendar.py` | Connector polling (Google/Outlook MCP) every 5 min for upcoming events |
+| `backend/triggers/sources/mcp_events.py` | Owner-bound read-only MCP polling: email every minute, calendar every five minutes |
 | `backend/triggers/sources/webhooks.py` | Generic ingress hooks (V2-14 `generic:<name>`) |
 | `backend/triggers/sources/os_events.py` | Shell-forwarded `powerMonitor` events (lock, unlock, resume, AC/battery), network change |
 | `backend/triggers/rules.py` | Rule model, matching, conditions, cooldowns |
 | `backend/triggers/responsibilities.py` | Lifecycle, health, digests |
-| `backend/harness/migrations/0017_triggers.sql` | `triggers`, `trigger_events`, `responsibilities` |
+| `backend/harness/migrations/0033_triggers.sql` | `triggers`, `trigger_events`, `responsibilities` (0017 was used earlier) |
 | Admin `src/pages/Automations.tsx` | Rules and responsibilities (extends the existing automations area) |
 
 ### 5.2 Event model
@@ -156,3 +155,14 @@ Flag on after step 2 with the files source; others follow. Rollback: flag off st
 
 - Let responsibilities spend budget proactively (for example re-check a flight hourly near departure)?
   Recommendation: yes within the responsibility's own daily budget, shown in its health panel.
+
+## Development evidence and remaining qualification
+
+The trigger bus, file watcher, signed generic webhook, shell-forwarded OS events, schedule journal,
+read-only MCP polling, reviewed rules, background worker integration, responsibility reports and Admin
+controls are implemented behind `PANINI_TRIGGERS=false` by default. `backend/tests/triggers/test_flow.py`
+exercises real local folder watching, signed webhook rejection and dedupe, worker execution, quotas,
+source grants and a scripted responsibility report. These fixture tests do not qualify a live email or
+calendar provider, actual sleep/wake delivery on a physical PC, automatic correlation of every PANINI
+file write, or a seven-day report interval. The acceptance boxes above remain open until those checks
+are run. Red-team qualification is disabled and deferred by owner direction.

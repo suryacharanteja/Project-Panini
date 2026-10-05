@@ -1,0 +1,41 @@
+{
+  "schema": "panini.capability/1",
+  "id": "triggers",
+  "title": "Event rules and responsibilities",
+  "version": "1.0.0",
+  "summary": "Owner-reviewed ambient rules and continuing responsibilities.",
+  "entry": "backend.registry.hands:AgentMethodHand",
+  "tools": [
+    {
+      "name": "create_trigger", "hand": "triggers", "title": "Propose trigger",
+      "description": "Propose an event rule for owner review; never activate it yourself.",
+      "input_schema": {"type": "object", "additionalProperties": false,
+        "properties": {"rule_json": {"type": "string", "description": "Complete trigger rule as JSON."}}, "required": ["rule_json"]},
+      "order": 131, "group": "schedule", "effect": "local_write",
+      "requires": ["private", "tasks", "top", "foreground"], "evidence": ["trigger-proposal"]
+    },
+    {
+      "name": "list_triggers", "hand": "triggers", "title": "List triggers",
+      "description": "List the person's event rules and responsibilities.",
+      "input_schema": {"type": "object", "additionalProperties": false, "properties": {}, "required": []},
+      "order": 132, "group": "schedule", "effect": "observe", "idempotent": true,
+      "requires": ["private", "tasks", "top", "foreground"]
+    },
+    {
+      "name": "pause_trigger", "hand": "triggers", "title": "Pause trigger",
+      "description": "Pause one active event rule immediately.",
+      "input_schema": {"type": "object", "additionalProperties": false,
+        "properties": {"id": {"type": "string"}}, "required": ["id"]},
+      "order": 133, "group": "schedule", "effect": "local_write",
+      "requires": ["private", "tasks", "top", "foreground"], "evidence": ["trigger-paused"]
+    },
+    {
+      "name": "propose_responsibility", "hand": "triggers", "title": "Propose responsibility",
+      "description": "Propose a persistent responsibility for owner review.",
+      "input_schema": {"type": "object", "additionalProperties": false,
+        "properties": {"spec_json": {"type": "string", "description": "Complete responsibility charter as JSON."}}, "required": ["spec_json"]},
+      "order": 134, "group": "schedule", "effect": "local_write",
+      "requires": ["private", "tasks", "top", "foreground"], "evidence": ["responsibility-proposal"]
+    }
+  ]
+}
