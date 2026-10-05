@@ -394,6 +394,7 @@ class DesktopFine:
                                 return ToolResult(
                                     data={
                                         "application_id": app["application_id"],
+                                        "application": app["application"],
                                         "window": candidates[0]["choice_id"],
                                         "title": verified["title"],
                                         "verified": True,

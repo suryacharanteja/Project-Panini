@@ -101,7 +101,7 @@ class Recorder:
         if self.current and self.current["id"] == identifier:
             await self.stop(discard=True)
 
-    async def start_desktop(self, ctx, window):
+    async def start_desktop(self, ctx, window, *, application_id=""):
         if self.starting:
             raise ValueError("A recording is already starting.")
         self.starting = asyncio.current_task()
@@ -115,7 +115,27 @@ class Recorder:
                     raise ValueError("Only the owner can start desktop recording.")
                 self.h.desktop_fine.ready(ctx)
                 adapter = self.h.desktop_fine.adapter
-                selected = await adapter.select(window)
+                if application_id:
+                    if window:
+                        raise ValueError("Select a window or an application, not both.")
+                    launched = await self.h.registry.call(
+                        ctx, "desktop_open_application", {"application_id": application_id}
+                    )
+                    if launched.outcome != "ok":
+                        raise ValueError(launched.content or "The application launch was not verified.")
+                    window = launched.data["window"]
+                if application_id:
+                    for attempt in range(40):
+                        self.h.desktop_fine.ready(ctx)
+                        try:
+                            selected = await adapter.select(window)
+                            break
+                        except (Fault, OSError):
+                            if attempt == 39:
+                                raise
+                            await asyncio.sleep(0.25)
+                else:
+                    selected = await adapter.select(window)
                 if not adapter.permits(selected["application"]):
                     raise ValueError("This application is not allowed.")
                 identifier = uuid4().hex
@@ -132,6 +152,7 @@ class Recorder:
                     "session": self.starting_session,
                     "native_id": result["recording_id"],
                     "application": selected["application"],
+                    "application_id": application_id,
                     "before": result["before"],
                     "started": time.time(),
                 }
@@ -173,6 +194,19 @@ class Recorder:
         if result["state"] != "stopped":
             return "interrupted", {}
         data = desktop_events.normalize(result["events"], current["application"])
+        if current["application_id"]:
+            if len(data["steps"]) >= 100:
+                raise ValueError("The recording has no room for its application launch step.")
+            for index, step in enumerate(data["steps"], start=2):
+                step["id"] = f"s{index}"
+            data["steps"].insert(
+                0,
+                {
+                    "id": "s1",
+                    "tool": "desktop_open_application",
+                    "args": {"application_id": current["application_id"]},
+                },
+            )
         data["recording_artifacts"] = {}
         for key, value in (("start", current["before"]), ("end", result["after"])):
             text = desktop_events.snapshot(value)

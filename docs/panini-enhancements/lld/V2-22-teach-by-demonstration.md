@@ -178,8 +178,11 @@ are now permitted when the current DOM and snapshot frame counts agree, the revi
 exactly one DOM iframe, and its label is unique. The binding is rechecked before effects. The [Windows teaching checkpoint](../qualification-teach-desktop-2026-10-05.md)
 adds selected-window recording, normalization, private-field suppression, genuine WPF replay and installed
 Notepad record/type/save replay with a different Unicode input and exact disk verification. Opening an app
-as a recorded step, Save As dialogs, per-step crops, gestures and the remaining requirements are not
-qualified yet. A real managed-browser replay also passes with a reviewed iframe served from a second
+as a recorded step now has a catalog-only, owner-reviewed open-and-record path. The launch is stored as
+the first replay step; replay opens the app once and binds its newly verified window before acting.
+This path has fixture integration and built-Admin browser coverage, but has not yet passed a live
+native Teach recording/replay qualification. Save As dialogs, per-step crops, gestures and the remaining
+requirements are not qualified yet. A real managed-browser replay also passes with a reviewed iframe served from a second
 loopback origin; arbitrary external origins and nested frames remain unqualified. The LLD remains in progress.
 
 ## 9. Rollout and rollback

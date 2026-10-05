@@ -20,6 +20,7 @@ class Start(Strict):
     kind: str = Field(default="browser", pattern="^(browser|desktop)$")
     browser: str = Field(default="managed", pattern="^(managed|chrome)$")
     window: str = Field(default="", max_length=200)
+    application_id: str = Field(default="", pattern=r"^$|^[a-z][a-z0-9-]{1,39}$", max_length=40)
 
 
 class Proposal(Strict):
@@ -43,14 +44,14 @@ def service(request):
     return h.teach
 
 
-def context(teach):
+def context(teach, *, recording=False):
     async def confirm(title, detail, policy_decision=None):
         review = teach.h.interrupts.open(
             InterruptSpec(
                 "approval",
                 "teach_effect",
                 title,
-                "Approve this replay step?",
+                "Approve this recording setup action?" if recording else "Approve this replay step?",
                 preview={"detail": detail},
                 action={"title": title, "detail": detail},
                 ttl_s=120,
@@ -99,9 +100,11 @@ async def start(payload: Start, request: Request):
     try:
         teach.require()
         if payload.kind == "desktop":
-            if not payload.window:
-                raise ValueError("Select a Windows application before recording.")
-            return await teach.recorder.start_desktop(context(teach), payload.window)
+            if bool(payload.window) == bool(payload.application_id):
+                raise ValueError("Select one Windows window or one installed application to open.")
+            return await teach.recorder.start_desktop(
+                context(teach, recording=True), payload.window, application_id=payload.application_id
+            )
         return await teach.recorder.start(context(teach), payload.browser)
     except (ValueError, Fault) as exc:
         raise HTTPException(422, str(exc)) from None
@@ -114,6 +117,20 @@ async def windows(request: Request):
     ctx = context(teach)
     try:
         result = await teach.h.registry.call(ctx, "desktop_windows", {})
+        if result.outcome != "ok":
+            raise HTTPException(422, result.content)
+        return result.data
+    finally:
+        teach.h.desktop_fine.sessions.pop(ctx.run_id, None)
+
+
+@router.get("/applications")
+async def applications(request: Request):
+    teach = service(request)
+    teach.require()
+    ctx = context(teach)
+    try:
+        result = await teach.h.registry.call(ctx, "desktop_applications", {})
         if result.outcome != "ok":
             raise HTTPException(422, result.content)
         return result.data

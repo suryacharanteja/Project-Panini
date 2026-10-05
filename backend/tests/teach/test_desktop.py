@@ -202,6 +202,61 @@ def test_desktop_schema_prevents_selector_and_vocabulary_bypass(change):
         Replay.model_validate(data)
 
 
+@pytest.mark.parametrize("change", ["later", "duplicate", "target", "extra_arg", "invalid_id"])
+def test_desktop_launch_must_be_one_reviewed_first_step(change):
+    data = document()
+    launch = {"id": "s3", "tool": "desktop_open_application", "args": {"application_id": "fixture-app"}}
+    data["steps"].insert(0, launch)
+    if change == "later":
+        data["steps"].reverse()
+    elif change == "duplicate":
+        data["steps"].append({**launch, "id": "s4"})
+    elif change == "target":
+        launch["target"] = {"role": "button", "name": "Launch"}
+    elif change == "extra_arg":
+        launch["args"]["command"] = "arbitrary.exe"
+    else:
+        launch["args"]["application_id"] = "../arbitrary"
+    with pytest.raises(ValueError):
+        Replay.model_validate(data)
+
+
+@pytest.mark.anyio
+async def test_open_and_record_prepends_reviewed_launch_once(world):
+    h = world
+    reviews = []
+
+    async def approve(title, detail, decision):
+        reviews.append((title, detail, decision.effect))
+        return True
+
+    h.ctx.confirm_decision = approve
+    await h.teach.recorder.start_desktop(h.ctx, "", application_id="fixture-app")
+    assert len(reviews) == 1
+    assert [p["op"] for p in h.pipe.calls].count("launch") == 1
+    result = await h.teach.recorder.stop()
+    replay = Replay.model_validate(result["replay"])
+    assert [s.tool for s in replay.steps] == ["desktop_open_application", "desktop_type"]
+    assert replay.steps[0].args == {"application_id": "fixture-app"}
+    assert [s.id for s in replay.steps] == ["s1", "s2"]
+    assert not h.desktop_fine.sessions
+
+
+@pytest.mark.anyio
+async def test_denied_open_does_not_start_recording(world):
+    h = world
+
+    async def decline(*_):
+        return False
+
+    h.ctx.confirm_decision = decline
+    with pytest.raises(ValueError):
+        await h.teach.recorder.start_desktop(h.ctx, "", application_id="fixture-app")
+    assert not any(p["op"] in {"launch", "record_start"} for p in h.pipe.calls)
+    assert h.teach.recorder.status()["state"] == "idle"
+    assert not h.desktop_fine.sessions
+
+
 @pytest.mark.anyio
 async def test_record_finish_saves_sanitized_evidence_and_releases_context(world):
     h = world
@@ -303,6 +358,28 @@ async def test_desktop_replay_uses_new_inputs_fresh_refs_and_separate_assertions
     receipts = h.store.all("SELECT tool,outcome FROM receipts")
     assert {r["tool"] for r in receipts} >= {"desktop_type", "desktop_verify_value", "desktop_snapshot"}
     assert all(r["outcome"] == "ok" for r in receipts)
+
+
+@pytest.mark.anyio
+async def test_replay_launches_once_then_binds_new_window(world):
+    h = world
+    data = document()
+    data["steps"].insert(
+        0, {"id": "s3", "tool": "desktop_open_application", "args": {"application_id": "fixture-app"}}
+    )
+    seed(h, data)
+
+    async def approve(*_):
+        return True
+
+    h.ctx.confirm_decision = approve
+    result = await h.teach.replayer.run(h.ctx, "desktop-demo", {"draft": "launched"})
+    assert result.data["state"] == "passed" and h.pipe.value == "launched"
+    assert [p["op"] for p in h.pipe.calls].count("launch") == 1
+    assert (
+        h.store.one("SELECT outcome FROM receipts WHERE tool='desktop_open_application'")["outcome"] == "ok"
+    )
+    assert not h.desktop_fine.sessions and not h.model_requests
 
 
 @pytest.mark.anyio

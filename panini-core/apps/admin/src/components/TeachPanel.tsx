@@ -8,6 +8,9 @@ export function TeachPanel() {
   const [browser, setBrowser] = useState('managed');
   const [windows, setWindows] = useState<any[]>([]);
   const [window, setWindow] = useState('');
+  const [applications, setApplications] = useState<any[]>([]);
+  const [applicationId, setApplicationId] = useState('');
+  const [desktopRecordingMode, setDesktopRecordingMode] = useState<'window' | 'open'>('window');
   const desktop = browser === 'desktop';
   const [draft, setDraft] = useState<any>(null);
   const [name, setName] = useState('');
@@ -23,6 +26,14 @@ export function TeachPanel() {
       const choices = (await api(harness('/teach/windows'))).windows;
       setWindows(choices);
       setWindow((current) => (choices.some((w: any) => w.choice_id === current) ? current : ''));
+    });
+  const refreshApplications = () =>
+    run('applications', async () => {
+      const choices = (await api(harness('/teach/applications'))).applications;
+      setApplications(choices);
+      setApplicationId((current) =>
+        choices.some((app: any) => app.application_id === current) ? current : '',
+      );
     });
   const windowPicker = (application = '') => (
     <div className="flex flex-wrap items-center gap-3">
@@ -54,7 +65,11 @@ export function TeachPanel() {
   const start = () =>
     run('record', async () => {
       await api(harness('/teach/record/start'), {
-        body: desktop ? { kind: 'desktop', window } : { kind: 'browser', browser },
+        body: desktop
+          ? desktopRecordingMode === 'open'
+            ? { kind: 'desktop', application_id: applicationId }
+            : { kind: 'desktop', window }
+          : { kind: 'browser', browser },
       });
       setDraft(null);
       await state.reload();
@@ -118,7 +133,10 @@ export function TeachPanel() {
         <Button
           tone="primary"
           disabled={
-            !state.data?.enabled || recording || state.data?.replaying || (desktop && !window)
+            !state.data?.enabled ||
+            recording ||
+            state.data?.replaying ||
+            (desktop && (desktopRecordingMode === 'open' ? !applicationId : !window))
           }
           busy={busy === 'record'}
           onClick={() => void start()}
@@ -141,7 +159,47 @@ export function TeachPanel() {
           </span>
         )}
       </div>
-      {desktop && <div className="mt-3">{windowPicker()}</div>}
+      {desktop && (
+        <div className="mt-3 grid gap-3">
+          <select
+            aria-label="Windows recording mode"
+            className={inputClass + ' max-w-96'}
+            value={desktopRecordingMode}
+            disabled={recording || state.data?.replaying}
+            onChange={(e) => setDesktopRecordingMode(e.target.value as 'window' | 'open')}
+          >
+            <option value="window">Record in an open window</option>
+            <option value="open">Open an installed app, then record</option>
+          </select>
+          {desktopRecordingMode === 'window' ? (
+            windowPicker()
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                aria-label="Application to open for recording"
+                className={inputClass + ' max-w-96'}
+                value={applicationId}
+                disabled={recording || state.data?.replaying}
+                onChange={(e) => setApplicationId(e.target.value)}
+              >
+                <option value="">Select an installed application</option>
+                {applications.map((app) => (
+                  <option key={app.application_id} value={app.application_id}>
+                    {app.label}
+                  </option>
+                ))}
+              </select>
+              <Button
+                disabled={recording || state.data?.replaying || !state.data?.enabled}
+                busy={busy === 'applications'}
+                onClick={() => void refreshApplications()}
+              >
+                <RefreshCw size={12} /> Refresh applications
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
       {state.data?.recording?.application && recording && (
         <p className="mt-2 text-xs text-copper-light" role="status">
           Recording {state.data.recording.application} · ends after 15 minutes.
@@ -230,7 +288,7 @@ export function TeachPanel() {
                 <span className="mono text-copper-light">
                   {i + 1}. {s.tool.replace(/^(browser|desktop)_/, '')}
                 </span>
-                <span>{s.target?.name ?? s.args?.url ?? s.note}</span>
+                <span>{s.target?.name ?? s.args?.url ?? s.args?.application_id ?? s.note}</span>
                 {s.target?.ancestors?.length > 0 && (
                   <span className="text-muted">
                     in {s.target.ancestors.map((p: any) => p.name).join(' → ')}
@@ -360,7 +418,15 @@ export function TeachPanel() {
           <h3 className="text-sm">
             Replay {selected.name} · v{selected.version}
           </h3>
-          {selected.replay.kind === 'desktop' && windowPicker(selected.replay.desktop_application)}
+          {selected.replay.kind === 'desktop' &&
+            selected.replay.steps[0]?.tool !== 'desktop_open_application' &&
+            windowPicker(selected.replay.desktop_application)}
+          {selected.replay.steps[0]?.tool === 'desktop_open_application' && (
+            <p className="text-xs text-muted">
+              Replay will ask to open {selected.replay.steps[0].args.application_id} and verify a
+              new window.
+            </p>
+          )}
           {Object.keys(inputs).map((key) => (
             <Field key={key} label={key}>
               <input
@@ -380,6 +446,7 @@ export function TeachPanel() {
               recording ||
               state.data?.replaying ||
               (selected.replay.kind === 'desktop' &&
+                selected.replay.steps[0]?.tool !== 'desktop_open_application' &&
                 !windows.some(
                   (w) =>
                     w.choice_id === window &&
@@ -396,7 +463,11 @@ export function TeachPanel() {
                       name: selected.name,
                       inputs,
                       browser: desktop ? 'managed' : browser,
-                      window: selected.replay.kind === 'desktop' ? window : '',
+                      window:
+                        selected.replay.kind === 'desktop' &&
+                        selected.replay.steps[0]?.tool !== 'desktop_open_application'
+                          ? window
+                          : '',
                     },
                   }),
                 );

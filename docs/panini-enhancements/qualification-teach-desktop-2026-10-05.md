@@ -84,11 +84,19 @@ byte buffer as a file; its log is retained as `private-proof-harness-failure.log
 
 ## Remaining requirements
 
-V2-22 remains **in progress**. Opening applications as recorded steps, Save As, rapid focus changes, application
+V2-22 remains **in progress**. A catalog-only app launch can now start a recording after owner review,
+and the launch is the first deterministic replay step. Focused fixture integration covers refusal,
+single dispatch, step order, new-window binding and replay; the built Admin UI smoke covers the
+open-and-record request. Native launch was separately qualified through the fine desktop hand, but
+the combined native Teach path still needs a live Windows recording/replay run. Save As, rapid focus changes, application
 dialogs outside the selected root, per-step crops, drag gestures, recording indicators outside Admin,
 model-assisted input/expectation suggestions, broader frame layouts and live healer qualification
 remain open. Shortcuts whose pre-key receiver cannot be verified are manual rather than guessed. The
 current native proof covers one Windows provider and does not qualify arbitrary apps or input timing.
+During this integration pass, the existing fine desktop smoke was retried three times and stopped
+before app launch at its WPF foreground assertion: RuntimeHost requested HWND 2361670 but Windows
+reported foreground HWND 66602. This is an observed native qualification failure, not a passed
+regression run; the backend and built Admin tests above still passed.
 
 V2-26 still needs reviewed macros, remaining hand normalizers and the coarse/fine golden-task gate. The
 full LLD acceptance audit remains incomplete. Real SIP/calendar, audio/outcome/billing qualification,

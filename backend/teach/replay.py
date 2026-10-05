@@ -150,14 +150,25 @@ class Replayer:
             previous_binding = getattr(ctx, "teach_binding", None)
             ctx.teach_binding = (name, row["version"])
             state, failure, heals, evidence = "failed", "", 0, []
+            launched = False
             desktop = replay.kind == "desktop"
             snapshot_tool = "desktop_snapshot" if desktop else "browser_snapshot"
+
+            async def bind_desktop(choice):
+                await self.call(ctx, "desktop_activate", {"window": choice})
+                selected = await self.call(ctx, "desktop_snapshot", {})
+                ctx.teach_window_application = replay.desktop_application
+                ctx.teach_window_title = selected.data["title"]
+                if replay.desktop_application.casefold() == "notepad":
+                    ctx.teach_window_title = ctx.teach_window_title.removeprefix("*")
+                ctx.teach_window_selection = selected.data["selection"]
+
             try:
                 self.h.store.execute(
                     "INSERT INTO skill_runs(id,name,version,state,inputs_digest,started) VALUES (?,?,?,'running',?,?)",
                     (identifier, name, row["version"], digest(values), time.time()),
                 )
-                if desktop:
+                if desktop and replay.steps[0].tool != "desktop_open_application":
                     choices = (await self.call(ctx, "desktop_windows", {})).data["windows"]
                     choices = [
                         w
@@ -167,14 +178,8 @@ class Replayer:
                     ]
                     if len(choices) != 1:
                         raise ValueError("Select one window of the reviewed application before replay.")
-                    await self.call(ctx, "desktop_activate", {"window": choices[0]["choice_id"]})
-                    selected = await self.call(ctx, "desktop_snapshot", {})
-                    ctx.teach_window_application = replay.desktop_application
-                    ctx.teach_window_title = selected.data["title"]
-                    if replay.desktop_application.casefold() == "notepad":
-                        ctx.teach_window_title = ctx.teach_window_title.removeprefix("*")
-                    ctx.teach_window_selection = selected.data["selection"]
-                else:
+                    await bind_desktop(choices[0]["choice_id"])
+                elif not desktop:
                     await self.call(ctx, "browser_select", {"browser": browser})
                 for index, step in enumerate(replay.steps):
                     ctx.teach_frame_selector = ""
@@ -183,6 +188,21 @@ class Replayer:
                     if step.tool == "manual":
                         raise ValueError("A manual step requires the owner.")
                     args = substitute(step.args, values)
+                    if desktop and step.tool == "desktop_open_application":
+                        result = await self.call(ctx, step.tool, args)
+                        launched = True
+                        if (
+                            result.data.get("application", "").casefold()
+                            != replay.desktop_application.casefold()
+                        ):
+                            raise ReplayFailure(
+                                ToolResult(
+                                    "unknown_effect", "The launched application changed.", dispatched=True
+                                )
+                            )
+                        evidence.extend(result.evidence)
+                        await bind_desktop(result.data["window"])
+                        continue
                     if step.target:
                         target = Target.model_validate(substitute(step.target.model_dump(), values))
                         fresh = await self.call(ctx, snapshot_tool, {})
@@ -273,7 +293,7 @@ class Replayer:
                 failure = exc.result.content[:500]
                 state = (
                     "unknown_effect"
-                    if exc.result.outcome == "unknown_effect" or exc.result.dispatched
+                    if exc.result.outcome == "unknown_effect" or exc.result.dispatched or launched
                     else "failed"
                 )
             except asyncio.CancelledError:
@@ -283,6 +303,8 @@ class Replayer:
                 )
                 raise
             except Exception:  # noqa: BLE001 -- Provider/validation failures never replay an effect.
+                if launched:
+                    state = "unknown_effect"
                 failure = (
                     "Replay stopped: the target, inputs, permission or expected result could not be verified."
                 )

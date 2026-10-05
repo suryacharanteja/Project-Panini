@@ -36,6 +36,7 @@ ACTIONS = {
 }
 ASSERTIONS = {"browser_verify_text_visible", "browser_verify_element_visible", "browser_verify_value"}
 DESKTOP_ACTIONS = {
+    "desktop_open_application",
     "desktop_click",
     "desktop_type",
     "desktop_select",
@@ -128,9 +129,16 @@ class Replay(Strict):
                     "browser_press_key",
                     "browser_file_upload",
                 }
-                or step.tool in DESKTOP_ACTIONS - {"manual"}
+                or step.tool in DESKTOP_ACTIONS - {"manual", "desktop_open_application"}
             ) and not step.target:
                 raise ValueError("This step needs a reviewed target.")
+            if step.tool == "desktop_open_application" and (
+                step.target is not None
+                or step.args.keys() != {"application_id"}
+                or not isinstance(step.args["application_id"], str)
+                or not re.fullmatch(r"[a-z][a-z0-9-]{1,39}", step.args["application_id"])
+            ):
+                raise ValueError("App launch needs one reviewed installed application ID.")
             if self.kind == "desktop" and step.target and (step.target.frame or step.target.locator):
                 raise ValueError("Desktop targets use roles, names and ancestry, not browser locators.")
             if step.target and not (step.target.name or step.target.name_regex):
@@ -144,6 +152,9 @@ class Replay(Strict):
             ):
                 raise ValueError("Checked-state replay needs a checkbox or radio control.")
         data = json.dumps(self.model_dump(), ensure_ascii=False)
+        launches = [step for step in self.steps if step.tool == "desktop_open_application"]
+        if launches and (self.kind != "desktop" or len(launches) != 1 or self.steps[0] != launches[0]):
+            raise ValueError("An application launch must be the first and only launch step.")
         if len(data) > 100000 or _SECRET.search(data):
             raise ValueError("Replay data contains a secret pattern or exceeds the size limit.")
         for key in self.inputs:

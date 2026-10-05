@@ -40,7 +40,7 @@ try {
   const errors = [],
     requests = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  const draft = {
+  let draft = {
     kind: 'desktop',
     desktop_application: 'fixture',
     version: 1,
@@ -95,8 +95,16 @@ try {
           { choice_id: 'other-window', application: 'other', label: 'Other app' },
         ],
       };
+    else if (path.endsWith('/teach/applications'))
+      data = {
+        applications: [{ application_id: 'fixture-app', label: 'Fixture', application: 'fixture' }],
+      };
     else if (path.endsWith('/teach/record/start')) {
-      assert.deepEqual(body, { kind: 'desktop', window: 'fixture-window' });
+      assert(
+        JSON.stringify(body) === JSON.stringify({ kind: 'desktop', window: 'fixture-window' }) ||
+          JSON.stringify(body) ===
+            JSON.stringify({ kind: 'desktop', application_id: 'fixture-app' }),
+      );
       recording = { state: 'recording', kind: 'desktop', application: 'fixture' };
       data = recording;
     } else if (path.endsWith('/teach/stop')) {
@@ -121,7 +129,7 @@ try {
         name: 'windows-demo',
         inputs: { draft: 'New input' },
         browser: 'managed',
-        window: 'fixture-window',
+        window: draft.steps[0].tool === 'desktop_open_application' ? '' : 'fixture-window',
       });
       replaying = true;
       await new Promise((done) => {
@@ -175,6 +183,34 @@ try {
   );
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await page.getByText('Owner stopped replay.', { exact: false }).waitFor();
+  await page.getByLabel('Windows recording mode').selectOption('open');
+  assert.equal(
+    await page.getByRole('button', { name: 'Watch me', exact: true }).isDisabled(),
+    true,
+  );
+  await page.getByRole('button', { name: 'Refresh applications' }).click();
+  await page.getByLabel('Application to open for recording').selectOption('fixture-app');
+  await page.getByRole('button', { name: 'Watch me', exact: true }).click();
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  assert(
+    requests.some(
+      (r) => r.path.endsWith('/teach/record/start') && r.body.application_id === 'fixture-app',
+    ),
+  );
+  draft = {
+    ...draft,
+    steps: [
+      { id: 's1', tool: 'desktop_open_application', args: { application_id: 'fixture-app' } },
+      { ...draft.steps[0], id: 's2' },
+    ],
+  };
+  await page.getByRole('button', { name: 'Open replay' }).click();
+  await page.getByText('Replay will ask to open fixture-app', { exact: false }).waitFor();
+  assert.equal(await page.getByLabel('Replay Windows window').count(), 0);
+  await page.getByLabel('draft', { exact: true }).fill('New input');
+  await page.getByRole('button', { name: 'Replay skill' }).click();
+  await page.getByRole('button', { name: 'Stop', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
   assert.deepEqual(errors, []);
   const report = {
     passed: true,
@@ -185,6 +221,8 @@ try {
     stopAfterRevocation: true,
     stopDuringReplay: true,
     mobileNoOverflow: true,
+    openInstalledApplicationRecording: true,
+    launchFirstReplayNeedsNoWindowPicker: true,
     requests,
   };
   await writeFile(evidence + '/ui-evidence.json', JSON.stringify(report, null, 2));
