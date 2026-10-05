@@ -1,0 +1,189 @@
+{
+  "schema": "panini.capability/1",
+  "id": "mcp",
+  "title": "MCP local hands",
+  "version": "1.0.0",
+  "summary": "Principal-bound observation tools for registered local agents.",
+  "entry": "backend.mcp_server.tools:Hand",
+  "tools": [
+    {
+      "name": "mcp_status",
+      "title": "PANINI status",
+      "description": "Read this client's local MCP readiness and scopes.",
+      "hand": "mcp",
+      "effect": "observe",
+      "idempotent": true,
+      "offered": false,
+      "concurrency": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "mcp_desktop_windows",
+      "title": "Desktop windows",
+      "description": "List permitted Windows application windows. Read-only; returned choices belong to this MCP session.",
+      "hand": "mcp",
+      "effect": "observe",
+      "idempotent": true,
+      "offered": false,
+      "concurrency": "desktop",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "mcp_desktop_screenshot",
+      "title": "Desktop screenshot",
+      "description": "Capture one permitted window listed in this session. Never captures a window containing a credential field.",
+      "hand": "mcp",
+      "effect": "observe",
+      "idempotent": true,
+      "offered": false,
+      "concurrency": "desktop",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "window": {
+            "type": "string",
+            "maxLength": 64
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "mcp_receipts_search",
+      "title": "Client receipts",
+      "description": "Search only this calling client's receipts.",
+      "hand": "mcp",
+      "effect": "observe",
+      "idempotent": true,
+      "offered": false,
+      "concurrency": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "since": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "mcp_ask",
+      "title": "PANINI task",
+      "description": "Run a whole task as this MCP client, without owner memories or connectors. Each inner effect requires owner approval.",
+      "hand": "mcp",
+      "effect": "observe",
+      "dynamic_effect": true,
+      "offered": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "persona": {
+            "type": "string",
+            "enum": [
+              "panini"
+            ]
+          }
+        },
+        "required": [
+          "goal"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "mcp_desktop_do",
+      "title": "Desktop task",
+      "description": "Perform a grounded Windows control or draft task in a window listed in this session. Every proposed mutation asks the owner. Shell, file operations and unsupported postconditions are refused.",
+      "hand": "desktop",
+      "effect": "submit",
+      "dynamic_effect": true,
+      "offered": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "instruction": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "window": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "instruction",
+          "window"
+        ],
+        "additionalProperties": false
+      },
+      "concurrency": "desktop_fine"
+    },
+    {
+      "name": "mcp_pages_search",
+      "title": "Search notebook",
+      "description": "Search owner notebook pages only with the explicit pages scope.",
+      "hand": "mcp",
+      "effect": "observe",
+      "dynamic_effect": false,
+      "offered": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "mcp_pages_read",
+      "title": "Read notebook page",
+      "description": "Read an owner notebook page only with the explicit pages scope.",
+      "hand": "mcp",
+      "effect": "observe",
+      "dynamic_effect": false,
+      "offered": false,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "page_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "page_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

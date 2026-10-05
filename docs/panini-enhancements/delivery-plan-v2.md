@@ -1,6 +1,6 @@
 # PANINI v2 delivery plan
 
-Updated 2026-10-04. Owner authorized all LLDs. This tracks the complete v2 program; the register also calls V2-08–12 "Phase 2". No additional scope approval is needed.
+Updated 2026-10-05. Owner authorized all LLDs. This tracks the complete v2 program; the register also calls V2-08–12 "Phase 2". No additional scope approval is needed.
 
 ## Delivery order
 
@@ -280,7 +280,7 @@ frame-scoped replay and live healer qualification remain pending.
 
 ### V2-23: PANINI as an MCP server
 
-Implementation register: **Not started**. [Source LLD](lld/V2-23-mcp-server.md).
+Implementation register: **In progress**. [Source LLD](lld/V2-23-mcp-server.md).
 
 Dependencies: V2-02 (registry), V2-03 (policy), V2-05 (interrupts); V2-13 gate.
 
@@ -351,3 +351,9 @@ The Windows foundation increment adds opaque broker refs, hierarchical UIA snaps
 registry actions. Win32 and WPF fixtures and installed WinUI Notepad pass; see
 [Windows qualification](qualification-desktop-fine-2026-10-05.md). Macros, desktop recording, other hand
 normalizers and the coarse/fine comparison remain pending. Coarse remains the default.
+
+## MCP delivery checkpoint — 2026-10-05
+
+V2-23 implemented the SDK transports, curated local hands, owner approvals, client-bound receipts and
+browser sessions, Admin controls and packaged stdio bridge. Remaining requirements and qualification
+are recorded in [the MCP report](qualification-mcp-2026-10-05.md); no all-LLD completion is claimed.

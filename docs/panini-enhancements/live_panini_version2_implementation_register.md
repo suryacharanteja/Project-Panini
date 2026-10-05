@@ -104,7 +104,7 @@ Sizes: **S** ≤ 2 days · **M** 3–5 days · **L** 1–2 weeks.
 | V2-20 | Outbound calls on your behalf | 5 | P2 | L | V2-16 | `PANINI_OUTBOUND_CALLS` | [LLD](lld/V2-20-outbound-calls.md) | Approved brief → call with disclosure → DTMF/IVR → outcome receipt; compliance checklist signed | In progress: reviewed SIP lifecycle, scheduled windows, PC/PWA controls, usage receipts, quote-cited interpretations and scoped availability reads built; real calls, keypad and live qualification pending |
 | V2-21 | Android hands | 5 | P2 | L | V2-08, V2-03 | `PANINI_ANDROID` | [LLD](lld/V2-21-android-hands.md) | Wireless-debugging pairing; UI snapshot with refs; tap/fill/swipe with policy; Chrome on Android via Playwright | In progress: registry hand, Admin/PWA stop controls and shared grammar built; physical Android and remaining acceptance pending |
 | V2-22 | Teach by demonstration and self-healing skills | 5 | P2 | L | V2-10, V2-04 | `PANINI_TEACH` | [LLD](lld/V2-22-teach-by-demonstration.md) | Browser and desktop recordings become reviewed skills; replay passes; healer repairs a changed locator | In progress: browser, WPF and Notepad recording/replay built; app launch recording, Save As, crops, gestures and live healer qualification pending |
-| V2-23 | PANINI as an MCP server | 5 | P2 | M | V2-02, V2-03, V2-05 | `PANINI_MCP_SERVER` | [LLD](lld/V2-23-mcp-server.md) | `panini-mcp` usable from Claude Code; observe tools free; every effect interrupts the owner | Not started |
+| V2-23 | PANINI as an MCP server | 5 | P2 | M | V2-02, V2-03, V2-05 | `PANINI_MCP_SERVER` | [LLD](lld/V2-23-mcp-server.md) | `panini-mcp` usable from Claude Code; observe tools free; every effect interrupts the owner | In progress |
 | V2-24 | Continuity and presence | 5 | P2 | M | V2-14 – V2-17 | `PANINI_PRESENCE` | [LLD](lld/V2-24-continuity-presence.md) | Start on a call, continue on PC; approvals routed by presence; watch-actionable notifications | Not started |
 | V2-25 | Ambient triggers and responsibilities | 5 | P2 | L | V2-06, V2-14, V2-18 | `PANINI_TRIGGERS` | [LLD](lld/V2-25-triggers-responsibilities.md) | File, email, calendar, webhook and OS triggers; rules with cooldown; responsibility lifecycle and digests | Not started |
 | V2-26 | Universal hands protocol (one snapshot/ref vocabulary) | 6 | P2 | L | V2-10, V2-21 | `PANINI_DESKTOP_TOOLS=fine` | [LLD](lld/V2-26-universal-hands-protocol.md) | Desktop UIA snapshot with refs; same `*_snapshot/_click/_type` across web, Windows, Android, sandbox | In progress: shared grammar and Windows fine registry hand built; macros, normalizers and golden-task comparison pending |
@@ -267,3 +267,12 @@ Two real Live synthetic browser probes passed decoded audio/quiet-tail checks an
 ### 2026-10-04 — Android hands development checkpoint
 
 V2-21 registry tools, grounded effects, mandatory ledger, shadow-mode cancellation, authenticated Admin setup, one-fps live view and PC/PWA stop controls implemented. V2-26 shared grammar and role mapping started. Physical Android and remaining LLD acceptance remain open. See [qualification report](qualification-android-hands-2026-10-04.md). Red-team remains disabled and deferred.
+
+### 2026-10-05 — MCP development checkpoint
+
+V2-23 now has the official SDK HTTP transport, protected per-client stdio credentials, owner Admin
+registration/grants/revocation, isolated browser contexts, mandatory effect approvals, progress/images,
+receipts and an external task runner without owner memories or connectors. Source integration uses
+real transports with fixture hands and a scripted model. V2-23 remains In progress: sandbox opt-in,
+interrupt-card grants, actual slot ownership UI and live external-agent/hands qualification remain open.
+See [qualification record](qualification-mcp-2026-10-05.md). Red-team remains disabled and deferred.

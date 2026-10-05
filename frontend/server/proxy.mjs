@@ -48,6 +48,10 @@ export async function proxy(req, res, target, handler, timeoutMs = 65000, extraH
     if (cookie) headers.set('cookie', cookie);
   }
   const pathname = new URL(target).pathname;
+  if (pathname === '/mcp') {
+    for (const name of ['authorization', 'mcp-session-id', 'mcp-protocol-version', 'last-event-id'])
+      if (req.headers[name]) headers.set(name, req.headers[name]);
+  }
   // A2A callers authenticate with their own bearer token; the card needs the public host.
   if (pathname === '/a2a' && req.headers.authorization)
     headers.set('authorization', req.headers.authorization);
@@ -61,7 +65,8 @@ export async function proxy(req, res, target, handler, timeoutMs = 65000, extraH
   const pairing =
     new URL(target).pathname === '/api/extension/pair' &&
     EXTENSION_ORIGIN.test(req.headers.origin || '');
-  headers.set('origin', pairing ? req.headers.origin : new URL(target).origin);
+  if (pathname !== '/mcp')
+    headers.set('origin', pairing ? req.headers.origin : new URL(target).origin);
   headers.set('x-request-id', req.requestId);
   for (const [name, value] of Object.entries(extraHeaders)) headers.set(name, value);
   let tooLarge = false;

@@ -336,7 +336,9 @@ class DesktopAdapter(UnavailableAdapter):
         )
 
     async def run(self, context, instruction, target):
-        if os.getenv("PANINI_DESKTOP_VISUAL", "1").lower() not in {"0", "false", "no"}:
+        if getattr(getattr(context, "principal", None), "kind", None) != "mcp_client" and os.getenv(
+            "PANINI_DESKTOP_VISUAL", "1"
+        ).lower() not in {"0", "false", "no"}:
             from .desktop_visual import run_visual
 
             return await run_visual(self, context, instruction, target)
@@ -499,6 +501,9 @@ class DesktopAdapter(UnavailableAdapter):
                 )
             # Every non-calculator mutation is confirmed in Electron's trusted main process.
             confirmed = desktop_action_needs_approval(action.kind, element["name"], action.text or "")
+            confirmed = (
+                confirmed or getattr(getattr(context, "principal", None), "kind", None) == "mcp_client"
+            )
             if confirmed:
                 await context.confirm(
                     proposal,

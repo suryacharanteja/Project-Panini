@@ -2,6 +2,7 @@ import { Copy, KeyRound, LogIn, LogOut, Play, Plus, RefreshCw, Trash2, X } from 
 import { useState } from 'react';
 import { admin, ago, api, harness, useResource } from '../api';
 import { TeachPanel } from '../components/TeachPanel';
+import { McpPanel } from '../components/McpPanel';
 import {
   Badge,
   Button,
@@ -750,6 +751,7 @@ export function AgentsPage() {
   const { busy, run } = useAction();
   return (
     <Page title="Agents" deva="कर्ता" eyebrow="Agent-to-agent (A2A)">
+      <McpPanel />
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="Agents that can ask PANINI" deva="आगत">
           <p className="-mt-2 mb-4 text-sm text-muted">

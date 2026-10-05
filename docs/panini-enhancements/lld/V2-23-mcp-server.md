@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 5 · P2 · M (4–5 days) |
 | Depends on | V2-02 (registry), V2-03 (policy), V2-05 (interrupts); V2-13 gate |
 | Flag | `PANINI_MCP_SERVER` (default `false`) |
-| Status | Not started |
+| Status | In progress |
 
 ## 1. Outcome
 
@@ -139,3 +139,22 @@ Opt-in per client in Admin, after the V2-13 gate. Rollback: flag off → `/mcp` 
 
 - Expose a `desktop_snapshot` with refs for coding agents (fine-grained desktop control)? That arrives with
   V2-26; until then `desktop_do` plus screenshots.
+
+## Implementation checkpoint — 2026-10-05
+
+The official SDK 2.2.0 HTTP endpoint, principal-bound browser contexts, client registration/revocation,
+mandatory effect approvals, receipts, image/progress results, private-data-free task runner, Admin setup
+and stdio bridge are implemented. Migration `0031_mcp_clients.sql` stores token hashes; one-time token
+files are created atomically in a protected per-client directory. Admin provides the actual token file
+path through `--token-file`; client ids are UUIDs, not display names. Temporary exact-tool browser grants
+are available from Admin, for at most one hour. Submission and stronger effects still require approval.
+
+Source tests use real loopback HTTP and official SDK clients, with fixture desktop/browser content and
+a scripted task model. They do not qualify live Claude Code/Codex hands, live model planning, or hardware.
+See [qualification record](../qualification-mcp-2026-10-05.md).
+
+Still open: sandbox opt-in tools, persona selection beyond PANINI, grants created directly from the
+interrupt card, activity displayed for actual slot ownership, live Claude Code/Codex connection and
+approved browser/desktop task qualification, and production release qualification. The owner deferred
+red-team work; it is disabled and is not a current enablement gate. Other policy, pairing and receipt
+checks remain enforced. This LLD remains **In progress** until its remaining requirements are verified.

@@ -100,6 +100,21 @@ export function createGateway({
   app.use(secureRequests(allowedOrigins));
   app.use(express.json({ limit: '15mb' }));
 
+  // MCP uses its own client credentials, with no browser Origin or console service token.
+  app.all('/mcp', limitRequests(limiter), (req, res) => {
+    if (req.path !== '/mcp') return res.sendStatus(404);
+    if (!['GET', 'POST', 'DELETE'].includes(req.method)) return res.sendStatus(405);
+    const host = req.headers.host || '';
+    const peer = req.socket.remoteAddress || '';
+    if (
+      req.headers.origin !== undefined ||
+      !/^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host) ||
+      !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(peer)
+    )
+      return res.status(403).json({ error: 'MCP requires loopback access without Origin.' });
+    return proxy(req, res, `${backendUrl}/mcp`, null, null);
+  });
+
   // The PANINI shell API authenticates every call itself.
   app.use('/api/panini', (req, res) =>
     proxy(

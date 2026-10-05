@@ -101,6 +101,17 @@ class BrowserHand:
 
     async def choose(self, ctx) -> str | None:
         run = self.run_key(ctx)
+        if getattr(getattr(ctx, "principal", None), "kind", None) == "mcp_client":
+            allowed = {"isolated"}
+            if "chrome" in ctx.mcp_client["grants"]:
+                allowed.add("chrome")
+            if run in self.active and self.active[run] in allowed:
+                return self.active[run]
+            ready = await self.ready()
+            if ready["isolated"].state == "ready":
+                self.active[run] = "isolated"
+                return "isolated"
+            return None
         if run in self.active:
             return self.active[run]
         preference = getattr(getattr(ctx, "agent", None), "browser_preference", None)
@@ -185,9 +196,12 @@ class BrowserHand:
         started = time.monotonic()
         try:
             session = await self.session(browser, ctx)
-            if getattr(ctx, "teach_replay", False) and tool.effect != "observe":
+            if (
+                getattr(ctx, "teach_replay", False)
+                or getattr(getattr(ctx, "principal", None), "kind", None) == "mcp_client"
+            ) and tool.effect != "observe":
                 harness = self.runtime["harness"]
-                if (
+                if getattr(ctx, "teach_replay", False) and (
                     not harness.teach.allowed()
                     or not harness.teach.valid_binding(ctx)
                     or harness.policy.decide(ctx.principal, spec, args, taint=ctx.taint).action == "deny"
@@ -200,16 +214,22 @@ class BrowserHand:
                     refreshed = element_names(inline_snapshot(text_of(latest), self.managed.output_root()))
                     ref = str(args.get("target", ""))
                     previous = self.names.get(key, {}).get(ref)
-                    if not previous or refreshed.get(ref) != previous:
+                    latest_url = PAGE_URL.search(text_of(latest))
+                    changed_page = (
+                        latest_url and self.page_url.get(key) and latest_url.group(1) != self.page_url[key]
+                    )
+                    if not previous or refreshed.get(ref) != previous or changed_page:
                         self.names[key] = refreshed
                         raise ValueError(
-                            "The reviewed target changed during approval. Inspect the page before replaying."
+                            "The reviewed target changed during approval. Inspect the page before acting."
                         )
             await self._trace(ctx, browser, session)
             if tool.typing:
                 await self._probe_typing(session, key, tool, args)
             # Never a model-chosen file path: outputs stay in PANINI's artifacts.
             payload = {k: v for k, v in args.items() if k != "filename"}
+            if hasattr(ctx, "check"):
+                ctx.check()
             result = await session.call(name, payload, timeout_s=spec.timeout_ms / 1000)
         except ValueError as exc:
             return ToolResult("blocked", str(exc))
@@ -236,6 +256,21 @@ class BrowserHand:
         modal = MODAL.search(text)
         self.modal[key] = modal.group(1).strip() if modal else ""
         evidence, artifact_ids = [], []
+        if tool.name == "browser_take_screenshot":
+            match = re.search(r"\]\(([^)]+\.(?:jpe?g|png))\)", text_of(result))
+            if match:
+                path = Path(match.group(1))
+                try:
+                    if path.resolve().is_relative_to(self.managed.output_root().resolve()):
+                        from ..mcp_server.tools import image_bytes
+
+                        identifier = self._artifact(
+                            "screenshot", image_bytes(path.read_bytes()), "image/jpeg", run_id=ctx.run_id
+                        )
+                        if identifier:
+                            artifact_ids.append(identifier)
+                except (ValueError, OSError):
+                    pass
         if tool.evidence == "assertion":
             evidence.append(
                 {
@@ -472,6 +507,13 @@ class BrowserHand:
 
     async def _select(self, ctx, args):
         browser = str(args.get("browser", ""))
+        if getattr(getattr(ctx, "principal", None), "kind", None) == "mcp_client":
+            if browser == "chrome" and "chrome" not in ctx.mcp_client["grants"]:
+                return ToolResult("blocked", "This client lacks the Chrome scope.")
+            if browser == "managed":
+                browser = (
+                    "isolated"  # Each MCP session owns an empty managed context, never the owner profile.
+                )
         if getattr(getattr(ctx, "principal", None), "kind", None) == "persona":
             permissions = self.runtime["harness"].personas.permissions(ctx.principal.client_id)
             if ("chrome" if browser == "chrome" else "managed") not in permissions:
@@ -573,13 +615,13 @@ class BrowserHand:
         return buffer.getvalue()
 
     # Helpers ----------------------------------------------------------------------------
-    def _artifact(self, kind, data: bytes, mime: str):
+    def _artifact(self, kind, data: bytes, mime: str, *, run_id=None):
         harness = self.runtime.get("harness")
         artifacts = getattr(harness, "artifacts", None)
         if artifacts is None:
             return None
         try:
-            return artifacts.put(kind, data, mime)
+            return artifacts.put(kind, data, mime, run_id=run_id)
         except Exception:  # noqa: BLE001 -- An artifact is evidence, not a reason to fail the step.
             return None
 

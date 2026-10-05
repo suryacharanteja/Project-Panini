@@ -149,6 +149,20 @@ await copyFile(
   join(root, 'artifacts/panini-cli/PANINI-CLI.exe'),
   join(runtime, 'cli/PANINI-CLI.exe'),
 );
+await run(join(root, '.venv/Scripts/python.exe'), [
+  '-m',
+  'PyInstaller',
+  '--noconfirm',
+  '--distpath',
+  join(root, 'artifacts/panini-mcp'),
+  '--workpath',
+  join(root, 'artifacts/panini-mcp-work'),
+  'scripts/panini-mcp.spec',
+]);
+await copyFile(
+  join(root, 'artifacts/panini-mcp/panini-mcp.exe'),
+  join(runtime, 'cli/panini-mcp.exe'),
+);
 // A frozen backend must run the first-party sandbox without Docker/Codex.
 // This also catches missing dynamic Python imports such as flatbuffers.
 if (process.platform === 'win32') {

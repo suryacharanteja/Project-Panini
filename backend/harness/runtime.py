@@ -187,6 +187,7 @@ class Harness:
             "connectors": len(self.connectors.servers),
             "android": self.android.activity(),
             "recording": self.teach.recorder.status(),
+            "mcp": list(getattr(getattr(self, "mcp", None), "activity", {}).values()),
         }
 
     def suggest(self, force=False):

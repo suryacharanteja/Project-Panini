@@ -50,7 +50,7 @@ hiddenimports += [
     ".".join(p.relative_to(browser_root).with_suffix("").parts).removesuffix(".__init__")
     for p in (browser_root / "panini_browser").rglob("*.py")
 ]
-for package in ("browser-use", "pydantic", "openai", "httpx", "fastapi"):
+for package in ("browser-use", "pydantic", "openai", "httpx", "fastapi", "mcp", "mcp-types", "httpx2", "jsonschema"):
     datas += copy_metadata(package)
 a = Analysis(
     [str(root / "scripts/panini-backend-entry.py")],

@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 import time
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
@@ -24,6 +24,7 @@ from .routes import android as android_routes
 from .routes import channels as channels_routes
 from .routes import console as console_routes
 from .routes import live as live_routes
+from .routes import mcp as mcp_routes
 from .routes import spaces as spaces_routes
 from .routes import teach as teach_routes
 from .work import CapacityError, WorkPool
@@ -31,6 +32,15 @@ from .work import CapacityError, WorkPool
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    stack = AsyncExitStack()
+    mcp_monitor = None
+    if app.state.harness:
+        from .mcp_server.server import Service
+
+        app.state.mcp = Service(app.state.harness)
+        app.state.harness.mcp = app.state.mcp
+        await stack.enter_async_context(app.state.mcp.manager.run())
+        mcp_monitor = asyncio.create_task(app.state.mcp.monitor())
     if app.state.panini:
         app.state.panini.start()
     if app.state.harness:
@@ -50,6 +60,11 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         try:
+            if mcp_monitor:
+                mcp_monitor.cancel()
+                await asyncio.gather(mcp_monitor, return_exceptions=True)
+                await app.state.mcp.close()
+            await stack.aclose()
             if getattr(app.state, "phone_line", None):
                 await app.state.phone_line.close()
             if app.state.panini:
@@ -99,6 +114,7 @@ def create_app(
     app.state.panini = None
     app.state.harness = None
     app.state.admin = None
+    app.state.mcp = None
     if os.getenv("PANINI_HARNESS_ENABLED", "1") != "0":
         from .harness.runtime import Harness
 
@@ -163,6 +179,10 @@ def create_app(
     app.include_router(android_routes.router)
     app.include_router(teach_routes.router)
     app.include_router(teach_routes.shell_router)
+    app.include_router(mcp_routes.router)
+    from starlette.routing import Route
+
+    app.router.routes.append(Route("/mcp", mcp_routes.Endpoint(app), methods=["GET", "POST", "DELETE"]))
     app.include_router(channels_routes.router)
     app.include_router(agui.console_router)
     app.include_router(agui.shell_router)

@@ -261,6 +261,20 @@ class Policy:
             level = L.DENY
         if where == "external" and RISK[effect] >= RISK[E.SUBMIT]:
             level = stricter(level, L.TAP)
+        if principal.kind == "mcp_client" and effect is not E.OBSERVE:
+            # A caller cannot silently navigate/select or inherit a generic surface exemption.
+            # Only explicit, short-lived, exact-tool owner grants may exempt low-risk effects.
+            exempt = any(
+                g.id in grant_ids
+                and g.subject == f"mcp_client:{principal.client_id}"
+                and spec.name in g.tools
+                and g.expires_at
+                and 0 < g.expires_at - now <= 3600
+                and level is L.NONE
+                for g in self.grants()
+            )
+            if not exempt:
+                level = stricter(level, L.TAP)
         if where in {"remote", "channel"} and effect in HIGH:
             exact = [
                 g

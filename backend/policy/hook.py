@@ -31,7 +31,7 @@ class PolicyHook(Hooks):
 
         return (
             self.mode == "enforce"
-            or ctx.principal.kind == "persona"
+            or ctx.principal.kind in {"persona", "mcp_client"}
             or ctx.principal.surface in SURFACES
             or (spec is not None and spec.capability == "android")
             or (spec is not None and spec.capability == "desktop_fine")
@@ -113,49 +113,58 @@ class PolicyHook(Hooks):
     async def _revocable(self, ctx, spec, args, call):
         """Run the hand; if PANINI is paused or the call's decision tightens meanwhile, cancel it (I7)."""
         work = asyncio.ensure_future(call())
-        while True:
-            change = asyncio.ensure_future(self.policy.wait_change())
-            done, _ = await asyncio.wait({work, change}, return_when=asyncio.FIRST_COMPLETED)
-            if work in done:
-                change.cancel()
-                return work.result()
-            bound = (
-                getattr(ctx, "android_policy", None)
-                if spec.capability == "android"
-                else getattr(ctx, "desktop_policy", None)
-                if spec.capability == "desktop_fine"
-                else None
-            )
-            current_spec, current_args = bound or (spec, args)
-            again = self.policy.decide(ctx.principal, current_spec, current_args, taint=ctx.taint)
-            before = getattr(ctx, "decision", None)
-            tightened = again.action == "deny" or (
-                again.action != "allow" and before is not None and before.action == "allow"
-            )
-            if spec.capability == "desktop_fine":
-                from .. import v2flags
-                from ..core_contracts import LEVEL_ORDER
+        change = None
+        try:
+            while True:
+                change = asyncio.ensure_future(self.policy.wait_change())
+                done, _ = await asyncio.wait({work, change}, return_when=asyncio.FIRST_COMPLETED)
+                if work in done:
+                    change.cancel()
+                    return work.result()
+                bound = (
+                    getattr(ctx, "android_policy", None)
+                    if spec.capability == "android"
+                    else getattr(ctx, "desktop_policy", None)
+                    if spec.capability == "desktop_fine"
+                    else None
+                )
+                current_spec, current_args = bound or (spec, args)
+                again = self.policy.decide(ctx.principal, current_spec, current_args, taint=ctx.taint)
+                before = getattr(ctx, "decision", None)
+                tightened = again.action == "deny" or (
+                    again.action != "allow" and before is not None and before.action == "allow"
+                )
+                if spec.capability == "desktop_fine":
+                    from .. import v2flags
+                    from ..core_contracts import LEVEL_ORDER
 
-                tightened = (
-                    tightened
-                    or v2flags.value("PANINI_DESKTOP_TOOLS") != "fine"
-                    or not v2flags.enabled("PANINI_V2_LEDGER")
-                )
-                tightened = (
-                    tightened
-                    or before is not None
-                    and LEVEL_ORDER.index(again.level) > LEVEL_ORDER.index(before.level)
-                )
-            if tightened:
+                    tightened = (
+                        tightened
+                        or v2flags.value("PANINI_DESKTOP_TOOLS") != "fine"
+                        or not v2flags.enabled("PANINI_V2_LEDGER")
+                    )
+                    tightened = (
+                        tightened
+                        or before is not None
+                        and LEVEL_ORDER.index(again.level) > LEVEL_ORDER.index(before.level)
+                    )
+                if tightened:
+                    work.cancel()
+                    from ..core_contracts import ToolResult
+
+                    message = (
+                        "Stopped: PANINI was paused or a permission changed."
+                        if again.action == "deny"
+                        else ("Stopped: a permission changed while this step ran.")
+                    )
+                    return ToolResult("cancelled", message, data={"error": message}, dispatched=True)
+        finally:
+            # Parent cancellation (MCP revoke/disconnect) must not leave the hand running.
+            if not work.done():
                 work.cancel()
-                from ..core_contracts import ToolResult
-
-                message = (
-                    "Stopped: PANINI was paused or a permission changed."
-                    if again.action == "deny"
-                    else ("Stopped: a permission changed while this step ran.")
-                )
-                return ToolResult("cancelled", message, data={"error": message}, dispatched=True)
+            if change is not None and not change.done():
+                change.cancel()
+            await asyncio.gather(work, *([change] if change is not None else []), return_exceptions=True)
 
     async def after(self, ctx, spec, args, result):
         decision = getattr(ctx, "decision", None)
