@@ -3,16 +3,54 @@
 import asyncio
 import json
 import os
+import re
 from typing import Literal
 
-from openai import AsyncOpenAI
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 from pydantic import Field, ValidationError, model_validator
 
 from .. import config
 from .contracts import Fault, StrictModel
 
 
+async def _parse_local(rules, payload, schema, *, surface):
+    from panini_cli.agent.local_model import LocalModel
+    from panini_cli.agent.model import ModelError
+
+    from .. import usage_log
+
+    try:
+        model = LocalModel(timeout=60)
+        try:
+            turn = await model.respond(
+                rules,
+                [{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
+                [],
+                output_schema=schema.model_json_schema(),
+                max_output_tokens=getattr(schema, "MAX_TOKENS", 1800),
+            )
+        finally:
+            await model.close()
+    except ModelError as exc:
+        raise Fault("LOCAL_PLANNER_UNAVAILABLE", str(exc), 503) from None
+    usage = turn.usage or {}
+    usage_log.record(
+        surface,
+        f"local:{model.model}",
+        usage.get("input_tokens", 0),
+        usage.get("output_tokens", 0),
+        cost=0,
+    )
+    # Pydantic applies field and cross-field checks omitted by JSON Schema.
+    # A bad local proposal must never reach an adapter as an executable plan.
+    return schema.model_validate_json(turn.text)
+
+
 async def parse(rules, payload, schema, *, image=None, surface="planner"):
+    mode = os.getenv("PANINI_LOCAL_MODE", "off").strip().lower()
+    fallback = mode == "fallback" and image is None
+    if fallback and not config.configured("OPENAI_API_KEY"):
+        return await _parse_local(rules, payload, schema, surface=surface)
     if not config.configured("OPENAI_API_KEY"):
         raise Fault("PLANNER_UNAVAILABLE", "Configure the OpenAI credential to use automatic planning.", 503)
     content = json.dumps(payload)
@@ -24,21 +62,30 @@ async def parse(rules, payload, schema, *, image=None, surface="planner"):
     from .. import usage_log
 
     model = os.getenv("PANINI_PLANNER_MODEL") or config.EXTENSION_PLANNER_MODEL
-    async with AsyncOpenAI(timeout=30, max_retries=0) as client:
-        response = await client.chat.completions.parse(
-            model=model,
-            messages=[{"role": "system", "content": rules}, {"role": "user", "content": content}],
-            response_format=schema,
-            # A schema may declare a larger budget (a drawing is hundreds of coordinates).
-            max_tokens=getattr(schema, "MAX_TOKENS", 1800),
-            temperature=0,
-            prompt_cache_key=f"panini-{surface}",
-        )
-        usage_log.record_openai(surface, model, getattr(response, "usage", None))
-        result = response.choices[0].message.parsed
-        if result is None:
-            raise Fault("PLANNER_REFUSED", "The planner could not produce a supported instruction.")
-        return result
+    try:
+        async with AsyncOpenAI(timeout=12 if fallback else 30, max_retries=0) as client:
+            response = await client.chat.completions.parse(
+                model=model,
+                messages=[{"role": "system", "content": rules}, {"role": "user", "content": content}],
+                response_format=schema,
+                # A schema may declare a larger budget (a drawing is hundreds of coordinates).
+                max_tokens=getattr(schema, "MAX_TOKENS", 1800),
+                temperature=0,
+                prompt_cache_key=f"panini-{surface}",
+            )
+    except (APIConnectionError, APITimeoutError):
+        if fallback:
+            return await _parse_local(rules, payload, schema, surface=surface)
+        raise
+    except APIStatusError as exc:
+        if fallback and exc.status_code >= 500:
+            return await _parse_local(rules, payload, schema, surface=surface)
+        raise
+    usage_log.record_openai(surface, model, getattr(response, "usage", None))
+    result = response.choices[0].message.parsed
+    if result is None:
+        raise Fault("PLANNER_REFUSED", "The planner could not produce a supported instruction.")
+    return result
 
 
 class Step(StrictModel):
@@ -151,7 +198,10 @@ async def evaluate_plan(session, turn, plan: Plan):
     """
     from .. import jev_client, usage_log
 
-    if not config.jev_gates() or not plan.steps:
+    if not plan.steps:
+        return {"accepted": True, "method": "not_required"}
+    local_fallback = os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "fallback"
+    if not config.jev_gates() and not local_fallback:
         return {"accepted": True, "method": "not_required"}
     steps = [step.model_dump() for step in plan.steps]
     questions = {
@@ -180,19 +230,35 @@ async def evaluate_plan(session, turn, plan: Plan):
         "proposed_steps": steps,
         "capability_meaning": CAPABILITY_MEANING,
     }
+    method = "jev"
     try:
-        answer = await asyncio.wait_for(
-            asyncio.to_thread(jev_client.ask, json.dumps(payload), questions),
-            config.JEV_GATE_TIMEOUT,
-        )
-        usage_log.record_jev("route.evaluate", answer)
+        if config.jev_gates():
+            try:
+                answer = await asyncio.wait_for(
+                    asyncio.to_thread(jev_client.ask, json.dumps(payload), questions),
+                    config.JEV_GATE_TIMEOUT,
+                )
+                usage_log.record_jev("route.evaluate", answer)
+            except (RuntimeError, OSError, TimeoutError):
+                if not local_fallback:
+                    raise
+                answer = None
+        else:
+            answer = None
+        if answer is None:
+            from ..brain import local_gate
+
+            method = "local"
+            answer = await local_gate.ask(payload, questions, timeout=30, allow_fallback=True)
         p = {key: float(answer["answers"][key]["probability"]) for key in questions}
-    except Exception as exc:  # noqa: BLE001 -- Routing can still fall back to deterministic execution.
+    except Exception as exc:  # noqa: BLE001 -- A local proposal fails closed without an evaluator.
+        if local_fallback:
+            return {"accepted": False, "method": "local_unavailable", "error": str(exc)[:200]}
         return {"accepted": True, "method": "jev_unavailable", "error": str(exc)[:200]}
     accepted = (
         p["fits_request"] >= 0.55 and p["needs_clarification"] <= 0.45 and p["wrong_capability"] <= 0.35
     )
-    return {"accepted": accepted, "method": "jev", "probabilities": p}
+    return {"accepted": accepted, "method": method, "probabilities": p}
 
 
 def one_brain_route(session, turn, decided):
@@ -218,21 +284,72 @@ def one_brain_route(session, turn, decided):
     }
 
 
+def local_open_and_type(session, text):
+    """Ground the simplest offline dictation intent in the installed app catalog."""
+    match = re.fullmatch(
+        r"(?:please\s+)?(?:open|launch|start)\s+(?P<app>[\w .-]+?)\s+and\s+type\s+(?P<draft>.+?)\s*[.!?]?",
+        text.strip(),
+        re.I,
+    )
+    if not match:
+        return None
+    draft = re.sub(r"\s+without saving$", "", match["draft"].strip(), flags=re.I).strip()
+    if (
+        not draft
+        or len(draft) > 128
+        or not draft.isprintable()
+        or re.search(r"\b(?:and|then)\b", draft, re.I)
+    ):
+        return None
+    applications = (session.inventory.get("desktop") or {}).get("applications") or []
+    matches = [
+        app
+        for app in applications
+        if match["app"].strip().casefold() in {app["application_id"].casefold(), app["label"].casefold()}
+    ]
+    if len(matches) != 1 or (session.inventory.get("desktop") or {}).get("state") != "ready":
+        return None
+    app = matches[0]
+    return {
+        "steps": [
+            Step(
+                capability="desktop",
+                operation="open_application",
+                application_id=app["application_id"],
+                instruction=f"Open {app['label']}",
+            ).model_dump(),
+            Step(
+                capability="desktop",
+                instruction=f"Type {draft} into {app['label']} without saving.",
+            ).model_dump(),
+        ],
+        "decided_by": "local_catalog_intent",
+    }
+
+
 async def route(session, turn):
     from .targets import grounded_query
 
+    local_only = os.getenv(
+        "PANINI_LOCAL_MODE", "off"
+    ).strip().lower() == "fallback" and not config.configured("OPENAI_API_KEY")
+
     if turn.capability_hint:
         return {"steps": [Step(capability=str(turn.capability_hint), instruction=turn.text).model_dump()]}
+    if local_only and (grounded := local_open_and_type(session, turn.text)):
+        return grounded
     decided = await jev_route(session, turn)
     from .. import v2flags
 
-    if v2flags.enabled("PANINI_V2_ONE_BRAIN"):
+    if v2flags.enabled("PANINI_V2_ONE_BRAIN") and not local_only:
         return one_brain_route(session, turn, decided)
     if decided:
         return decided
-    if (session.inventory.get("agent") or {}).get("state") == "ready" and os.getenv(
-        "PANINI_AGENT_DEFAULT", "true"
-    ).lower() not in {"0", "false", "no", "off"}:
+    if (
+        not local_only
+        and (session.inventory.get("agent") or {}).get("state") == "ready"
+        and os.getenv("PANINI_AGENT_DEFAULT", "true").lower() not in {"0", "false", "no", "off"}
+    ):
         # Anything Jev is not sure is one plain step goes to the agent, which plans, uses
         # tools and capabilities, recovers from failures and asks only when it must.
         return {
@@ -300,6 +417,48 @@ async def route(session, turn):
     for _ in range(3):
         try:
             result = await parse(rules, payload, Plan)
+            unavailable = sorted(
+                {
+                    step.capability
+                    for step in result.steps
+                    if (session.inventory.get(step.capability) or {}).get("state") != "ready"
+                }
+            )
+            if unavailable:
+                payload["schema_feedback"] = (
+                    f"Unavailable capabilities: {', '.join(unavailable)}. Choose only capabilities marked ready "
+                    "in inventory; do not invent a tool command or substitute a different capability."
+                )
+                continue
+            applications = (session.inventory.get("desktop") or {}).get("applications") or []
+            installed = {row["application_id"]: row["label"] for row in applications}
+            invalid_app = [
+                step.application_id
+                for step in result.steps
+                if step.operation == "open_application" and step.application_id not in installed
+            ]
+            if invalid_app:
+                payload["schema_feedback"] = (
+                    "An application ID was not in the installed desktop catalog. Available IDs: "
+                    + ", ".join(sorted(installed))
+                )
+                continue
+            launch_requested = bool(re.search(r"\b(?:open|launch|start)\b", turn.text, re.I)) and any(
+                re.search(r"\b" + re.escape(label) + r"\b", turn.text, re.I)
+                or re.search(r"\b" + re.escape(app_id) + r"\b", turn.text, re.I)
+                for app_id, label in installed.items()
+            )
+            if (
+                launch_requested
+                and result.steps
+                and not any(step.operation == "open_application" for step in result.steps)
+            ):
+                payload["schema_feedback"] = (
+                    "The user explicitly asked to open an installed app. The first desktop step must use "
+                    "operation=open_application and its catalog application_id, then use desktop execute "
+                    "for the requested interaction. Do not write command syntax in instruction."
+                )
+                continue
             user_scope = turn.text + " " + (session.pending or {}).get("instruction", "")
             invalid = [
                 step.target_query
@@ -321,7 +480,13 @@ async def route(session, turn):
                     "llm_proposer+jev_evaluator" if evaluation["method"] == "jev" else "llm_proposer"
                 )
                 return plan
-            if (session.inventory.get("agent") or {}).get("state") == "ready":
+            if evaluation["method"] == "local_unavailable":
+                raise Fault(
+                    "LOCAL_ADMISSION_UNAVAILABLE",
+                    "The local model could not verify this plan. Check the local model server.",
+                    503,
+                )
+            if not local_only and (session.inventory.get("agent") or {}).get("state") == "ready":
                 return {
                     "steps": [Step(capability="agent", instruction=turn.text).model_dump()],
                     "decided_by": "jev_evaluator_fallback_agent",

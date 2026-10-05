@@ -45,11 +45,11 @@ class OpenAIModel:
     """Nothing is stored at OpenAI (store=False). Encrypted reasoning is carried forward so a
     reasoning model keeps its chain of thought across tool calls within the conversation."""
 
-    def __init__(self, model, reasoning_effort=None, timeout=180.0):
+    def __init__(self, model, reasoning_effort=None, timeout=180.0, max_retries=3):
         from openai import AsyncOpenAI
 
         self.model, self.effort = model, reasoning_effort
-        self.client = AsyncOpenAI(timeout=timeout, max_retries=3)
+        self.client = AsyncOpenAI(timeout=timeout, max_retries=max_retries)
         self.reasoning = True
 
     def switch_model(self, model):
@@ -243,13 +243,22 @@ def create_model(settings):
         from .local_model import LocalModel
 
         return LocalModel(timeout=settings.request_timeout)
+    if mode == "fallback":
+        from .config import configured_key
+        from .local_model import FallbackModel, LocalModel
+
+        if not configured_key():
+            return LocalModel(timeout=settings.request_timeout)
+        cloud = OpenAIModel(
+            model_router.actual_model(settings.model),
+            settings.reasoning_effort,
+            min(settings.request_timeout, 12.0),
+            max_retries=0,
+        )
+        return FallbackModel(cloud, lambda: LocalModel(timeout=settings.request_timeout))
     cloud = OpenAIModel(
         model_router.actual_model(settings.model),
         settings.reasoning_effort,
         settings.request_timeout,
     )
-    if mode == "fallback":
-        from .local_model import FallbackModel, LocalModel
-
-        return FallbackModel(cloud, lambda: LocalModel(timeout=settings.request_timeout))
     return cloud

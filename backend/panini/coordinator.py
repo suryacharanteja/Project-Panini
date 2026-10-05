@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import secrets
 import time
@@ -631,6 +632,11 @@ class Coordinator:
         work; if so the agent retries with the error, instead of stopping at the first wall."""
         from .. import config, jev_client, usage_log
 
+        # A failed offline step must stay failed. The fallback agent has not passed
+        # a comparative task-quality gate and must not bypass local admission.
+        local_fallback = os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "fallback"
+        if local_fallback and not config.jev_gates():
+            return None
         agent = self.adapters.get("agent")
         task = ctx.task
         if agent is None or task.dispatched and outcome.outcome == "unknown_effect":
@@ -668,8 +674,9 @@ class Coordinator:
                 usage_log.record_jev("recover", answer)
                 if float(answer["answers"]["recoverable"]["probability"]) < 0.4:
                     return None
-            except Exception:  # noqa: BLE001 -- If Jev is unsure or slow, try the agent anyway.
-                pass
+            except Exception:  # noqa: BLE001 -- Cloud recovery keeps its existing best-effort behavior.
+                if local_fallback:
+                    return None
         failed = task.capability
         try:
             await asyncio.wait_for(failed_adapter.stop(task.task_id), 4)

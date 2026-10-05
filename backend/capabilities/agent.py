@@ -24,13 +24,15 @@ class AgentAdapter:
 
         if private_mode.active():
             return {"capability": self.name, "state": "unavailable", "reason": private_mode.reason()}
-        ready = config.configured("OPENAI_API_KEY") or bool(
-            __import__("os").getenv("PANINI_CLI_SCRIPTED_MODEL")
-        )
+        import os
+
+        ready = config.configured("OPENAI_API_KEY") or bool(os.getenv("PANINI_CLI_SCRIPTED_MODEL"))
+        if not ready and os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "fallback":
+            ready = config.local_model_configured()
         return {
             "capability": self.name,
             "state": "ready" if ready else "unavailable",
-            "reason": "" if ready else "Configure the OpenAI credential to use the PANINI agent.",
+            "reason": "" if ready else "Configure an OpenAI credential or a local fallback model.",
         }
 
     async def targets(self):

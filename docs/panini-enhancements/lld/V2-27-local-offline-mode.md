@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 6 · P3 · L (2 weeks) |
 | Depends on | V2-06 (model router) |
 | Flag | `PANINI_LOCAL_MODE` = `off` (default) · `fallback` · `private` |
-| Status | In progress: local model/fallback, strict local evidence gates, private-preview refusals and packaged offline STT with shell dictation built; blocking-proxy, TTS, full push-to-talk task and quality guard pending |
+| Status | In progress: local model/fallback, coordinator and desktop fallback admission, private-preview refusals and packaged offline STT with shell dictation built; blocking-proxy, TTS, full push-to-talk task and comparative quality guard pending |
 
 ## 1. Outcome
 
@@ -111,6 +111,24 @@ a download. Private mode uses that engine even when a cloud operation is injecte
 uses it after a cloud transcription error. The authenticated shell records up to 30 seconds and puts
 the transcript in the composer for review. A synthetic spoken WAV passed locally; physical microphone
 capture, the complete offline Notepad task, TTS playback and whole-process egress remain unqualified.
+
+The next increment routes a missing-key or transiently failed cloud planner call to the loopback
+model. It validates the result with Pydantic, checks proposed capabilities against live readiness,
+checks application IDs against the installed catalog, and requires an explicit launch step when
+the user requested opening an installed app. A fallback route must pass a bounded local evidence
+gate; missing or malformed gate output rejects the route. A narrow catalog-grounded offline
+intent routes an explicit "open installed app and type short draft" request into launch and
+draft steps without asking an unqualified model to invent plan fields. It rejects extra commands
+such as "and save". The semantic Desktop adapter also uses
+that local gate for each proposed UI Automation action when AI Gateway is absent or fails, and
+stops before input if admission is unavailable. Unqualified agent recovery is disabled for an
+offline failed step. Launch verification now requires a new window rather than treating an
+existing window of the same app as proof. Focused tests pass, including a regression for
+successful cloud planner responses. A real `qwen2.5:7b-instruct-q4_K_M` model generated a
+malformed general Notepad route and failed safely after bounded retries; the new narrow route
+passed a no-action dry run in 0.015 seconds. Its direct Goal/Action schema probe produced valid
+JSON, which does not qualify the full task. A `qwen3` 14B probe timed out. The complete offline
+Notepad acceptance case and comparative quality threshold are still open.
 
 ## 9. Rollout and rollback
 

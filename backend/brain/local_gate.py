@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import re
 
 from .. import private_mode
@@ -9,9 +10,11 @@ from .. import private_mode
 KEY = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
 
-async def ask(state: dict, questions: dict, *, model=None, timeout=6.0) -> dict:
+async def ask(state: dict, questions: dict, *, model=None, timeout=6.0, allow_fallback=False) -> dict:
     """Ask a local model for exact booleans; malformed or missing answers fail closed."""
-    if not private_mode.active():
+    if not private_mode.active() and not (
+        allow_fallback and os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "fallback"
+    ):
         raise RuntimeError("Local evidence gates require private mode.")
     if not isinstance(state, dict) or not isinstance(questions, dict) or not 1 <= len(questions) <= 32:
         raise ValueError("Local evidence questions are invalid.")

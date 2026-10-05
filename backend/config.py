@@ -20,6 +20,21 @@ def configured(name: str) -> bool:
     return bool(value and not value.startswith("your_") and value != "change-me")
 
 
+def local_model_configured() -> bool:
+    if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() not in {"fallback", "private"}:
+        return False
+    if not os.getenv("PANINI_LOCAL_MODEL", "").strip():
+        return False
+    from panini_cli.agent.local_model import endpoint
+    from panini_cli.agent.model import ModelError
+
+    try:
+        endpoint(os.getenv("PANINI_LOCAL_BASE_URL", ""))
+    except ModelError:
+        return False
+    return True
+
+
 def jev_gates() -> bool:
     """Jev routing and completion checks (on by default whenever Jev is configured)."""
     if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "private":
