@@ -2,8 +2,9 @@
 // Android, decisions signed by the device key without opening the app, and Android's share sheet.
 import { Fabric } from './lib/fabric.mjs';
 import * as db from './lib/db.mjs';
+import { rememberClosed, notificationPath } from './lib/notifications.mjs';
 
-const CACHE = 'panini-phone-v13';
+const CACHE = 'panini-phone-v14';
 const SHELL = [
   '/',
   '/app.js',
@@ -15,9 +16,11 @@ const SHELL = [
   '/lib/cards.mjs',
   '/lib/passkeys.mjs',
   '/lib/db.mjs',
+  '/lib/notifications.mjs',
   '/lib/persona.mjs',
   '/screens/persona.mjs',
   '/screens/calls.mjs',
+  '/screens/conversation.mjs',
   '/screens/call-report.mjs',
   '/screens/home.mjs',
   '/screens/threads.mjs',
@@ -74,34 +77,47 @@ async function share(request) {
   return Response.redirect(new URL('/?tab=ask', self.location.origin).href, 303);
 }
 
+let notificationQueue = Promise.resolve();
 self.addEventListener('push', (event) => {
   let data = {};
   try {
     data = event.data.json();
   } catch {}
-  const isTap = data.type === 'interrupt' && data.level === 'tap';
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'PANINI', {
-      body:
-        data.type === 'interrupt'
-          ? data.level === 'tap'
-            ? 'Approve or decline.'
-            : 'Open PANINI to decide.'
-          : '',
-      tag: data.id || 'panini',
-      data,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-      requireInteraction: data.type === 'interrupt',
-      actions: isTap
-        ? [
-            { action: 'approve', title: 'Approve' },
-            { action: 'decline', title: 'Decline' },
-          ]
-        : [],
-    }),
-  );
+  notificationQueue = notificationQueue.catch(() => {}).then(() => handlePush(data));
+  event.waitUntil(notificationQueue);
 });
+
+async function handlePush(data) {
+  const closed = (await db.get('closed-notifications')) || {};
+  if (data.type === 'interrupt_resolved') {
+    await db.set('closed-notifications', rememberClosed(closed, data.id));
+    for (const note of await self.registration.getNotifications({ tag: data.id })) note.close();
+    for (const client of await self.clients.matchAll({ type: 'window' }))
+      client.postMessage({ type: 'interrupt.resolved', id: data.id });
+    return;
+  }
+  if (closed[data.id]) return;
+  const isTap = data.type === 'interrupt' && data.level === 'tap';
+  await self.registration.showNotification(data.title || 'PANINI', {
+    body:
+      data.type === 'interrupt'
+        ? data.level === 'tap'
+          ? 'Approve or decline.'
+          : 'Open PANINI to decide.'
+        : '',
+    tag: data.id || 'panini',
+    data,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    requireInteraction: data.type === 'interrupt',
+    actions: isTap
+      ? [
+          { action: 'approve', title: 'Approve' },
+          { action: 'decline', title: 'Decline' },
+        ]
+      : [],
+  });
+}
 
 self.addEventListener('notificationclick', (event) => {
   const data = event.notification.data || {};
@@ -110,7 +126,7 @@ self.addEventListener('notificationclick', (event) => {
     event.waitUntil(decideFromNotification(data, event.action));
     return;
   }
-  event.waitUntil(openApp(data.type === 'interrupt' ? '/?tab=inbox' : '/'));
+  event.waitUntil(openApp(notificationPath(data)));
 });
 
 async function decideFromNotification(data, button) {
@@ -122,6 +138,13 @@ async function decideFromNotification(data, button) {
     if (current.status !== 200) throw new Error('This request is no longer available.');
     if (current.body.level !== 'tap') throw new Error('Open PANINI to review this decision.');
     const result = await fabric.decide(current.body, button);
+    if (result.ok) {
+      await db.set(
+        'closed-notifications',
+        rememberClosed(await db.get('closed-notifications'), data.id),
+      );
+      for (const note of await self.registration.getNotifications({ tag: data.id })) note.close();
+    }
     await self.registration.showNotification(
       result.ok ? (button === 'approve' ? 'Approved' : 'Declined') : 'Not done',
       {

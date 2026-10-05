@@ -103,6 +103,31 @@ def approve(h, row, *, surface="phone_app", method="tap", approved=True):
     )
 
 
+@pytest.mark.anyio
+async def test_continuity_owner_call_uses_fixed_configured_facts_and_waits_for_exact_approval(
+    world, monkeypatch
+):
+    monkeypatch.setenv("PANINI_PRESENCE", "true")
+    h, service, observed, _ = world
+    thread = h.sessions.create("Private conversation contents are not disclosed")
+    requested = h.continuity.handoff(thread, "call", surface="phone_app")
+    row = service.get(requested["brief_id"])
+    assert requested["status"] == "review_required"
+    assert row["brief"]["number"] == service.settings()["config"]["owner_number"]
+    assert row["brief"]["may_commit"] == [] and row["brief"]["max_minutes"] == 2
+    assert row["brief"]["voicemail"] == "hang_up"
+    assert "Private conversation" not in json.dumps(row["brief"])
+    assert row["thread_id"] == thread
+    await service.tick()
+    assert observed == []
+    with pytest.raises(Fault):
+        service.approval(row, CallBrief.model_validate(row["brief"]))
+    approve(h, row)
+    service.approval(service.get(row["id"]), CallBrief.model_validate(row["brief"]))
+    # The test qualifies approval binding, not a real SIP call.
+    assert observed == []
+
+
 @pytest.mark.parametrize(
     "number",
     [

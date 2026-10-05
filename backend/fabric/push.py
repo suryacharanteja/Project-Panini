@@ -75,7 +75,7 @@ class Push:
 
     async def send(self, message: dict, device_id: str | None = None) -> dict:
         """Send to one device's subscriptions, or to every active device. Gone subscriptions are removed."""
-        allowed = {"type", "id", "title", "level"}
+        allowed = {"type", "id", "title", "level", "thread_id"}
         payload = json.dumps({k: v for k, v in message.items() if k in allowed})[:3000].encode()
         query = (
             "SELECT s.* FROM push_subscriptions s JOIN devices_v2 d ON d.id = s.device_id WHERE d.status='active'"

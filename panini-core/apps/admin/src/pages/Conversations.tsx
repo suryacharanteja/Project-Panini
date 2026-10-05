@@ -12,6 +12,7 @@ import '../../../shared-ui/tokens.css';
 import { connectThread, newId, runAgent, stopThread } from '../agui';
 import { Button, Card, Empty, inputClass, Page } from '../components/ui';
 import { SaveToSpace } from './spaces/SaveToSpace';
+import { api, harness } from '../api';
 
 const THREAD_KEY = 'panini.conversation.thread';
 
@@ -54,6 +55,7 @@ export function ConversationsPage({
   const [thread, setThread] = useState(() => initialThread || savedThread() || newId());
   const [state, dispatch] = useReducer(reducer, undefined, emptyConversation);
   const [draft, setDraft] = useState(initialDraft || '');
+  const [handoffMessage, setHandoffMessage] = useState('');
   useEffect(() => {
     if (initialDraft) setDraft(initialDraft);
   }, [initialDraft]);
@@ -223,6 +225,25 @@ export function ConversationsPage({
         </form>
         {!state.running && state.entries.length > 0 && (
           <div className="mt-4">
+            <Button
+              onClick={async () => {
+                try {
+                  await api(harness('/presence/handoff'), {
+                    body: { thread_id: thread, destination: 'phone' },
+                  });
+                  setHandoffMessage('Queued for your phone.');
+                } catch (error) {
+                  setHandoffMessage((error as Error).message);
+                }
+              }}
+            >
+              Send to my phone
+            </Button>
+            {handoffMessage && (
+              <p role="status" className="text-sm">
+                {handoffMessage}
+              </p>
+            )}
             <SaveToSpace
               key={`${thread}:${state.entries.length}`}
               kind="conversation"

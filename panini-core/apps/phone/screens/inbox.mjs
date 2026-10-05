@@ -18,6 +18,7 @@ export async function inbox(app) {
     'section.screen',
     {},
     h('h2', { text: 'Inbox' }),
+    h('button.wide', { onclick: () => app.show('inbox') }, 'Refresh Inbox'),
     cards.length ? cards : h('p.empty', { text: 'Nothing needs you right now.' }),
     notices.length ? h('h3', { text: 'Notices' }) : null,
     notices
@@ -57,7 +58,7 @@ function interruptCard(app, view) {
   };
   return h(
     'article.card.interrupt',
-    { 'data-level': model.level },
+    { 'data-level': model.level, 'data-interrupt-id': view.id },
     h('p.eyebrow', { text: `${view.kind} · ${model.level}` }),
     h('h3', { text: model.title }),
     model.message ? h('p', { text: model.message }) : null,

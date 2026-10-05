@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 5 · P2 · M (5 days) |
 | Depends on | V2-14 (fabric), V2-15 (phone app), V2-16 (phone line), V2-17 (channels) |
 | Flag | `PANINI_PRESENCE` (default `false`) |
-| Status | Not started |
+| Status | In progress |
 
 ## 1. Outcome
 
@@ -104,7 +104,7 @@ request and the decision happens on the phone. No watch app in v2.
 ## 8. Acceptance criteria
 
 - [ ] With the PC locked, approvals arrive on the phone within 5 s; resolving anywhere clears them everywhere.
-- [ ] "Continue on my PC" from the phone opens the thread on the avatar.
+- [x] "Continue on my PC" from the phone opens the thread on the avatar.
 - [ ] Urgent escalation calls the owner only when opted in.
 
 ## 9. Rollout and rollback
@@ -115,3 +115,32 @@ interrupt.
 ## 10. Open questions
 
 - Quiet hours (no pushes at night except urgent)? Recommendation: yes, default 22:00–07:00 local, editable.
+
+## Implementation evidence — 2026-10-05
+
+Presence now persists server-timestamped PC, paired-phone, accepted-push and authenticated channel
+signals. PC/phone freshness expires at 30/60 seconds; a restart never revives a fresh PC signal.
+The shell sends native powerMonitor signals on lock/unlock/suspend/resume and every 15 seconds;
+the phone sends foreground signals through the encrypted fabric every 30 seconds.
+
+Durable routes cover approvals, notices and foreground results with editable destinations/delays,
+timezone-aware quiet hours, source resolution retractions and explicit transport/PC handling receipts.
+Ambiguous sends are not replayed. Channel destinations must be existing authenticated owner private
+threads. Telegram notes are cancelled/edited on resolution, including a resolution racing a send.
+The phone closes resolved notifications and retains bounded tombstones against delayed opening pushes.
+
+Phone conversation history and handoff preserve the actual thread id. The real Electron smoke restores
+the same agent binding and original transcript without creating another session, then opens the actual
+owner-authenticated Live page. Active avatar tasks/voice sessions prevent retargeting; a verified owner
+source call is ended/drained before its PC handoff is queued. The encrypted Android-sized browser smoke
+separately covers the phone command. Physical-device handoff remains unqualified.
+
+"Review a call to me" creates one fixed, digest-bound V2-20 brief for the configured owner number,
+with no commitments, no conversation disclosure, a two-minute bound and no voicemail. It requires the
+existing owner approval, trunk checklist, calling windows, policy and budget checks. This implements
+the reviewed manual request; automatic opt-in urgent escalation is still unimplemented.
+
+Remaining: bounded standing authorization and urgent timers, spoken avatar/call prompts and voice
+handoff commands, actual Android/Wear OS push/action/retraction within five seconds, live preferred
+channel and real owner SIP qualification. The flag remains off by default. Red-team remains disabled
+and deferred. See [qualification record](../qualification-continuity-2026-10-05.md).

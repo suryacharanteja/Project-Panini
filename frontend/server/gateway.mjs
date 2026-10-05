@@ -48,7 +48,7 @@ const BACKEND_ROUTES = new Set([
 const BACKEND_PREFIXES = [
   ['DELETE', '/api/extension/devices/'],
   // Harness: memories, skills, background tasks and reviews.
-  ...['GET', 'POST', 'PATCH', 'DELETE'].map((method) => [method, '/api/harness/']),
+  ...['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((method) => [method, '/api/harness/']),
   // PANINI Admin API.
   ...['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((method) => [method, '/api/admin/v1/']),
   // AG-UI agent runs (V2-07): server-sent event streams.

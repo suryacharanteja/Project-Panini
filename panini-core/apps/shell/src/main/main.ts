@@ -15,6 +15,7 @@ import {
   shell,
   safeStorage,
   clipboard,
+  powerMonitor,
 } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -30,6 +31,9 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'panini', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 app.setName('PANINI');
+// Honour Electron's explicit profile directory for isolated installations and developer qualification.
+const profileDirectory = app.commandLine.getSwitchValue('user-data-dir');
+if (profileDirectory) app.setPath('userData', resolve(profileDirectory));
 // Windows groups taskbar buttons by this ID; without it PANINI shows as "Electron".
 if (process.platform === 'win32') app.setAppUserModelId('ai.ndimensions.panini');
 const locked = app.requestSingleInstanceLock();
@@ -264,6 +268,100 @@ function setPresence(value: 'avatar' | 'background') {
   else win?.hide();
   trayMenu();
   emit({ type: 'shell.presence', data: { presence: value } });
+  void signalPresence();
+}
+let pcLocked = false;
+let pcSuspended = false;
+let continuityPolling = false;
+let pcSignalBusy = false;
+let pcSignalAgain = false;
+const continuityNotes = new Map<string, Notification>();
+let continuityLive: BrowserWindow | null = null;
+async function openContinuityLive() {
+  if (continuityLive && !continuityLive.isDestroyed()) {
+    continuityLive.show();
+    return;
+  }
+  continuityLive = new BrowserWindow({
+    width: 1100,
+    height: 850,
+    title: 'PANINI · Live view',
+    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+  });
+  continuityLive.on('closed', () => {
+    continuityLive = null;
+  });
+  await continuityLive.loadURL(consoleLink('/build/live'));
+}
+async function signalPresence() {
+  if (!connected || !client) return;
+  if (pcSignalBusy) {
+    pcSignalAgain = true;
+    return;
+  }
+  pcSignalBusy = true;
+  try {
+    do {
+      pcSignalAgain = false;
+      await client
+        .call('/harness/presence/pc', {
+          idle_s: Math.min(604800, powerMonitor.getSystemIdleTime()),
+          locked: pcLocked,
+          suspended: pcSuspended,
+          avatar_visible: Boolean(win && !win.isDestroyed() && win.isVisible()),
+        })
+        .catch(() => {});
+    } while (pcSignalAgain && connected);
+  } finally {
+    pcSignalBusy = false;
+  }
+}
+async function pollContinuity() {
+  if (!connected || !client || continuityPolling) return;
+  continuityPolling = true;
+  try {
+    const { commands } = await client.call('/harness/presence/commands');
+    for (const command of commands) {
+      try {
+        const data = command.data || {};
+        if (command.kind === 'retract') {
+          continuityNotes.get(data.id)?.close();
+          continuityNotes.delete(data.id);
+          emit({ type: 'continuity.retract', data });
+        } else if (command.kind === 'handoff') {
+          if (pcLocked || pcSuspended) continue;
+          const restored = await client.call('/harness/presence/handoff/accept', {
+            seq: command.seq,
+            session_id: client.sessionId,
+          });
+          show(true);
+          emit({ type: 'continuity.handoff', data: restored });
+          await openContinuityLive();
+        } else if (command.kind === 'notification') {
+          if (!Notification.isSupported()) continue;
+          const note = new Notification({
+            title: 'PANINI',
+            body: String(data.title || 'Check your Inbox').slice(0, 200),
+          });
+          const previous = continuityNotes.get(data.id);
+          previous?.close();
+          continuityNotes.set(data.id, note);
+          note.on('close', () => {
+            if (continuityNotes.get(data.id) === note) continuityNotes.delete(data.id);
+          });
+          note.on('click', () => void shell.openExternal(consoleLink('/inbox')).catch(() => {}));
+          note.show();
+          emit({ type: 'continuity.notification', data });
+        } else continue;
+        await client.call('/harness/presence/commands/ack', { seq: command.seq });
+      } catch {
+        /* A busy handoff must not prevent later notification retractions. */
+      }
+    }
+  } catch {
+  } finally {
+    continuityPolling = false;
+  }
 }
 async function pollHarness() {
   if (!connected || !client) return;
@@ -279,7 +377,7 @@ async function pollHarness() {
       emit({ type: 'harness.status', data: next });
     }
     // In background mode, notifications are how the person knows PANINI is working.
-    if (Notification.isSupported() && (newNotices || newReviews)) {
+    if (!next.presence?.enabled && Notification.isSupported() && (newNotices || newReviews)) {
       const note = new Notification({
         title: 'PANINI',
         body: newReviews
@@ -463,6 +561,7 @@ async function startRuntime() {
         throw new Error('Runtime identity mismatch.');
       await client.connect(bootstrap);
       connected = true;
+      await signalPresence();
       break;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -737,6 +836,24 @@ function ipc() {
       await shell.openExternal(consoleLink(page));
       return;
     }
+    if (operation === 'continuity') {
+      if (
+        input.action === 'seen' &&
+        typeof input.item_id === 'string' &&
+        /^(notice|result|handoff):[A-Za-z0-9_-]{1,200}$/.test(input.item_id)
+      )
+        return client.call(`/harness/presence/items/${encodeURIComponent(input.item_id)}/seen`, {});
+      if (
+        (input.action === 'send_to_phone' || input.action === 'call_me') &&
+        typeof input.thread_id === 'string' &&
+        /^[A-Za-z0-9_-]{1,200}$/.test(input.thread_id)
+      )
+        return client.call('/harness/presence/handoff', {
+          thread_id: input.thread_id,
+          destination: input.action === 'call_me' ? 'call' : 'phone',
+        });
+      throw new Error('Unsupported continuity action.');
+    }
     if (operation === 'live') {
       // Live view (V2-12): the renderer has no token, so main relays only well-formed live paths.
       const path = String(input.path || '');
@@ -789,6 +906,7 @@ function ipc() {
       const lease = await client.scoped('/lease/acquire', { command_id: randomUUID() });
       client.epoch = lease.lease_epoch;
       connected = true;
+      await signalPresence();
       return client.scoped('');
     }
     if (!connected) throw new Error('PANINI is connecting.');
@@ -962,6 +1080,28 @@ if (locked)
     tray = new Tray(icon);
     trayMenu();
     setInterval(() => void pollHarness(), 5000);
+    pcLocked = powerMonitor.getSystemIdleState(120) === 'locked';
+    powerMonitor.on('lock-screen', () => {
+      pcLocked = true;
+      void signalPresence();
+    });
+    powerMonitor.on('unlock-screen', () => {
+      pcLocked = false;
+      void signalPresence();
+    });
+    powerMonitor.on('suspend', () => {
+      pcSuspended = true;
+      void signalPresence();
+    });
+    powerMonitor.on('resume', () => {
+      pcSuspended = false;
+      void signalPresence();
+    });
+    win.on('show', () => void signalPresence());
+    win.on('hide', () => void signalPresence());
+    void signalPresence();
+    setInterval(() => void signalPresence(), 15000);
+    setInterval(() => void pollContinuity(), 1000);
     tray.on('click', () => show(true));
     screen.on('display-removed', () => resize(expanded));
     screen.on('display-metrics-changed', () => resize(expanded));

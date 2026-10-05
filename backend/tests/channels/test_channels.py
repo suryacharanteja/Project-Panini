@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 from dataclasses import replace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -24,6 +25,50 @@ from backend.policy.engine import tier
 from backend.registry.context import ToolContext
 
 TOKEN = "123456:abcdefghijklmnopqrstuvw_xyz"
+
+
+def test_continuity_channel_delivery_and_resolution_race_edit_the_exact_owner_note(setup, monkeypatch):
+    from backend.fabric.routing import defaults
+    from backend.interrupts import InterruptSpec
+
+    monkeypatch.setenv("PANINI_PRESENCE", "true")
+    h, manager, account, provider, message, _, _ = setup
+
+    async def scenario():
+        await manager.deliver(message)
+        config = defaults()
+        config["quiet"]["enabled"] = False
+        config["preferred_channel"] = {"account_id": account["id"], "thread_key": message.thread_key}
+        h.continuity.configure(config)
+        view = h.interrupts.open(
+            InterruptSpec("approval", "tool_call", "Sensitive owner title", "Decide", ttl_s=3600), run_id="r"
+        )
+        await h.continuity.tick()
+        delivery = h.store.one(
+            "SELECT detail FROM continuity_deliveries WHERE item_id=? AND route='channel'",
+            ("interrupt:" + view["id"],),
+        )
+        ids = json.loads(delivery["detail"])["outbox_ids"]
+        assert len(ids) == 1
+        provider.edit = AsyncMock()
+
+        async def racing_send(_thread, notification):
+            assert "Sensitive owner title" not in notification.text
+            h.interrupts.expire(view["id"])
+            return "321"
+
+        provider.send = racing_send
+        await manager.flush()
+        await h.continuity.tick()
+        assert provider.edit.await_count == 1
+        assert provider.edit.call_args.args == (
+            message.thread_key,
+            "321",
+            "Resolved in PANINI. Ref: " + view["id"],
+        )
+        assert h.store.one("SELECT state FROM channel_outbox WHERE id=?", (ids[0],))["state"] == "retracted"
+
+    asyncio.run(scenario())
 
 
 class Secrets(dict):

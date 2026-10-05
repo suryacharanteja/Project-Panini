@@ -16,6 +16,7 @@ from ..harness import a2a
 from ..harness.memory import KINDS, MemoryError
 from .outbound import add_outbound
 from .panini import principal
+from .presence import add_presence
 
 router = APIRouter()
 
@@ -1036,3 +1037,6 @@ add_phone(shell_router, lambda request: principal(request))
 
 add_outbound(console_router, lambda request: None, configurable=True)
 add_outbound(shell_router, lambda request: principal(request))
+
+add_presence(console_router, lambda request: None)
+add_presence(shell_router, lambda request: principal(request, controller=True), native=True)

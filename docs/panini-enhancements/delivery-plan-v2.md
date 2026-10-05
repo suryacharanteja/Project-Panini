@@ -290,12 +290,12 @@ Dependencies: V2-02 (registry), V2-03 (policy), V2-05 (interrupts); V2-13 gate.
 
 ### V2-24: Continuity and presence
 
-Implementation register: **Not started**. [Source LLD](lld/V2-24-continuity-presence.md).
+Implementation register: **In progress**. [Source LLD](lld/V2-24-continuity-presence.md).
 
 Dependencies: V2-14 (fabric), V2-15 (phone app), V2-16 (phone line), V2-17 (channels).
 
 - [ ] With the PC locked, approvals arrive on the phone within 5 s; resolving anywhere clears them everywhere.
-- [ ] "Continue on my PC" from the phone opens the thread on the avatar.
+- [x] "Continue on my PC" from the phone opens the thread on the avatar.
 - [ ] Urgent escalation calls the owner only when opted in.
 
 ### V2-25: Ambient triggers and responsibilities
@@ -360,3 +360,12 @@ owner-shared personas with intersected permissions, interrupt-card grants and ac
 Windows AppContainer execution, workspace isolation and OS worker cancellation have source SDK evidence.
 Remaining live external-agent, desktop/browser and model requirements and qualification
 are recorded in [the MCP report](qualification-mcp-2026-10-05.md); no all-LLD completion is claimed.
+
+## Continuity delivery checkpoint — 2026-10-05
+
+V2-24 adds native and encrypted phone presence, durable routing/quiet hours, retraction and same-thread
+PC/phone handoff. A real Electron smoke restores the avatar's original agent thread and opens Live;
+Admin rules save through the real gateway/backend at desktop/mobile widths. A manual owner-call request
+remains digest-bound and owner-reviewed. Automatic urgent escalation, voice/spoken handoffs and physical
+Android/Wear OS/live push/SIP qualification remain pending. See
+[continuity evidence](qualification-continuity-2026-10-05.md). Full-program promotion remains open.

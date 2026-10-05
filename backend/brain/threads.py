@@ -65,6 +65,20 @@ class Threads:
             )
         ]
 
+    def attach(self, surface: str, external_id: str, thread_id: str):
+        """Bind an existing owner thread without manufacturing a second conversation."""
+        self.sessions.get(thread_id)
+        existing = self.store.one(
+            "SELECT thread_id FROM thread_bindings WHERE surface=? AND external_id=?", (surface, external_id)
+        )
+        if existing and existing["thread_id"] != thread_id:
+            raise ValueError("This conversation identifier already belongs to another thread.")
+        self.store.execute(
+            "INSERT OR IGNORE INTO thread_bindings(surface,external_id,thread_id,created) VALUES (?,?,?,?)",
+            (surface, external_id, thread_id, self.clock()),
+        )
+        return thread_id
+
     def unbind(self, surface: str, external_id: str) -> bool:
         return bool(
             self.store.execute(

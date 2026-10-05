@@ -119,6 +119,8 @@ def create_app(
         from .harness.runtime import Harness
 
         app.state.harness = (harness_factory or Harness)()
+        if hasattr(app.state.harness, "continuity"):
+            app.state.harness.continuity.app = app
     if settings.enabled:
         from .panini.coordinator import Coordinator
         from .panini.planning import route

@@ -100,6 +100,11 @@ class Telegram:
         result = await self.api("sendMessage", {**self.destination(thread_key), "text": message.text})
         return str(result["message_id"])
 
+    async def edit(self, thread_key, message_id, text):
+        destination = self.destination(thread_key)
+        destination.pop("message_thread_id", None)
+        await self.api("editMessageText", {**destination, "message_id": int(message_id), "text": text})
+
     async def typing(self, thread_key):
         await self.api("sendChatAction", {**self.destination(thread_key), "action": "typing"})
 

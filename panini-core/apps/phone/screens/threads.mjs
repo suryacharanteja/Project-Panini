@@ -80,6 +80,7 @@ export async function threads(app) {
     'section.screen',
     {},
     h('h2', { text: 'Work' }),
+    h('button.wide', { onclick: () => app.show('conversation') }, 'Conversations · continue on PC'),
     h('p.muted', {
       text: 'Recent background tasks on your PC. Completion status and verified results are shown separately.',
     }),

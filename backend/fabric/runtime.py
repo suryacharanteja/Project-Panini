@@ -205,10 +205,15 @@ class Fabric:
         """Push each new approval or question to paired phones (title and level only; details over the fabric)."""
 
         def opened(event, view):
-            if event != "interrupt.opened" or not self.devices.any_active():
+            if (
+                event not in {"interrupt.opened", "interrupt.resolved", "interrupt.expired"}
+                or not self.devices.any_active()
+            ):
+                return
+            if v2flags.enabled("PANINI_PRESENCE"):
                 return
             message = {
-                "type": "interrupt",
+                "type": "interrupt" if event == "interrupt.opened" else "interrupt_resolved",
                 "id": view["id"],
                 "title": view.get("title", ""),
                 "level": view.get("level"),
@@ -242,5 +247,7 @@ def runtime(app) -> "Fabric":
         h = app.state.harness
         fabric = Fabric(app, h.store, SecretStore(data_directory() / "fabric-secrets.bin"))
         fabric.watch_interrupts(h.interrupts)
+        if hasattr(h, "continuity"):
+            h.continuity.fabric = fabric
         app.state.fabric_runtime = fabric
     return fabric

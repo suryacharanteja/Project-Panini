@@ -25,6 +25,25 @@ export async function calls(app) {
     const active = reply.body.active;
     panel.replaceChildren(h('h3', { text: active ? 'Call connected' : 'No active call' }));
     if (active) {
+      if (active.verified && active.thread_id)
+        panel.append(
+          h(
+            'button.wide',
+            {
+              onclick: (event) =>
+                action(event.currentTarget, async () => {
+                  const result = await app.fabric.request('POST', '/presence/handoff', {
+                    thread_id: active.thread_id,
+                    destination: 'pc',
+                  });
+                  if (result.status !== 200)
+                    throw new Error(result.body?.detail || 'Handoff unavailable.');
+                  toast('Conversation queued for your PC.');
+                }),
+            },
+            'End call and continue on my PC',
+          ),
+        );
       panel.append(
         personaChip(active.persona),
         h('p', { text: active.number }),

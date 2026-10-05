@@ -3,6 +3,7 @@ import { ExternalLink, Plus, RefreshCw, RotateCcw, Trash2, X } from 'lucide-reac
 import { useEffect, useState } from 'react';
 import { admin, ago, api, harness, useResource, when } from '../api';
 import { SettingsForm } from '../components/SettingsForm';
+import { PresencePanel } from './Presence';
 import {
   Badge,
   Button,
@@ -445,6 +446,7 @@ export function SystemPage() {
               ))}
           </dl>
         </Card>
+        <PresencePanel />
       </div>
     </Page>
   );

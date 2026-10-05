@@ -74,6 +74,23 @@ try {
   if (!nonExtractable) throw Error('Keys extractable');
   await mkdir('artifacts/phone', { recursive: true });
   await page.screenshot({ path: 'artifacts/phone/android-home.png' });
+  const originalConversation = await control('/conversation', 'POST');
+  await page.getByRole('button', { name: 'Work', exact: true }).click();
+  await page.getByRole('button', { name: 'Conversations · continue on PC', exact: true }).click();
+  await page.getByRole('button', { name: 'Preview continuity conversation', exact: true }).click();
+  await page.getByText('USER: Continue the original conversation', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Continue on my PC', exact: true }).click();
+  const continuity = await control('/continuity');
+  if (
+    !continuity.commands.some(
+      (command) =>
+        command.kind === 'handoff' && command.data.thread_id === originalConversation.thread_id,
+    )
+  )
+    throw Error('Handoff created a replacement conversation');
+  if (!continuity.signals.some((signal) => signal.source.startsWith('phone:') && signal.fresh))
+    throw Error('Encrypted phone foreground heartbeat missing');
+  await page.screenshot({ path: 'artifacts/phone/android-continuity.png' });
   await control('/interrupt', 'POST');
   await page.getByRole('button', { name: 'Inbox', exact: true }).click();
   await page.getByRole('button', { name: 'Approve', exact: true }).click();

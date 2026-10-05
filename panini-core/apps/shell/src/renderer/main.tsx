@@ -73,6 +73,8 @@ function App() {
   const [tools, setTools] = useState<ToolCall[]>([]);
   const [executionMode, setExecutionMode] = useState('compact');
   const [presence, setPresence] = useState('avatar');
+  const [continuation, setContinuation] = useState<any>(null);
+  const [continuityCards, setContinuityCards] = useState<any[]>([]);
   const [background, setBackground] = useState<any>(null);
   const executionTask = useRef('');
   const [outcome, setOutcome] = useState('');
@@ -357,6 +359,16 @@ function App() {
         setView(data.view === 'compact' ? 'compact' : 'stage');
       } else if (event.type === 'shell.presence') {
         setPresence(data.presence);
+      } else if (event.type === 'continuity.handoff') {
+        setContinuation(data);
+        setMessage('Continuing from your phone');
+      } else if (event.type === 'continuity.notification') {
+        setContinuityCards((cards) => [
+          ...cards.filter((card) => card.id !== data.id).slice(-4),
+          data,
+        ]);
+      } else if (event.type === 'continuity.retract') {
+        setContinuityCards((cards) => cards.filter((card) => card.id !== data.id));
       } else if (event.type === 'execution.viewer_error') {
         setError(data.message);
       } else if (event.type === 'media.connected' && data.persona) {
@@ -701,6 +713,59 @@ function App() {
                 {caption}
               </div>
             )}
+            {continuation && (
+              <section className="captions" aria-label="Continued conversation">
+                <strong>
+                  Continuing from your phone: {continuation.title || 'PANINI conversation'}
+                </strong>
+                <details>
+                  <summary>Previous conversation</summary>
+                  <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 240, overflow: 'auto' }}>
+                    {continuation.summary}
+                    {'\n'}
+                    {continuation.transcript}
+                  </pre>
+                </details>
+                <p>Your next agent request continues this same thread.</p>
+                <button
+                  onClick={() =>
+                    void call('continuity', {
+                      action: 'send_to_phone',
+                      thread_id: continuation.thread_id,
+                    })
+                  }
+                >
+                  Send to my phone
+                </button>
+                <button onClick={() => setContinuation(null)}>Dismiss</button>
+                <button
+                  onClick={() => {
+                    void call('continuity', {
+                      action: 'call_me',
+                      thread_id: continuation.thread_id,
+                    });
+                  }}
+                >
+                  Review a call to me
+                </button>
+              </section>
+            )}
+            {continuityCards.map((item) => (
+              <section className="background-work" key={item.id} aria-label="PANINI notification">
+                <span>{item.title}</span>
+                <button onClick={() => void call('admin', { page: '/inbox' })}>Open Inbox</button>
+                {!item.interrupt && (
+                  <button
+                    onClick={() => {
+                      void call('continuity', { action: 'seen', item_id: item.item_id });
+                      setContinuityCards((cards) => cards.filter((card) => card.id !== item.id));
+                    }}
+                  >
+                    Seen
+                  </button>
+                )}
+              </section>
+            ))}
             {error && (
               <p className="error" role="alert">
                 {error}

@@ -988,6 +988,15 @@ class Agent:
             )
         if session_id:
             self.h.sessions.save(session_id, items, summary=summary, title=goal[:80])
+        if (
+            session_id
+            and self.private
+            and not self.background
+            and not self.depth
+            and self.surface in {"avatar", "console"}
+            and hasattr(self.h, "continuity")
+        ):
+            self.h.continuity.foreground_result(session_id, self.run_id, result.message[:200])
         return result
 
     def _persona_message(self, text):

@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..routes.outbound import add_outbound
+from ..routes.presence import add_presence
 from . import crypto
 
 router = APIRouter(prefix="/api/remote")
@@ -35,6 +36,8 @@ def _harness(request: Request):
 
 
 add_outbound(router, _fabric)
+
+add_presence(router, _fabric, phone=True)
 
 
 def payload_digest(payload: dict | None) -> str:

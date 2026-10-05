@@ -118,6 +118,9 @@ class Harness:
         from ..hands.desktop_fine import DesktopFine
 
         self.desktop_fine = DesktopFine(self)
+        from ..fabric.routing import Continuity
+
+        self.continuity = Continuity(self)
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
         agent = Agent(
@@ -188,6 +191,7 @@ class Harness:
             "android": self.android.activity(),
             "recording": self.teach.recorder.status(),
             "mcp": list(getattr(getattr(self, "mcp", None), "activity", {}).values()),
+            "presence": self.continuity.presence.status(),
         }
 
     def suggest(self, force=False):
@@ -330,10 +334,12 @@ class Harness:
         self._mobile_start = asyncio.get_running_loop().create_task(self.mobile.start_if_enabled())
         self._channels_start = asyncio.get_running_loop().create_task(self.channels.start())
         self.outbound.start()
+        self.continuity.start()
 
     async def close(self):
         from .. import interrupts, ledger, policy
 
+        await self.continuity.close()
         # Uninstall the process-wide v2 services this harness installed.
         if interrupts._service is self.interrupts:
             interrupts._service = None

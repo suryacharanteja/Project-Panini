@@ -105,6 +105,7 @@ class CallService:
             if call is None
             else {
                 "id": call.id,
+                "thread_id": call.thread if call.verified and call.caller["kind"] == "owner" else None,
                 "verified": call.verified,
                 "persona": self.h.personas.presentation(call.caller["persona_id"]),
                 "number": call.caller["number"],

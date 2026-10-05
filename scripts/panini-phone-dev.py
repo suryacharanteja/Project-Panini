@@ -1,7 +1,7 @@
 """Developer preview of the phone app (V2-15) on this PC only. Not the product path.
 
 It runs the real fabric (pairing, sessions, remote API, real interrupts) against a throwaway database, on loopback
-only, outside PANINI_REMOTE_MODE (which stays off until the V2-13 red-team gate passes). Open the printed pairing
+only, outside PANINI_REMOTE_MODE. Red-team work remains disabled and deferred. Open the printed pairing
 link in a phone-sized browser; the control port confirms pairing and opens sample approvals:
 
     POST http://127.0.0.1:3212/confirm         confirm the newest pending device (as if on the PC)
@@ -43,6 +43,7 @@ async def main():
 
     os.environ["PANINI_PERSONAS"] = "true" if args.personas else "false"
     os.environ["PANINI_SPACES"] = "true"
+    os.environ["PANINI_PRESENCE"] = "true"
 
     os.environ.setdefault(
         "PANINI_LIVE_VIEW", "true"
@@ -138,11 +139,29 @@ async def main():
     h.outbound = OutboundCalls(
         h, provider=AsyncMock(), connection_factory=fake_connection, secrets=MemorySecrets()
     )
+    from backend.fabric.routing import Continuity
+
+    h.continuity = Continuity(h)
+    h.continuity.app, h.continuity.fabric = app, fabric
+    config = h.continuity.settings()
+    config["quiet"]["enabled"] = False
+    h.continuity.configure(config)
+    h.continuity.start()
     app.state.phone_line = calls
     live.hub().publish(None, "sandbox", "panini", (ROOT / "panini-core/apps/phone/icons/icon-512.png").read_bytes(),
                        {"url": "https://example.com/", "title": "Sample frame"})  # fmt: skip
 
     control = FastAPI()
+
+    @control.post("/conversation")
+    async def sample_conversation():
+        thread_id = h.sessions.create("Preview continuity conversation")
+        h.sessions.save(thread_id, [{"role": "user", "content": "Continue the original conversation"}])
+        return {"thread_id": thread_id}
+
+    @control.get("/continuity")
+    async def continuity_state():
+        return {**h.continuity.status(), "commands": h.continuity.commands()}
 
     @control.post("/call")
     async def sample_call():
@@ -215,7 +234,10 @@ async def main():
         uvicorn.Config(build(fabric, "lan"), host="127.0.0.1", port=PHONE_PORT, log_level="warning")
     )
     admin = uvicorn.Server(uvicorn.Config(control, host="127.0.0.1", port=CONTROL_PORT, log_level="warning"))
-    await asyncio.gather(phone.serve(), admin.serve())
+    try:
+        await asyncio.gather(phone.serve(), admin.serve())
+    finally:
+        await h.continuity.close()
 
 
 if __name__ == "__main__":

@@ -103,11 +103,15 @@ class ChannelManager:
         )["n"]
         if queued + len(parts) > 20:
             raise ValueError("Channel reply queue is full.")
+        identifiers = []
         for part in parts:
+            identifier = uuid4().hex
             self.store.execute(
                 "INSERT INTO channel_outbox(id,account_id,thread_key,text,available_at,created) VALUES (?,?,?,?,?,?)",
-                (uuid4().hex, account_id, thread_key, part, self.clock(), self.clock()),
+                (identifier, account_id, thread_key, part, self.clock(), self.clock()),
             )
+            identifiers.append(identifier)
+        return identifiers
 
     async def deliver(self, message):
         try:
@@ -192,6 +196,8 @@ class ChannelManager:
             except BaseException:
                 self.store.execute("ROLLBACK")
                 raise
+        if owner(account["config"], message) and hasattr(self.h, "continuity") and self.h.continuity.enabled:
+            self.h.continuity.presence.signal("channel", {})
 
     def reconcile(self):
         for job in self.store.all("SELECT * FROM channel_jobs WHERE state='pending'"):
