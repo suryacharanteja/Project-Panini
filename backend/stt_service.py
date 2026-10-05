@@ -5,7 +5,7 @@ import io
 import os
 import time
 
-from . import config, local_stt, private_mode
+from . import config, local_stt, local_tts, private_mode
 from .errors import provider_error
 
 try:
@@ -40,6 +40,7 @@ def get_status() -> dict:
         "assemblyai_installed": aai is not None,
         "configured": cloud,
         "local": local,
+        "local_tts": local_tts.readiness(),
         "active_engine": engine,
         "fallback": None if mode == "private" or can_transcribe() else "Web Speech API (browser native)",
     }

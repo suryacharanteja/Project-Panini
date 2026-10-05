@@ -119,6 +119,9 @@ function App() {
     [muted, setMuted] = useState(false),
     [connectingMic, setConnectingMic] = useState(false);
   const [speechMode, setSpeechMode] = useState('off');
+  const [localSpeaking, setLocalSpeaking] = useState<'idle' | 'loading' | 'playing'>('idle');
+  const localSpeech = useRef<{ audio: HTMLAudioElement; url: string } | null>(null);
+  const localSpeechRequest = useRef(0);
   const [recording, setRecording] = useState(false),
     [dictating, setDictating] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null),
@@ -190,6 +193,41 @@ function App() {
     const current = generation.current;
     releaseAudio();
     return await call('media-close', { generation: current });
+  };
+  const stopLocalSpeech = () => {
+    localSpeechRequest.current++;
+    if (localSpeech.current) {
+      localSpeech.current.audio.pause();
+      URL.revokeObjectURL(localSpeech.current.url);
+      localSpeech.current = null;
+    }
+    setLocalSpeaking('idle');
+  };
+  const playLocalSpeech = async () => {
+    if (localSpeaking !== 'idle') {
+      stopLocalSpeech();
+      return;
+    }
+    if (!message.trim()) return;
+    const request = ++localSpeechRequest.current;
+    setLocalSpeaking('loading');
+    try {
+      const result = await api.invoke('synthesize-local', { text: message.slice(0, 500) });
+      if (disposed.current || request !== localSpeechRequest.current) return;
+      const raw = atob(result.audio_b64);
+      const bytes = Uint8Array.from(raw, (character) => character.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+      const spoken = new Audio(url);
+      localSpeech.current = { audio: spoken, url };
+      spoken.onended = () => stopLocalSpeech();
+      await spoken.play();
+      if (request === localSpeechRequest.current) setLocalSpeaking('playing');
+    } catch (cause: any) {
+      if (request === localSpeechRequest.current) {
+        stopLocalSpeech();
+        setError(cause.message || 'Local speech playback failed.');
+      }
+    }
   };
   const stopDictation = () => {
     if (recordingTimer.current) clearTimeout(recordingTimer.current);
@@ -492,6 +530,12 @@ function App() {
       recordingStream.current?.getTracks().forEach((track) => track.stop());
       local.current?.getTracks().forEach((t) => t.stop());
       peer.current?.close();
+      if (localSpeech.current) {
+        localSpeech.current.audio.pause();
+        URL.revokeObjectURL(localSpeech.current.url);
+        localSpeech.current = null;
+      }
+      localSpeechRequest.current++;
     };
   }, []);
   useEffect(() => {
@@ -1125,6 +1169,15 @@ function App() {
                     : recording
                       ? '■ Stop and transcribe'
                       : '◉ Record locally'}
+                </button>
+              )}
+              {['private', 'fallback'].includes(speechMode) && terminal && message.trim() && (
+                <button disabled={!ready} onClick={() => void playLocalSpeech()}>
+                  {localSpeaking === 'loading'
+                    ? '■ Stop preparing voice'
+                    : localSpeaking === 'playing'
+                      ? '■ Stop local voice'
+                      : '▶ Read reply locally'}
                 </button>
               )}
               {mic && <button onClick={() => mute(!muted)}>{muted ? 'Unmute' : 'Mute'}</button>}

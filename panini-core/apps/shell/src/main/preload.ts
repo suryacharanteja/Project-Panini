@@ -8,6 +8,7 @@ const methods = [
   'turn',
   'speech-status',
   'transcribe',
+  'synthesize-local',
   'stop',
   'end',
   'media',

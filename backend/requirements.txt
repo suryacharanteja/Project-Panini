@@ -11,6 +11,7 @@ pillow==12.3.0
 assemblyai==1.5.5
 faster-whisper==1.2.1
 av==18.1.0
+pywin32==312; sys_platform == "win32"
 python-multipart==0.0.32
 -e ./panini-core/voice/live-spoken-conversation
 -e ./panini-core/capabilities/cli

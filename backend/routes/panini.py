@@ -2,11 +2,13 @@
 
 import asyncio
 import json
+import os
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
-from .. import stt_service
+from .. import local_tts, stt_service
 from ..panini.contracts import (
     ConfirmationDecision,
     Control,
@@ -202,6 +204,23 @@ async def dictation_status(session_id: str, request: Request):
 async def dictation(session_id: str, payload: Base64Audio, request: Request):
     session(request, session_id, mutation=True)
     return await transcribe_encoded(payload, request)
+
+
+class LocalSpeech(BaseModel):
+    text: str = Field(min_length=1, max_length=local_tts.MAX_TEXT)
+
+
+@router.post("/sessions/{session_id}/tts/synthesize")
+async def local_speech(session_id: str, payload: LocalSpeech, request: Request):
+    session(request, session_id, mutation=True)
+    if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() not in {"private", "fallback"}:
+        raise Fault("LOCAL_SPEECH_OFF", "Local speech is available in private or fallback mode.", 503)
+    if not local_tts.readiness()["ready"]:
+        raise Fault("LOCAL_SPEECH_UNAVAILABLE", "Windows local speech is unavailable.", 503)
+    try:
+        return await request.app.state.speech_work.run(lambda: local_tts.synthesize(payload.text))
+    except (ValueError, RuntimeError) as exc:
+        raise Fault("LOCAL_SPEECH_FAILED", str(exc)[:200], 502) from exc
 
 
 @router.get("/sessions/{session_id}/commands/{command_id}")

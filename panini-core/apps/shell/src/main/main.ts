@@ -950,6 +950,10 @@ function ipc() {
           throw new Error('Record up to 30 seconds of audio for dictation.');
         return client.scoped('/stt/transcribe', { audio_b64: audio }, undefined, 95000);
       }
+      case 'synthesize-local': {
+        const spoken = text(input?.text, 500);
+        return client.scoped('/tts/synthesize', { text: spoken }, undefined, 30000);
+      }
       case 'feedback':
         return client.scoped('/feedback', {
           command_id: randomUUID(),

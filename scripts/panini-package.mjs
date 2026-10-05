@@ -214,6 +214,18 @@ if (process.platform === 'win32') {
   );
   await run(
     join(runtime, 'backend/Panini.Backend.exe'),
+    ['--check-local-tts'],
+    runtime,
+    {
+      ...isolatedPath,
+      PANINI_RUNTIME_ROOT: runtime,
+      PANINI_DATA_DIR: join(root, 'artifacts/panini-backend-import-smoke'),
+      PANINI_LOCAL_MODE: 'private',
+    },
+    'PANINI_LOCAL_TTS_SMOKE_OK',
+  );
+  await run(
+    join(runtime, 'backend/Panini.Backend.exe'),
     [
       'panini-cli',
       '-C',

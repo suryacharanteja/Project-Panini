@@ -54,6 +54,28 @@ def test_authenticated_controller_can_dictate_locally_in_private_mode(runtime, m
     assert response.json()["text"] == "open Notepad"
 
 
+def test_local_speech_requires_controller_lease_and_local_mode(runtime, monkeypatch):
+    from backend import local_tts
+
+    client, _, sid, controller = runtime
+    path = f"/api/panini/sessions/{sid}/tts/synthesize"
+    body = {"text": "PANINI is ready."}
+    assert client.post(path, json=body).status_code == 401
+    assert client.post(path, headers=controller, json=body).status_code == 503
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+    monkeypatch.setattr(local_tts, "readiness", lambda: {"ready": True})
+
+    async def local(text):
+        assert text == body["text"]
+        return {"audio_b64": "UklGRg==", "engine": "windows-sapi-local"}
+
+    monkeypatch.setattr(local_tts, "synthesize", local)
+    assert client.post(path, headers=controller, json=body).json()["engine"] == "windows-sapi-local"
+    invalid = {**controller, "x-panini-lease-epoch": "-1"}
+    assert client.post(path, headers=invalid, json=body).status_code == 409
+    assert client.post(path, headers=controller, json={"text": "x" * 501}).status_code == 422
+
+
 def test_end_receipt_is_idempotent_after_lease_is_closed(runtime):
     client, _, sid, controller = runtime
     body = {"command_id": str(uuid4())}

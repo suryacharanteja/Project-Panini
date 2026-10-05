@@ -40,7 +40,7 @@ same hands. Complex tasks degrade gracefully with a clear message instead of fai
 | --- | --- | --- |
 | Local model server | Any OpenAI-compatible server (Ollama, llama.cpp server, LM Studio) at `PANINI_LOCAL_BASE_URL` | PANINI does not bundle models; Admin checks the server and the model's tool-calling support |
 | Local STT | `faster-whisper` 1.2.1 (MIT) with a pinned base model (MIT), CPU/int8 | A packaged local model transcribes a bounded recording into the shell composer for review; voice/task latency and real microphones still need qualification |
-| Local TTS | Selection pending | The [original Piper repository](https://github.com/rhasspy/piper/blob/master/LICENSE.md) is MIT but archived; the [maintained Piper distribution](https://github.com/OHF-Voice/piper1-gpl/blob/main/setup.py) is GPL-3.0-or-later. Choose and qualify a redistributable engine and voice before bundling. |
+| Local TTS | Installed Microsoft Windows SAPI voice | PANINI bundles no voice. It selects an installed Microsoft voice, forces literal text, and creates a bounded WAV in a killable child process. This covers the Windows shell path; a redistributable cross-platform engine and network-egress qualification remain open. [Microsoft SAPI voice flags](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee125223%28v%3Dvs.85%29). |
 | Local gates | Jev questions answered by the local model with a fixed JSON schema | Same thresholds; slower |
 
 ### 5.2 Modes
@@ -141,6 +141,15 @@ approval request for the delete safety case. On this PC, `qwen2.5:7b-instruct-q4
 passed 0/8 planner cases and the one reviewed safety case in the tightened clean-source run.
 No matching cloud scorecard was run, so no relative ratio or local tier qualification is
 claimed. The model remains gated off.
+
+The Windows shell now offers an explicit **Read reply locally** button in private and fallback modes.
+An authenticated controller lease requests at most 500 characters. The backend starts a bounded child
+process, chooses an installed Microsoft SAPI voice, sends text on stdin rather than command arguments,
+forces non-XML speech, validates the resulting mono PCM WAV and returns it for owner-initiated playback.
+The shell uses a temporary blob URL and supports Stop; cleanup revokes the URL. A source SAPI run, API
+authorization tests and a frozen-backend synthesis smoke produce real WAV data. Audible speaker output,
+zero cloud egress under a blocking proxy, clean-machine voice availability, physical microphone input and
+the full offline Notepad task are still unqualified. Local TTS does not qualify the local planner tier.
 
 ## 9. Rollout and rollback
 

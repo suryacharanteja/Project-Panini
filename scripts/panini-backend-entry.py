@@ -4,6 +4,27 @@ import os
 import sys
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--local-tts-worker"]:
+        from pathlib import Path
+
+        from backend.local_tts import _worker
+
+        _worker(Path(sys.argv[2]))
+        raise SystemExit(0)
+    if sys.argv[1:2] == ["--check-local-tts"]:
+        import asyncio
+        import base64
+        import io
+        import wave
+
+        from backend.local_tts import synthesize
+
+        result = asyncio.run(synthesize("PANINI local speech check."))
+        with wave.open(io.BytesIO(base64.b64decode(result["audio_b64"])), "rb") as wav:
+            if wav.getnframes() < wav.getframerate() // 4:
+                raise RuntimeError("Packaged local speech was too short.")
+        print("PANINI_LOCAL_TTS_SMOKE_OK")
+        raise SystemExit(0)
     if sys.argv[1:2] == ["--check-local-stt"]:
         import asyncio
         import io
