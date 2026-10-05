@@ -51,9 +51,9 @@ npm run panini:package -- --unsigned
 
 ## Open requirements
 
-V2-23 remains **In progress**. Sandbox opt-in tools, persona selection beyond PANINI, grants directly
-from interrupt cards, actual hand-slot ownership presentation, live Claude Code and Codex sessions,
-real approved desktop/browser actions and live-provider task qualification remain open.
+V2-23 remains **In progress**. Live Claude Code and Codex sessions, real approved desktop/browser
+actions and live-provider task qualification remain open. The four local implementation gaps from
+the first checkpoint are implemented and tested in the follow-up below.
 
 The unsigned local installer is a development release. Code signing, clean-machine installation,
 production deployment and physical Android qualification are not completed. The full LLD program
@@ -68,3 +68,40 @@ before the original registry validates execution. This follows the [official fun
 requirements](https://developers.openai.com/api/docs/guides/function-calling), and a scripted model
 regression verifies nullable arguments without changing the MCP wire or registry schemas. The bridge
 packager excludes the SDK's optional upstream CLI module; no additional CLI dependency is installed.
+
+## Follow-up: sandbox, personas, card grants and hand ownership
+
+- Explicit `sandbox` scope exposes curated sandbox tools, excluding host import/export. Each client
+  gets a separate AppContainer SID and persistent workspace. Initial opt-in enables that computer's
+  permissions once; subsequent calls cannot restore revoked permissions. Client revocation disables
+  its computer and closes it without affecting other clients.
+- Native commands accept a thread-safe cancellation signal, poll it at 50 ms, terminate the Windows
+  job tree and drain workers before releasing the hand. Repeated cancellation cannot abandon the
+  OS worker. Cancelled, timed-out and unsuccessful commands no longer report a successful tool result.
+- Admin explicitly shares individual personas, including their instructions. `panini_ask` advertises
+  only authorized active ids. A task retains the MCP client principal, receives only the intersection
+  of client scope and persona permissions, and cannot access owner memory, connectors or host shell.
+  Notebook reads honor the persona's space access; persona revocation cancels active hands.
+- Eligible navigation/input cards offer an exact browser tool for one hour. The permission descriptor
+  belongs to the action digest, the phone signs the additional decision field, expiry is enforced and
+  token revocation removes grants. Submission/stronger actions cannot use this exemption.
+- Registry activity begins only after its hand slot is acquired, after approval, and clears in `finally`.
+  A queued sibling cannot overwrite the active owner; child task hands carry their own run ids.
+
+Source verification: **39 focused MCP tests**, including real AppContainer execution/isolation and a
+continuous write command stopped on revocation; **65 combined MCP/sandbox tests**. Whole-project
+gate: **1,212 backend tests**, **125 CLI tests plus one skip**, and **16/16 offline scorecard cases**,
+with web, phone, Admin, shell, formatting and typecheck checks. Five backend warnings remain: four
+dependency deprecations and a Windows Proactor pipe cleanup warning. These are retained in the log.
+
+Built Admin was checked in real Chromium at desktop and 412 px widths with fixture API responses:
+scope selection, temporary permission card, matching nonce/digest, secret removal and no overflow.
+The Android-sized phone smoke uses real encrypted fabric and WebCrypto decisions, a virtual passkey,
+fixture calls/live frames and notebook operations. It now covers signed temporary card permissions.
+The preview harness was updated for the current outbound-call route. This is browser emulation,
+**not physical Android or SIP qualification**.
+
+Follow-up evidence lives in `artifacts/mcp-completion/`. The packaged smoke executes approved UTF-8
+file writes and a native AppContainer command using the frozen backend and shipped gateway. Its
+result and the release hash verifier must pass before the follow-up installer is delivered. This is
+an unsigned local development increment; the full LLD program remains active, with V2-24 next.

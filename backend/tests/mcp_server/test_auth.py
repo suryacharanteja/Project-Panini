@@ -31,7 +31,7 @@ def test_hash_only_grants_revoke_and_protected_file(tmp_path):
     store.close()
 
 
-@pytest.mark.parametrize("grants", [["shell"], ["chrome"], "desktop", ["memory"], ["sandbox"]])
+@pytest.mark.parametrize("grants", [["shell"], ["chrome"], "desktop", ["memory"], ["host_shell"]])
 def test_unknown_or_unsafe_scopes_refused(tmp_path, grants):
     store = Store(tmp_path / "h.sqlite3")
     with pytest.raises(ValueError):

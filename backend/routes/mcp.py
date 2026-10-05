@@ -98,6 +98,11 @@ async def clients(request: Request):
         "enabled": v2flags.enabled("PANINI_MCP_SERVER"),
         "ready": current.available(),
         "activity": list(current.activity.values()),
+        "personas": [
+            current.h.personas.presentation(p["id"]) for p in current.h.personas.list() if p["id"] != "panini"
+        ]
+        if v2flags.enabled("PANINI_PERSONAS")
+        else [],
         "grants": [
             g.__dict__
             for c in current.clients.list()

@@ -114,6 +114,7 @@ async def main():
     from backend.harness.proactive import Notices
 
     h.policy = persona_policy
+    h.connectors = SimpleNamespace(servers={})
     h.notices = Notices(store)
     h.notices.add("welcome", "Welcome", "This is the phone app preview.", dedupe="welcome")
     h.sessions = Sessions(store)
@@ -132,6 +133,11 @@ async def main():
         )
 
     calls = CallService(h, provider=AsyncMock(), connection_factory=fake_connection)
+    from backend.telephony.outbound import OutboundCalls
+
+    h.outbound = OutboundCalls(
+        h, provider=AsyncMock(), connection_factory=fake_connection, secrets=MemorySecrets()
+    )
     app.state.phone_line = calls
     live.hub().publish(None, "sandbox", "panini", (ROOT / "panini-core/apps/phone/icons/icon-512.png").read_bytes(),
                        {"url": "https://example.com/", "title": "Sample frame"})  # fmt: skip
@@ -169,6 +175,28 @@ async def main():
             run_id="dev",
         )  # fmt: skip
         return {"id": card["id"]}
+
+    @control.post("/mcp-interrupt")
+    async def mcp_interrupt():
+        permission = {"client_id": "preview-fixture", "tool": "browser_navigate", "seconds": 3600}
+        return h.interrupts.open(
+            InterruptSpec(
+                "approval",
+                "mcp_effect",
+                "Preview agent wants to navigate",
+                "Developer sample approval.",
+                preview={"detail": "https://example.com", "mcp_permission": permission},
+                action={"mcp_permission": permission},
+                response_schema={
+                    "type": "object",
+                    "properties": {"approved": {"type": "boolean"}, "allow_for_session": {"type": "boolean"}},
+                    "required": ["approved"],
+                    "additionalProperties": False,
+                },
+                ttl_s=120,
+            ),
+            run_id="dev-mcp",
+        )
 
     @control.get("/state")
     async def state():

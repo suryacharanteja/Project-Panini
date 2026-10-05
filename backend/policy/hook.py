@@ -121,6 +121,7 @@ class PolicyHook(Hooks):
                 if work in done:
                     change.cancel()
                     return work.result()
+                ctx.check()  # Also checks a compound MCP/persona authority after its grants change.
                 bound = (
                     getattr(ctx, "android_policy", None)
                     if spec.capability == "android"

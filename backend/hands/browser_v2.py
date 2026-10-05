@@ -105,10 +105,14 @@ class BrowserHand:
             allowed = {"isolated"}
             if "chrome" in ctx.mcp_client["grants"]:
                 allowed.add("chrome")
+            persona = getattr(ctx, "mcp_persona", "panini")
+            if persona != "panini":
+                permissions = self.runtime["harness"].personas.permissions(persona)
+                allowed = {b for b in allowed if ("chrome" if b == "chrome" else "managed") in permissions}
             if run in self.active and self.active[run] in allowed:
                 return self.active[run]
             ready = await self.ready()
-            if ready["isolated"].state == "ready":
+            if "isolated" in allowed and ready["isolated"].state == "ready":
                 self.active[run] = "isolated"
                 return "isolated"
             return None
@@ -514,6 +518,11 @@ class BrowserHand:
                 browser = (
                     "isolated"  # Each MCP session owns an empty managed context, never the owner profile.
                 )
+            persona = getattr(ctx, "mcp_persona", "panini")
+            if persona != "panini":
+                permissions = self.runtime["harness"].personas.permissions(persona)
+                if ("chrome" if browser == "chrome" else "managed") not in permissions:
+                    return ToolResult("blocked", "This persona lacks permission for this browser.")
         if getattr(getattr(ctx, "principal", None), "kind", None) == "persona":
             permissions = self.runtime["harness"].personas.permissions(ctx.principal.client_id)
             if ("chrome" if browser == "chrome" else "managed") not in permissions:

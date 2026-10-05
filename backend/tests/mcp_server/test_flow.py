@@ -209,7 +209,7 @@ async def pending(h):
         return h.interrupts.list()[0]
 
 
-async def owner_decide(url, interrupt, approved=True):
+async def owner_decide(url, interrupt, approved=True, allow_for_session=False):
     async with httpx2.AsyncClient(headers={"x-panini-console": "owner" * 10}) as http:
         response = await http.post(
             url + "/api/harness/interrupts/" + interrupt["id"],
@@ -217,10 +217,242 @@ async def owner_decide(url, interrupt, approved=True):
                 "nonce": interrupt["nonce"],
                 "action_digest": interrupt["action_digest"],
                 "status": "resolved",
-                "payload": {"approved": approved},
+                "payload": {
+                    "approved": approved,
+                    **({"allow_for_session": True} if allow_for_session else {}),
+                },
             },
         )
         assert response.status_code == 200, response.text
+
+
+@pytest.mark.anyio
+async def test_card_grant_is_exact_expiring_owner_only_and_revocable(tmp_path, monkeypatch):
+    async with running(tmp_path, monkeypatch) as (h, service, url):
+        browser_fixture(h, monkeypatch)
+        issued = service.clients.create("Card grant", ["browser"], save_token=False)
+        async with sdk(url, issued["token"]) as client:
+            call = asyncio.create_task(client.call_tool("browser_navigate", {"url": "https://example.com/"}))
+            interrupt = await pending(h)
+            permission = interrupt["preview"]["mcp_permission"]
+            assert permission == {"client_id": issued["id"], "tool": "browser_navigate", "seconds": 3600}
+            assert interrupt["action"]["mcp_permission"] == permission
+            assert not service.activity  # Approval does not own the browser hand.
+            await owner_decide(url, interrupt, allow_for_session=True)
+            assert not (await asyncio.wait_for(call, 5)).is_error
+            grant = h.policy.grants("mcp_client:" + issued["id"])[0]
+            assert grant.tools == ("browser_navigate",) and 0 < grant.expires_at - time.time() <= 3600
+            assert not (await client.call_tool("browser_navigate", {"url": "https://example.com/"})).is_error
+            assert not h.interrupts.list()
+            # Permission cannot exempt a different tool or a submission.
+            await client.call_tool("browser_snapshot", {})
+            call = asyncio.create_task(
+                client.call_tool("browser_click", {"target": "e1", "element": "Run test"})
+            )
+            approval = await pending(h)
+            await owner_decide(url, approval, False)
+            assert (await call).is_error
+            spec = h.registry.tool("browser_navigate")
+            from backend.core_contracts import Principal
+
+            principal = Principal(kind="mcp_client", surface="mcp", client_id=issued["id"])
+            monkeypatch.setattr(h.policy, "clock", lambda: grant.expires_at + 1)
+            assert h.policy.decide(principal, spec, {"url": "https://example.com/"}).action == "ask"
+            await service.revoke(issued["id"])
+            assert not h.policy.grants("mcp_client:" + issued["id"])
+
+
+@pytest.mark.anyio
+async def test_activity_tracks_held_slot_and_excludes_queued_sibling(tmp_path, monkeypatch):
+    async with running(tmp_path, monkeypatch) as (h, service, url):
+        fixture = browser_fixture(h, monkeypatch)
+        fixture.slow = True
+        issued = service.clients.create("Same client", ["browser"], save_token=False)
+        async with sdk(url, issued["token"]) as first, sdk(url, issued["token"]) as second:
+            await first.call_tool("browser_snapshot", {})
+            call = asyncio.create_task(
+                first.call_tool("browser_click", {"target": "e1", "element": "Run test"})
+            )
+            approval = await pending(h)
+            assert not service.activity
+            await owner_decide(url, approval)
+            async with asyncio.timeout(5):
+                while not service.activity:
+                    await asyncio.sleep(0.01)
+            held = list(service.activity.values())
+            assert len(held) == 1 and held[0]["tool"] == "browser_click"
+            assert held[0]["slot"] == "browser" and held[0]["run_id"]
+            queued = asyncio.create_task(second.call_tool("browser_snapshot", {}))
+            await asyncio.sleep(0.15)
+            assert not queued.done() and list(service.activity.values()) == held
+            # An observation in the queued session cannot overwrite the current owner.
+            await service.revoke(issued["id"])
+            assert (await call).is_error and (await queued).is_error
+            assert not service.activity and fixture.stopped.is_set()
+
+
+@pytest.mark.anyio
+async def test_sdk_native_sandbox_isolated_opt_in_and_revocation_ends_job(tmp_path, monkeypatch):
+    import sys
+
+    if sys.platform != "win32":
+        pytest.skip("Native AppContainer qualification needs Windows.")
+    from backend.hands.native_sandbox import NativeSandbox
+
+    monkeypatch.setenv("PANINI_SANDBOX", "true")
+    monkeypatch.setenv("PANINI_SANDBOX_ENGINE", "native")
+    async with running(tmp_path, monkeypatch) as (h, service, url):
+        h.sandbox._native = NativeSandbox(tmp_path / "computers")
+        first = service.clients.create("Sandbox one", ["sandbox"], save_token=False)
+        second = service.clients.create("Sandbox two", ["sandbox"], save_token=False)
+        limited = service.clients.create("No sandbox", [], save_token=False)
+        async with sdk(url, limited["token"]) as client:
+            assert not any(t.name.startswith("sandbox_") for t in (await client.list_tools()).tools)
+            assert (await client.call_tool("sandbox_status", {})).is_error
+        async with sdk(url, first["token"]) as client, sdk(url, second["token"]) as sibling:
+            names = {t.name for t in (await client.list_tools()).tools}
+            assert {"sandbox_exec", "sandbox_files_write", "sandbox_screenshot"} <= names
+            assert not {"sandbox_import", "sandbox_export"} & names
+            await client.call_tool("sandbox_status", {})
+            await sibling.call_tool("sandbox_status", {})
+            computer = "mcp_" + first["id"]
+            other = "mcp_" + second["id"]
+            args = {"path": "note.txt", "contents": "MCP UTF-8 café", "append": False}
+            call = asyncio.create_task(client.call_tool("sandbox_files_write", args))
+            approval = await pending(h)
+            assert "mcp_permission" not in approval["preview"]
+            assert not h.sandbox.native.workspace(computer).joinpath("note.txt").exists()
+            await owner_decide(url, approval)
+            assert not (await call).is_error
+            read = await client.call_tool("sandbox_files_read", {"path": "note.txt"})
+            assert "MCP UTF-8 café" in read.content[0].text
+            assert (await sibling.call_tool("sandbox_files_read", {"path": "note.txt"})).is_error
+            assert h.sandbox.native.sid(computer)[1] != h.sandbox.native.sid(other)[1]
+            assert (await client.call_tool("sandbox_files_read", {"path": "../note.txt"})).is_error
+            h.sandbox.patch_permissions(other, {"files": False})
+            assert (await sibling.call_tool("sandbox_files_list", {"path": ""})).is_error
+            assert not h.sandbox.permissions(other)["files"]  # A fresh call must not re-enable it.
+            # Real AppContainer shell execution, with owner approval and ledger evidence.
+            call = asyncio.create_task(
+                client.call_tool("sandbox_exec", {"command": "echo mcp-native", "timeoutMs": 5000})
+            )
+            await owner_decide(url, await pending(h))
+            result = await call
+            assert not result.is_error and "mcp-native" in result.content[0].text
+            call = asyncio.create_task(
+                client.call_tool("sandbox_exec", {"command": "exit 7", "timeoutMs": 5000})
+            )
+            await owner_decide(url, await pending(h))
+            failed = await call
+            assert failed.is_error and json.loads(failed.content[0].text)["result"]["exitCode"] == 7
+            call = asyncio.create_task(
+                client.call_tool(
+                    "sandbox_exec",
+                    {"command": "for /L %i in (1,0,2) do @echo running>running.txt", "timeoutMs": 60000},
+                )
+            )
+            await owner_decide(url, await pending(h))
+            marker = h.sandbox.native.workspace(computer) / "running.txt"
+            async with asyncio.timeout(8):
+                while not marker.exists():
+                    await asyncio.sleep(0.02)
+            started = time.monotonic()
+            await service.revoke(first["id"])
+            assert time.monotonic() - started < 5 and (await call).is_error
+            stamp = marker.stat().st_mtime_ns
+            await asyncio.sleep(0.15)
+            assert marker.stat().st_mtime_ns == stamp  # The OS worker really stopped writing.
+            assert not h.sandbox.permissions(computer)["enabled"]
+            assert h.sandbox.permissions(other)["enabled"]
+            assert not (await sibling.call_tool("sandbox_status", {})).is_error
+            assert not service.activity
+
+
+@pytest.mark.anyio
+async def test_persona_selection_is_explicit_and_intersects_client_scopes(tmp_path, monkeypatch):
+    monkeypatch.setenv("PANINI_PERSONAS", "true")
+    async with running(tmp_path, monkeypatch) as (h, service, url):
+        browser_fixture(h, monkeypatch)
+        h.personas.create("researcher", name="Researcher", instructions="SHARED_PERSONA_INSTRUCTIONS")
+        h.personas.set_permissions("researcher", ["research", "managed"])
+        h.personas.create("private-specialist", instructions="PRIVATE_PERSONA_SENTINEL")
+        granted = service.clients.create(
+            "Persona client", ["browser", "persona:researcher"], save_token=False
+        )
+        limited = service.clients.create("No persona", ["browser"], save_token=False)
+
+        class CheckedModel(ScriptedModel):
+            async def respond(self, instructions, items, tools, **kwargs):
+                assert "SHARED_PERSONA_INSTRUCTIONS" in instructions
+                assert "PRIVATE_PERSONA_SENTINEL" not in instructions
+                names = {t["name"] for t in tools}
+                assert "browser_snapshot" in names
+                assert (
+                    not {
+                        "search_run",
+                        "mcp_desktop_windows",
+                        "recall",
+                        "remember",
+                        "code_run",
+                        "use_connector",
+                    }
+                    & names
+                )
+                return await super().respond(instructions, items, tools, **kwargs)
+
+        model = CheckedModel(
+            [{"calls": [{"name": "browser_snapshot", "arguments": {}}]}, {"text": "Observed the browser."}]
+        )
+        h.model_factory = lambda: model
+        async with sdk(url, limited["token"]) as client:
+            tool = next(t for t in (await client.list_tools()).tools if t.name == "panini_ask")
+            assert tool.input_schema["properties"]["persona"]["enum"] == ["panini"]
+            assert (
+                await client.call_tool("panini_ask", {"goal": "Observe", "persona": "researcher"})
+            ).is_error
+        async with sdk(url, granted["token"]) as client:
+            tool = next(t for t in (await client.list_tools()).tools if t.name == "panini_ask")
+            assert tool.input_schema["properties"]["persona"]["enum"] == ["panini", "researcher"]
+            result = await client.call_tool("panini_ask", {"goal": "Observe", "persona": "researcher"})
+            assert not result.is_error
+            data = json.loads(result.content[0].text)["result"]
+            assert data["persona"]["id"] == "researcher" and data["receipts"]
+            row = h.store.one("SELECT principal FROM receipts WHERE tool='browser_snapshot'")
+            assert json.loads(row["principal"])["client_id"] == granted["id"]
+            h.personas.archive("researcher")
+            assert (
+                await client.call_tool("panini_ask", {"goal": "Observe", "persona": "researcher"})
+            ).is_error
+            assert not service.activity
+
+
+@pytest.mark.anyio
+async def test_persona_grant_revocation_stops_held_hand(tmp_path, monkeypatch):
+    monkeypatch.setenv("PANINI_PERSONAS", "true")
+    async with running(tmp_path, monkeypatch) as (h, service, url):
+        fixture = browser_fixture(h, monkeypatch)
+        fixture.slow = True
+        h.personas.create("helper")
+        h.personas.set_permissions("helper", ["managed"])
+        issued = service.clients.create("Helper client", ["browser", "persona:helper"], save_token=False)
+        h.model_factory = lambda: ScriptedModel(
+            [
+                {"calls": [{"name": "browser_snapshot", "arguments": {}}]},
+                {"calls": [{"name": "browser_click", "arguments": {"target": "e1", "element": "Run test"}}]},
+                {"text": "Finished."},
+            ]
+        )
+        async with sdk(url, issued["token"]) as client:
+            call = asyncio.create_task(
+                client.call_tool("panini_ask", {"goal": "Use the browser", "persona": "helper"})
+            )
+            await owner_decide(url, await pending(h))
+            async with asyncio.timeout(5):
+                while not any(n == "browser_click" for n, _ in fixture.calls):
+                    await asyncio.sleep(0.01)
+            h.personas.set_permissions("helper", [])
+            assert (await asyncio.wait_for(call, 5)).is_error
+            assert fixture.stopped.is_set() and not service.activity
 
 
 @pytest.mark.anyio

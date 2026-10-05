@@ -88,6 +88,62 @@ async def exercise(url, executable, owner):
                 await http.post(url + "/mcp", headers={"Authorization": "Bearer " + issued["token"]}, json={})
             ).status_code == 401
         checks.append("hash-only listing/revoke/token file removal")
+        isolated = await admin.post(
+            url + "/api/admin/v1/mcp/clients", json={"name": "Packaged sandbox", "grants": ["sandbox"]}
+        )
+        isolated.raise_for_status()
+        sandbox = isolated.json()
+
+        async def approve(call):
+            async with asyncio.timeout(15):
+                while True:
+                    pending = (await admin.get(url + "/api/harness/interrupts")).json()["interrupts"]
+                    if pending:
+                        break
+                    await asyncio.sleep(0.02)
+                item = pending[0]
+                response = await admin.post(
+                    url + "/api/harness/interrupts/" + item["id"],
+                    json={
+                        "nonce": item["nonce"],
+                        "action_digest": item["action_digest"],
+                        "status": "resolved",
+                        "payload": {"approved": True},
+                    },
+                )
+                response.raise_for_status()
+                result = await call
+                assert not result.is_error, result.content[0].text
+                return json.loads(result.content[0].text)
+
+        async with httpx2.AsyncClient(headers={"Authorization": "Bearer " + sandbox["token"]}) as http:
+            async with streamable_http_client(url + "/mcp", http_client=http) as (read, write):
+                async with ClientSession(read, write) as client:
+                    await client.initialize()
+                    names = {t.name for t in (await client.list_tools()).tools}
+                    assert "sandbox_exec" in names and not {"sandbox_import", "sandbox_export"} & names
+                    await client.call_tool("sandbox_status", {})
+                    await approve(
+                        asyncio.create_task(
+                            client.call_tool(
+                                "sandbox_files_write",
+                                {"path": "packaged.txt", "contents": "Packaged MCP café", "append": False},
+                            )
+                        )
+                    )
+                    result = await client.call_tool("sandbox_files_read", {"path": "packaged.txt"})
+                    assert not result.is_error and "Packaged MCP café" in result.content[0].text
+                    executed = await approve(
+                        asyncio.create_task(
+                            client.call_tool(
+                                "sandbox_exec", {"command": "echo packaged-native-mcp", "timeoutMs": 5000}
+                            )
+                        )
+                    )
+                    assert executed["receipts"] and "packaged-native-mcp" in executed["result"]["stdout"]
+                    assert executed["result"]["exitCode"] == 0
+                    checks.append("packaged native AppContainer files/approved command/receipts")
+        assert (await admin.delete(url + "/api/admin/v1/mcp/clients/" + sandbox["id"])).status_code == 200
     return checks
 
 
@@ -120,6 +176,8 @@ def main():
             "PANINI_V2_LEDGER": "true",
             "PANINI_V2_INTERRUPTS": "true",
             "PANINI_V2_POLICY": "off",
+            "PANINI_SANDBOX": "true",
+            "PANINI_SANDBOX_ENGINE": "native",
             "PANINI_REMOTE_MODE": "off",
             "PANINI_PHONE_LINE": "false",
             "PANINI_CLI_ENABLED": "false",
@@ -170,7 +228,7 @@ def main():
                             )["sourceCommit"],
                             "runtime": str(runtime),
                             "checks": checks,
-                            "qualification": "Packaged transports only; no live model, hands, CLI agent or hardware qualification.",
+                            "qualification": "Packaged transports and real Windows AppContainer execution; no live model, desktop/browser CLI agent or physical Android qualification.",
                         },
                         indent=2,
                     )

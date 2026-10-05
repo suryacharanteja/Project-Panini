@@ -98,14 +98,10 @@
           },
           "persona": {
             "type": "string",
-            "enum": [
-              "panini"
-            ]
+            "pattern": "^[a-z][a-z0-9-]{0,40}$"
           }
         },
-        "required": [
-          "goal"
-        ],
+        "required": ["goal"],
         "additionalProperties": false
       }
     },
@@ -131,10 +127,7 @@
             "maxLength": 64
           }
         },
-        "required": [
-          "instruction",
-          "window"
-        ],
+        "required": ["instruction", "window"],
         "additionalProperties": false
       },
       "concurrency": "desktop_fine"
@@ -156,9 +149,7 @@
             "maxLength": 300
           }
         },
-        "required": [
-          "query"
-        ],
+        "required": ["query"],
         "additionalProperties": false
       }
     },
@@ -179,9 +170,7 @@
             "maxLength": 64
           }
         },
-        "required": [
-          "page_id"
-        ],
+        "required": ["page_id"],
         "additionalProperties": false
       }
     }

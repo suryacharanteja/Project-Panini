@@ -20,7 +20,7 @@ from ..core_contracts import EffectClass, Principal, ToolResult, raise_effect
 from ..interrupts import InterruptSpec
 from ..registry.context import ToolContext, ToolView
 from .clients import Clients
-from .tools import annotations, image_bytes, mapping, schema
+from .tools import annotations, image_bytes, mapping, persona_allows, schema
 
 
 class Context(ToolContext):
@@ -33,13 +33,27 @@ class Context(ToolContext):
             or not self.mcp_service.available()
         ):
             raise asyncio.CancelledError("MCP access was stopped.")
+        if getattr(self, "mcp_tool", "").startswith("sandbox_") and not v2flags.enabled("PANINI_SANDBOX"):
+            raise asyncio.CancelledError("Sandbox access was stopped.")
+        persona = getattr(self, "mcp_persona", "panini")
+        if persona != "panini":
+            try:
+                permitted = (
+                    v2flags.enabled("PANINI_PERSONAS")
+                    and "persona:" + persona in client["grants"]
+                    and persona_allows(self.mcp_service.h, persona, getattr(self, "mcp_tool", ""))
+                )
+            except KeyError:
+                permitted = False
+            if not permitted:
+                raise asyncio.CancelledError("MCP persona permission was stopped.")
 
 
 class Service:
     def __init__(self, harness):
         self.h = harness
         self.clients = Clients(harness.store, directory=harness.store.path.parent / "mcp")
-        self.states, self.calls, self.activity = {}, {}, {}
+        self.states, self.calls, self.activity, self.contexts = {}, {}, {}, {}
         self.progress_values = {}
         self.server = Server(
             "PANINI",
@@ -80,6 +94,7 @@ class Service:
             private=False,
             tasks=False,
             ledger=True,
+            sandbox="sandbox" in client["grants"] and v2flags.enabled("PANINI_SANDBOX"),
             managed_browser=v2flags.value("PANINI_BROWSER_DRIVER") == "playwright",
             claw_cdp="chrome" in client["grants"] and v2flags.enabled("PANINI_CLAW_CDP"),
         )
@@ -117,7 +132,7 @@ class Service:
                 types.Tool(
                     name=public,
                     description=spec.description,
-                    inputSchema=schema(public, spec),
+                    inputSchema=schema(public, spec, client=client, harness=self.h),
                     annotations=annotations(spec),
                 )
             )
@@ -135,6 +150,7 @@ class Service:
         )
         ctx.mcp_service, ctx.mcp_client, ctx.mcp_state = self, client, state
         ctx.mcp_request = request
+        ctx.mcp_owner_task = asyncio.current_task()
         progress_tasks = set()
 
         def emit(kind, message, **detail):
@@ -151,16 +167,60 @@ class Service:
         ctx.calls, ctx.taint, ctx.occurrences = state["calls"], state["taint"], state["occurrences"]
         ctx.agent = SimpleNamespace(registry=self.h.registry)
 
+        def slot(spec, held):
+            if held:
+                self.contexts[ctx.run_id] = ctx
+                self.activity[ctx.run_id] = {
+                    "run_id": ctx.run_id,
+                    "client_id": client["id"],
+                    "client": client["name"],
+                    "tool": next(
+                        (p for p, i in mapping(self.h, client, ctx.view).items() if i == spec.name),
+                        spec.name,
+                    ),
+                    "hand": spec.hand,
+                    "slot": spec.concurrency,
+                }
+            else:
+                self.activity.pop(ctx.run_id, None)
+                self.contexts.pop(ctx.run_id, None)
+
+        ctx.on_slot = slot
+
         async def confirm(title, detail, decision=None):
             ctx.check()
+            from ..policy.engine import new_grant
+
+            tool = getattr(ctx, "mcp_tool", "")
+            temporary = (
+                tool.startswith("browser_")
+                and decision is not None
+                and decision.effect in {EffectClass.NAVIGATE, EffectClass.INPUT}
+                and decision.level.value == "tap"
+            )
+            permission = {"client_id": client["id"], "tool": tool, "seconds": 3600}
+            response_schema = {
+                "type": "object",
+                "properties": {"approved": {"type": "boolean"}},
+                "required": ["approved"],
+                "additionalProperties": False,
+            }
+            if temporary:
+                response_schema["properties"]["allow_for_session"] = {"type": "boolean"}
             view = self.h.interrupts.open(
                 InterruptSpec(
                     "approval",
                     "mcp_effect",
                     f"{client['name']} wants to {title}"[:200],
                     "Approve this local agent's step?",
-                    preview={"detail": detail},
-                    action={"client_id": client["id"], "title": title, "detail": detail},
+                    preview={"detail": detail, **({"mcp_permission": permission} if temporary else {})},
+                    action={
+                        "client_id": client["id"],
+                        "title": title,
+                        "detail": detail,
+                        **({"mcp_permission": permission} if temporary else {}),
+                    },
+                    response_schema=response_schema,
                     ttl_s=120,
                     level=decision.level.value if decision else "tap",
                 ),
@@ -175,9 +235,26 @@ class Service:
                 await self.progress(request, "Waiting for PANINI's owner to approve this step.")
                 result = await self.h.interrupts.wait(view["id"], timeout=120)
                 ctx.check()
-                return result["status"] == "resolved" and bool(
-                    (result.get("decision") or {}).get("payload", {}).get("approved")
-                )
+                payload = (result.get("decision") or {}).get("payload", {})
+                approved = result["status"] == "resolved" and bool(payload.get("approved"))
+                if approved and temporary and payload.get("allow_for_session"):
+                    grant = new_grant(
+                        subject="mcp_client:" + client["id"],
+                        tools=(tool,),
+                        levels={"navigate": "none", "input": "none"},
+                        conditions={"surfaces": ["mcp"]},
+                        expires_at=time.time() + 3600,
+                        note="Owner approved one hour from an MCP approval card; submissions still ask.",
+                    )
+                    self.h.policy.put_grant(grant)
+                    if ctx.receipt:
+                        self.h.ledger.evidence(
+                            ctx.receipt,
+                            "permission",
+                            "Temporary browser permission granted.",
+                            {"grant_id": grant.id, "interrupt_id": view["id"], "tool": tool},
+                        )
+                return approved
             finally:
                 self.h.interrupts.cancel(view["id"], "MCP request ended.")
 
@@ -299,14 +376,12 @@ class Service:
                         raise ValueError("This tool is not granted to this client.")
                     spec = self.h.registry.tool(internal)
                     args = params.arguments or {}
-                    Draft202012Validator(schema(params.name, spec)).validate(args)
+                    Draft202012Validator(schema(params.name, spec, client=client, harness=self.h)).validate(
+                        args
+                    )
                     if params.name == "search_web":
                         args = {"instruction": args["query"]}
-                    self.activity[client["id"]] = {
-                        "client": client["name"],
-                        "tool": params.name,
-                        "hand": spec.hand,
-                    }
+                    ctx.mcp_tool = internal
                     await self.progress(request, "Running " + params.name)
                     before = {
                         r["id"]
@@ -350,7 +425,6 @@ class Service:
             finally:
                 self.calls.get(client["id"], set()).discard(work)
                 connection_calls.discard(work)
-                self.activity.pop(client["id"], None)
                 self.progress_values.pop(id(request), None)
         except asyncio.CancelledError:
             # Close interrupted receipts conservatively; never advertise retry safety after dispatch.
@@ -413,12 +487,23 @@ class Service:
 
     async def revoke(self, identifier):
         changed = self.clients.revoke(identifier)
+        for grant in self.h.policy.grants("mcp_client:" + identifier):
+            self.h.policy.revoke(grant.id)
         pending = list(self.calls.get(identifier, ()))
         for task in pending:
             task.cancel()
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         await self.clear_states(identifier)
+        computer = "mcp_" + identifier
+        if self.h.store.one("SELECT id FROM sandbox_computers WHERE id=?", (computer,)):
+            self.h.sandbox.patch_permissions(computer, {"enabled": False})
+            from ..hands.sandbox import SandboxError
+
+            try:
+                await self.h.sandbox.stop(computer)
+            except SandboxError:
+                pass  # Credentials and permissions remain revoked even if the engine is offline.
         return changed
 
     async def clear_states(self, identifier=None):
@@ -453,6 +538,11 @@ class Service:
         """Flag changes and direct credential revocation also stop in-flight calls."""
         while True:
             await asyncio.sleep(0.25)
+            for ctx in list(self.contexts.values()):
+                try:
+                    ctx.check()
+                except asyncio.CancelledError:
+                    ctx.mcp_owner_task.cancel()
             for identifier in list(self.calls):
                 client = self.clients.get(identifier)
                 if not self.available() or not client or client["revoked"] is not None:

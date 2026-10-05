@@ -3,13 +3,14 @@
 import hashlib
 import json
 import os
+import re
 import secrets
 import time
 from pathlib import Path
 from uuid import uuid4
 
 DEFAULT_SCOPES = ("desktop", "browser", "search")
-SCOPES = (*DEFAULT_SCOPES, "chrome", "pages")
+SCOPES = (*DEFAULT_SCOPES, "chrome", "pages", "sandbox")
 
 
 def token_hash(token):
@@ -91,7 +92,11 @@ class Clients:
 
     @staticmethod
     def scopes(values):
-        if not isinstance(values, (list, tuple)) or any(v not in SCOPES for v in values):
+        if not isinstance(values, (list, tuple)) or any(
+            not isinstance(v, str)
+            or (v not in SCOPES and not re.fullmatch(r"persona:[a-z][a-z0-9-]{0,40}", v))
+            for v in values
+        ):
             raise ValueError("Choose supported MCP scopes: " + ", ".join(SCOPES))
         if "chrome" in values and "browser" not in values:
             raise ValueError("Chrome also requires the browser scope.")
@@ -102,6 +107,11 @@ class Clients:
         if not 1 <= len(name) <= 80:
             raise ValueError("Name the calling client (1–80 characters).")
         grants = self.scopes(grants)
+        for scope in grants:
+            if scope.startswith("persona:") and not self.store.one(
+                "SELECT id FROM personas WHERE id=? AND archived=0", (scope.split(":", 1)[1],)
+            ):
+                raise ValueError("Choose an active persona to share with this client.")
         identifier, token = uuid4().hex, "mcp_" + secrets.token_urlsafe(32)
         path = None
         if save_token:

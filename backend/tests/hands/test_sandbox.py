@@ -403,7 +403,7 @@ class _FakeNative:
     def __init__(self):
         self.files = {}
 
-    def run(self, computer, command, *, timeout_s):
+    def run(self, computer, command, *, timeout_s, cancel=None):
         return {
             "exitCode": 0,
             "timedOut": False,

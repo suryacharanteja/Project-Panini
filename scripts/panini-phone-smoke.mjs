@@ -80,6 +80,22 @@ try {
   await page.getByText('Nothing needs you right now.', { exact: true }).waitFor();
   const result = await control('/state');
   if (result.interrupts[0].status !== 'resolved') throw Error('Approval did not resolve');
+  await control('/mcp-interrupt', 'POST');
+  await page.getByRole('button', { name: 'Inbox', exact: true }).click();
+  await page.getByRole('button', { name: 'Allow this tool for 1 hour', exact: true }).waitFor();
+  await page.screenshot({ path: 'artifacts/phone/android-mcp-approval.png' });
+  await page.getByRole('button', { name: 'Allow this tool for 1 hour', exact: true }).click();
+  await page.getByText('Nothing needs you right now.', { exact: true }).waitFor();
+  const granted = await control('/state');
+  if (
+    !granted.interrupts.some(
+      (item) =>
+        item.reason === 'mcp_effect' &&
+        item.status === 'resolved' &&
+        item.decision?.payload?.allow_for_session === true,
+    )
+  )
+    throw Error('Signed temporary permission did not resolve');
   const authenticator = await context.newCDPSession(page);
   await authenticator.send('WebAuthn.enable');
   await authenticator.send('WebAuthn.addVirtualAuthenticator', {

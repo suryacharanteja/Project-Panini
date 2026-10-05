@@ -153,8 +153,10 @@ Source tests use real loopback HTTP and official SDK clients, with fixture deskt
 a scripted task model. They do not qualify live Claude Code/Codex hands, live model planning, or hardware.
 See [qualification record](../qualification-mcp-2026-10-05.md).
 
-Still open: sandbox opt-in tools, persona selection beyond PANINI, grants created directly from the
-interrupt card, activity displayed for actual slot ownership, live Claude Code/Codex connection and
-approved browser/desktop task qualification, and production release qualification. The owner deferred
+The follow-up increment implements sandbox opt-in tools, explicit persona selection, grants directly
+from interrupt cards, and activity tied to actual hand-slot ownership. Real Windows AppContainer
+execution and cancellation are tested through official SDK HTTP; browser and model planning remain
+fixtures. Live Claude Code/Codex connection, approved desktop/browser task qualification, live model
+planning and production release qualification remain open. The owner deferred
 red-team work; it is disabled and is not a current enablement gate. Other policy, pairing and receipt
 checks remain enforced. This LLD remains **In progress** until its remaining requirements are verified.

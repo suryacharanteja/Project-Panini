@@ -355,5 +355,8 @@ normalizers and the coarse/fine comparison remain pending. Coarse remains the de
 ## MCP delivery checkpoint — 2026-10-05
 
 V2-23 implemented the SDK transports, curated local hands, owner approvals, client-bound receipts and
-browser sessions, Admin controls and packaged stdio bridge. Remaining requirements and qualification
+browser sessions, Admin controls and packaged stdio bridge. Its follow-up adds per-client sandbox scope,
+owner-shared personas with intersected permissions, interrupt-card grants and actual slot activity.
+Windows AppContainer execution, workspace isolation and OS worker cancellation have source SDK evidence.
+Remaining live external-agent, desktop/browser and model requirements and qualification
 are recorded in [the MCP report](qualification-mcp-2026-10-05.md); no all-LLD completion is claimed.

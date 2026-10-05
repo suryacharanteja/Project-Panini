@@ -261,8 +261,17 @@ class Registry:
         started = time.monotonic()
 
         async def run():
-            async with self.slot(target.concurrency if name not in self.control else None):
-                return await self.hands[name].call(ctx, spec, args)
+            key = target.concurrency if name not in self.control else None
+            async with self.slot(key):
+                ctx.check()  # Authority can change while waiting for another hand.
+                observe = getattr(ctx, "on_slot", None) if key else None
+                if observe:
+                    observe(target, True)
+                try:
+                    return await self.hands[name].call(ctx, spec, args)
+                finally:
+                    if observe:
+                        observe(target, False)
 
         call = run
         for hook in reversed(self.hooks):

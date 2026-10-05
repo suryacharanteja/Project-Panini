@@ -21,6 +21,7 @@ import json
 import os
 import re
 import secrets as secrets_module
+import threading
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -247,11 +248,15 @@ class SandboxService:
             self._native = False
         return self._native or None
 
-    async def _native_action(self, computer_id, action, parsed):
+    async def _native_action(self, computer_id, action, parsed, stop=None):
         box = self.native
         if action == "exec":
             return await asyncio.to_thread(
-                box.run, computer_id, parsed["command"], timeout_s=parsed["timeoutMs"] / 1000
+                box.run,
+                computer_id,
+                parsed["command"],
+                timeout_s=parsed["timeoutMs"] / 1000,
+                cancel=stop,
             )
         if action == "files_list":
             return await asyncio.to_thread(box.files_list, computer_id, parsed["path"])
@@ -314,7 +319,8 @@ class SandboxService:
         from .native_browser import NativeBrowserError
         from .native_sandbox import NativeSandboxError
 
-        work = asyncio.ensure_future(self._native_action(computer_id, action, parsed))
+        stop = threading.Event()
+        work = asyncio.ensure_future(self._native_action(computer_id, action, parsed, stop))
         try:
             while not work.done():
                 await asyncio.wait({work}, timeout=0.05)
@@ -323,14 +329,26 @@ class SandboxService:
                 try:
                     self.allowed(computer_id, kind, actor)
                 except SandboxError:
-                    work.cancel()
                     raise
                 if cancel is not None and cancel.is_set():
-                    work.cancel()
                     raise SandboxError("Computer request was cancelled or timed out.")
             result = work.result()
         except (NativeSandboxError, NativeBrowserError) as exc:
             raise SandboxError(str(exc)) from None
+        finally:
+            stop.set()
+            if action not in {"exec", "files_list", "files_read", "files_write"}:
+                work.cancel()
+            # Cancelling to_thread alone leaves its OS process alive. Exec polls stop and
+            # terminates its entire job; bounded file operations must finish before release.
+            while not work.done():
+                try:
+                    await asyncio.shield(work)
+                except asyncio.CancelledError:
+                    continue  # Repeated revoke signals cannot abandon the OS worker.
+                except Exception:
+                    break
+            await asyncio.gather(work, return_exceptions=True)
         self.allowed(computer_id, kind, actor)
         return result
 
@@ -760,6 +778,11 @@ class SandboxHand:
     def computer_for(ctx) -> str:
         """One computer per persona; until personas arrive (V2-18) PANINI has one, named panini."""
         principal = getattr(ctx, "principal", None)
+        if getattr(principal, "kind", None) == "mcp_client":
+            client = ctx.mcp_service.clients.get(principal.client_id)
+            if not client or client["revoked"] is not None or "sandbox" not in client["grants"]:
+                raise SandboxError("This client has no sandbox permission.")
+            return "mcp_" + client["id"]
         if getattr(principal, "kind", None) == "persona":
             harness = getattr(getattr(ctx, "agent", None), "h", None)
             if harness is None:
@@ -786,7 +809,20 @@ class SandboxHand:
         computer = self.computer_for(ctx)
         service = self.service
         try:
-            service.ensure_row(computer)
+            if getattr(ctx.principal, "kind", None) == "mcp_client":
+                if name in {"sandbox_import", "sandbox_export"}:
+                    return ToolResult("blocked", "Host file transfer is unavailable to MCP clients.")
+                service.store.execute(
+                    "INSERT OR IGNORE INTO sandbox_computers(id, persona_id, created, permissions) VALUES (?,?,?,?)",
+                    (
+                        computer,
+                        computer,
+                        service.clock(),
+                        json.dumps({"enabled": True, "browser": True, "files": True, "shell": True}),
+                    ),
+                )  # Explicit owner sandbox scope initializes once; revoked permissions stay off.
+            else:
+                service.ensure_row(computer)
             if name == "sandbox_status":
                 status = await service.status(computer)
                 return ToolResult("ok", json.dumps(status), data=status)
@@ -852,4 +888,30 @@ class SandboxHand:
             )
         elif action in ("snapshot", "read", "screenshot"):
             evidence.append({"kind": "page", "summary": "Observed the sandbox browser."})
-        return ToolResult("ok", json.dumps(data, ensure_ascii=False)[:12000], data=data, evidence=evidence)
+        artifacts = []
+        if (
+            action == "screenshot"
+            and getattr(ctx.principal, "kind", None) == "mcp_client"
+            and data.get("base64")
+        ):
+            from ..mcp_server.tools import image_bytes
+
+            if len(data["base64"]) > 5_333_336:
+                raise SandboxError("Screenshot exceeds the input size limit.")
+            raw = image_bytes(base64.b64decode(data["base64"], validate=True))
+            artifact = ctx.mcp_service.h.artifacts.put("screenshot", raw, "image/jpeg", run_id=ctx.run_id)
+            artifacts.append(artifact)
+            data = {k: v for k, v in data.items() if k != "base64"}
+        outcome = "ok"
+        if action == "exec" and isinstance(result, dict):
+            if result.get("cancelled"):
+                outcome = "cancelled"
+            elif result.get("timedOut") or result.get("exitCode") not in {None, 0}:
+                outcome = "failed"
+        return ToolResult(
+            outcome,
+            json.dumps(data, ensure_ascii=False)[:12000],
+            data=data,
+            evidence=evidence,
+            artifact_ids=artifacts,
+        )

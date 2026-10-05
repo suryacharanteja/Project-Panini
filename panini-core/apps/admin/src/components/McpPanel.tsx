@@ -21,6 +21,7 @@ const scopes: [string, string][] = [
   ['search', 'Web search'],
   ['chrome', 'Your attached Chrome tab (requires browser)'],
   ['pages', 'Read and search your notebook pages'],
+  ['sandbox', 'Separate sandbox workspace, browser and approved commands'],
 ];
 
 export function McpPanel() {
@@ -29,6 +30,7 @@ export function McpPanel() {
     enabled: boolean;
     ready: boolean;
     grants: { id: string; subject: string; tools: string[]; expires_at: number }[];
+    personas?: { id: string; name: string }[];
   }>(admin('/mcp/clients'));
   const [name, setName] = useState('');
   const [grants, setGrants] = useState(['desktop', 'browser', 'search']);
@@ -49,8 +51,8 @@ export function McpPanel() {
     <Card title="Local MCP clients">
       <p className="mb-3 text-sm text-muted">
         Let coding agents use PANINI’s hands. Each client has its own token and browser context.
-        Effects wait for your approval. Owner memories, shell commands, connectors and messaging
-        stay private.
+        Effects wait for your approval. Owner memories, host shell commands, connectors and
+        messaging stay private.
       </p>
       <Badge tone={data.data?.ready ? 'ok' : 'warn'}>
         {data.data?.ready
@@ -98,6 +100,22 @@ export function McpPanel() {
                 }}
               />
               {label}
+            </label>
+          ))}
+          {(data.data?.personas ?? []).map((persona) => (
+            <label key={persona.id} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={grants.includes(`persona:${persona.id}`)}
+                onChange={(e) =>
+                  setGrants(
+                    e.target.checked
+                      ? [...grants, `persona:${persona.id}`]
+                      : grants.filter((g) => g !== `persona:${persona.id}`),
+                  )
+                }
+              />
+              Share {persona.name} for tasks (includes its instructions)
             </label>
           ))}
         </fieldset>

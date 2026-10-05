@@ -72,7 +72,8 @@ export function InboxPage() {
           <InterruptCard
             key={item.id}
             interrupt={{ ...item, expiresAt: new Date(item.expires_at * 1000).toISOString() }}
-            onDecide={async (approved) => {
+            allowSession
+            onDecide={async (approved, allowForSession) => {
               const fresh = await api(harness(`/interrupts/${item.id}`));
               if (fresh.status !== 'open') {
                 await interrupts.reload();
@@ -85,7 +86,7 @@ export function InboxPage() {
                   nonce: item.nonce,
                   action_digest: item.action_digest,
                   status: 'resolved',
-                  payload: { approved },
+                  payload: { approved, ...(allowForSession ? { allow_for_session: true } : {}) },
                 },
               });
               await reload();

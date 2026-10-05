@@ -3,7 +3,8 @@
 import base64
 import hashlib
 import io
-from dataclasses import asdict
+from copy import deepcopy
+from dataclasses import asdict, replace
 
 from mcp import types
 from PIL import Image
@@ -55,6 +56,10 @@ def mapping(harness, client, view):
         names.update({n: n for n in BROWSER_TOOLS})
     if "pages" in scopes and v2flags.enabled("PANINI_SPACES"):
         names.update({"pages_search": "mcp_pages_search", "pages_read": "mcp_pages_read"})
+    if "sandbox" in scopes:
+        from ..hands.sandbox import TOOL_ACTIONS
+
+        names.update({n: n for n in (*TOOL_ACTIONS, "sandbox_status", "sandbox_start", "sandbox_stop")})
     return {
         public: internal
         for public, internal in names.items()
@@ -74,7 +79,23 @@ def annotations(spec):
     )
 
 
-def schema(public, spec):
+def schema(public, spec, *, client=None, harness=None):
+    if public == "panini_ask" and client is not None:
+        result = deepcopy(spec.input_schema)
+        result["properties"]["persona"]["enum"] = [
+            "panini",
+            *[
+                s.split(":", 1)[1]
+                for s in client["grants"]
+                if s.startswith("persona:")
+                and s != "persona:panini"
+                and v2flags.enabled("PANINI_PERSONAS")
+                and harness.store.one(
+                    "SELECT id FROM personas WHERE id=? AND archived=0", (s.split(":", 1)[1],)
+                )
+            ],
+        ]
+        return result
     if public == "search_web":
         return {
             "type": "object",
@@ -83,6 +104,28 @@ def schema(public, spec):
             "additionalProperties": False,
         }
     return spec.input_schema
+
+
+def persona_allows(harness, persona_id, internal):
+    if persona_id in {None, "panini"}:
+        return True
+    harness.personas.get(persona_id)  # Archived personas cannot use even control tools.
+    if internal in {"", "finish", "update_plan", "mcp_status", "mcp_receipts_search"}:
+        return True
+    spec = harness.registry.tool(internal)
+    public = next((p for p, i in ALIASES.items() if i == internal), internal)
+    if internal.startswith("mcp_pages_"):
+        public = internal.removeprefix("mcp_")
+    capability = (
+        "spaces"
+        if internal.startswith("mcp_pages_")
+        else "desktop"
+        if public.startswith("desktop_")
+        else "browser"
+        if public.startswith("browser_")
+        else spec.capability
+    )
+    return harness.personas.allows(persona_id, replace(spec, name=public, capability=capability))
 
 
 def image_bytes(raw):
@@ -113,12 +156,22 @@ class Hand:
 
             state = ctx.mcp_service.new_state()
             child = ctx.mcp_service.context(ctx.mcp_client, state, ctx.mcp_request)
+            persona_id = args.get("persona", "panini")
+            if persona_id != "panini":
+                if (
+                    not v2flags.enabled("PANINI_PERSONAS")
+                    or "persona:" + persona_id not in ctx.mcp_client["grants"]
+                ):
+                    return ToolResult("blocked", "This persona is unavailable to this client.")
+                self.h.personas.get(persona_id)
+                child.mcp_persona = persona_id
             agent = ClientAgent(ctx.mcp_service, child, emit=child.mcp_emit)
             try:
                 result = await agent.run(args["goal"])
             finally:
                 await ctx.mcp_service.close_run(child.run_id)
             data = asdict(result)
+            data["persona"] = self.h.personas.presentation(persona_id)
             data["receipts"] = [
                 r["id"] for r in self.h.store.all("SELECT id FROM receipts WHERE run_id=?", (child.run_id,))
             ]
@@ -130,9 +183,12 @@ class Hand:
         if spec.name == "mcp_desktop_do":
             return await ctx.mcp_desktop(args)
         if spec.name == "mcp_pages_search":
-            return ToolResult(data={"pages": self.h.spaces.search(args["query"])}, tainted=True)
+            return ToolResult(
+                data={"pages": self.h.spaces.search(args["query"], getattr(ctx, "mcp_persona", "panini"))},
+                tainted=True,
+            )
         if spec.name == "mcp_pages_read":
-            page = self.h.spaces.read(args["page_id"])
+            page = self.h.spaces.read(args["page_id"], getattr(ctx, "mcp_persona", "panini"))
             return ToolResult(data={k: page[k] for k in ("id", "title", "content", "revision")}, tainted=True)
         if spec.name == "mcp_status":
             return ToolResult(

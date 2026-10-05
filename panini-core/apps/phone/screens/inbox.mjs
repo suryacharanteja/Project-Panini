@@ -48,7 +48,13 @@ function interruptCard(app, view) {
       deciding = false;
     }
   };
-  const labels = { approve: 'Approve', decline: 'Decline', done: "I'm done", answer: 'Send' };
+  const labels = {
+    approve: 'Approve',
+    allow_session: 'Allow this tool for 1 hour',
+    decline: 'Decline',
+    done: "I'm done",
+    answer: 'Send',
+  };
   return h(
     'article.card.interrupt',
     { 'data-level': model.level },

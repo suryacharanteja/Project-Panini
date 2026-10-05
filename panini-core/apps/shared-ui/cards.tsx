@@ -63,16 +63,18 @@ export type InterruptView = {
   expiresAt?: string;
 };
 
-type Decide = (approved: boolean) => Promise<void> | void;
+type Decide = (approved: boolean, allowForSession?: boolean) => Promise<void> | void;
 
 function InterruptCardBody({
   interrupt,
   onDecide,
   onReview,
+  allowSession = false,
 }: {
   interrupt: InterruptView;
   onDecide: Decide;
   onReview?: (approved: boolean, content: string) => Promise<void> | void;
+  allowSession?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -87,12 +89,21 @@ function InterruptCardBody({
     : toText(preview?.detail ?? preview?.effect ?? preview, 1500);
   const [reviewContent, setReviewContent] = useState(pageDraft ? String(preview?.content) : '');
   const [rendered, setRendered] = useState(false);
-  const decide = async (approved: boolean) => {
+  const permission = preview?.mcp_permission as { tool?: unknown; seconds?: unknown } | undefined;
+  const sessionAvailable =
+    allowSession &&
+    interrupt.reason === 'mcp_effect' &&
+    interrupt.kind === 'approval' &&
+    interrupt.level === 'tap' &&
+    typeof permission?.tool === 'string' &&
+    permission.tool.startsWith('browser_') &&
+    permission.seconds === 3600;
+  const decide = async (approved: boolean, session = false) => {
     setBusy(true);
     setError('');
     try {
       if (pageDraft && onReview) await onReview(approved, reviewContent);
-      else await onDecide(approved);
+      else await onDecide(approved, session);
     } catch (exc) {
       setError(toText((exc as Error)?.message) || 'The decision could not be sent.');
       setBusy(false);
@@ -161,10 +172,21 @@ function InterruptCardBody({
         >
           Approve
         </button>
+        {sessionAvailable && (
+          <button type="button" disabled={busy} onClick={() => void decide(true, true)}>
+            Allow this tool for 1 hour
+          </button>
+        )}
         <button type="button" disabled={busy} onClick={() => void decide(false)}>
           Decline
         </button>
       </div>
+      {sessionAvailable && (
+        <p className="pc-hint">
+          Temporary permission covers this tool’s navigation and input. Submissions still need
+          approval.
+        </p>
+      )}
       {error && (
         <p role="alert" className="pc-error">
           {error}
@@ -178,6 +200,7 @@ export function InterruptCard(props: {
   interrupt: InterruptView;
   onDecide: Decide;
   onReview?: (approved: boolean, content: string) => Promise<void> | void;
+  allowSession?: boolean;
 }) {
   return (
     <CardBoundary label="approval card">

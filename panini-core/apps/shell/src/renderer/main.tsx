@@ -687,13 +687,15 @@ function App() {
                 <button onClick={() => void call('teachStop')}>Stop recording</button>
               </p>
             )}
-            {(background?.mcp ?? []).map((item: { client: string; tool: string; hand: string }) => (
-              <p className="background-work" role="status" key={`${item.client}:${item.tool}`}>
-                <span className="pulse" aria-hidden="true" />
-                {item.client} is using{' '}
-                {item.hand === 'desktop' ? 'your desktop' : `PANINI: ${item.tool}`}
-              </p>
-            ))}
+            {(background?.mcp ?? []).map(
+              (item: { run_id: string; client: string; tool: string; hand: string }) => (
+                <p className="background-work" role="status" key={item.run_id}>
+                  <span className="pulse" aria-hidden="true" />
+                  {item.client} is using{' '}
+                  {item.hand === 'desktop' ? 'your desktop' : `PANINI: ${item.tool}`}
+                </p>
+              ),
+            )}
             {caption && (
               <div className="captions" aria-label="Live captions">
                 {caption}

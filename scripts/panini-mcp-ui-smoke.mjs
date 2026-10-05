@@ -7,6 +7,23 @@ import { chromium } from 'playwright';
 
 const root = resolve('frontend/public/admin');
 const evidence = resolve('artifacts/mcp-server');
+let interruptOpen = true;
+const interrupt = {
+  id: 'mcp-card-fixture',
+  kind: 'approval',
+  reason: 'mcp_effect',
+  level: 'tap',
+  status: 'open',
+  title: 'Codex wants to navigate',
+  message: 'Approve this local agent’s step?',
+  nonce: 'fixture-nonce',
+  action_digest: 'fixture-digest',
+  expires_at: Date.now() / 1000 + 120,
+  preview: {
+    detail: 'https://example.com',
+    mcp_permission: { tool: 'browser_navigate', seconds: 3600 },
+  },
+};
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const asset = url.pathname.startsWith('/admin/') ? url.pathname.slice(6) : '/index.html';
@@ -44,7 +61,16 @@ try {
     if (body || request.method() === 'DELETE')
       requests.push({ path, method: request.method(), body });
     let data = {};
-    if (path === '/api/admin/v1/agents') data = { agents: [], clients: [] };
+    if (path === '/api/harness/interrupts') data = { interrupts: interruptOpen ? [interrupt] : [] };
+    else if (path === '/api/harness/interrupts/mcp-card-fixture') {
+      if (body) {
+        assert.deepEqual(body.payload, { approved: true, allow_for_session: true });
+        assert.equal(body.nonce, interrupt.nonce);
+        assert.equal(body.action_digest, interrupt.action_digest);
+        interruptOpen = false;
+      }
+      data = { ...interrupt, status: interruptOpen ? 'open' : 'resolved' };
+    } else if (path === '/api/admin/v1/agents') data = { agents: [], clients: [] };
     else if (path === '/api/admin/v1/mcp/clients' && request.method() === 'POST') {
       clients = [
         { id: identifier, name: body.name, grants: body.grants, revoked: null, last_used: null },
@@ -67,7 +93,13 @@ try {
         token_file: `C:\\PANINI\\mcp\\${identifier}\\client.token`,
       };
     } else if (path === '/api/admin/v1/mcp/clients')
-      data = { clients, grants, enabled: true, ready: true };
+      data = {
+        clients,
+        grants,
+        enabled: true,
+        ready: true,
+        personas: [{ id: 'researcher', name: 'Researcher' }],
+      };
     else if (path.endsWith('/grants') && request.method() === 'POST') {
       grants = [
         {
@@ -92,6 +124,8 @@ try {
   await page.getByText('Local MCP clients', { exact: true }).waitFor();
   await page.getByLabel('MCP client name').fill('Codex fixture');
   await page.getByRole('checkbox', { name: /Your attached Chrome/ }).check();
+  await page.getByRole('checkbox', { name: /Separate sandbox workspace/ }).check();
+  await page.getByRole('checkbox', { name: /Share Researcher/ }).check();
   await page.getByRole('button', { name: 'Register client' }).click();
   await page.getByLabel('One-time MCP setup').waitFor();
   assert(
@@ -114,6 +148,21 @@ try {
   await page.getByRole('button', { name: 'Revoke', exact: true }).click();
   await page.getByText('Revoked', { exact: true }).waitFor();
   assert.equal(await page.getByLabel('One-time MCP setup').count(), 0);
+  for (const width of [1440, 412]) {
+    interruptOpen = true;
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto(`http://127.0.0.1:${server.address().port}/inbox`);
+    await page.getByRole('button', { name: 'Allow this tool for 1 hour', exact: true }).waitFor();
+    await page.screenshot({
+      path: resolve(evidence, `approval-card-${width}.png`),
+      fullPage: true,
+    });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.getByRole('button', { name: 'Allow this tool for 1 hour', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Allow this tool for 1 hour', exact: true })
+      .waitFor({ state: 'detached' });
+  }
   assert.deepEqual(errors, []);
   const report = {
     passed: true,
@@ -121,6 +170,8 @@ try {
     registrationScopes: true,
     httpAndStdioSetup: true,
     temporaryGrant: true,
+    interruptCardGrantDesktopAndMobile: true,
+    explicitSandboxAndPersonaScopes: true,
     revokeHidesSecret: true,
     mobileNoOverflow: true,
     pageErrors: errors,

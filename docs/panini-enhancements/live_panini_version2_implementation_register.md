@@ -273,6 +273,8 @@ V2-21 registry tools, grounded effects, mandatory ledger, shadow-mode cancellati
 V2-23 now has the official SDK HTTP transport, protected per-client stdio credentials, owner Admin
 registration/grants/revocation, isolated browser contexts, mandatory effect approvals, progress/images,
 receipts and an external task runner without owner memories or connectors. Source integration uses
-real transports with fixture hands and a scripted model. V2-23 remains In progress: sandbox opt-in,
-interrupt-card grants, actual slot ownership UI and live external-agent/hands qualification remain open.
+real transports, a scripted model, fixture browser/desktop hands and real Windows AppContainer commands.
+The follow-up adds isolated sandbox scope, explicitly shared personas with intersected permissions,
+signed interrupt-card grants and actual slot activity. V2-23 remains In progress: live external-agent,
+desktop/browser and model qualification remain open.
 See [qualification record](qualification-mcp-2026-10-05.md). Red-team remains disabled and deferred.

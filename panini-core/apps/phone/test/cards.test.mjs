@@ -15,6 +15,31 @@ const approval = {
   title: 'Send email',
 };
 
+test('temporary MCP permission is explicit, signed and unavailable to stronger or changed cards', async () => {
+  const view = {
+    ...approval,
+    reason: 'mcp_effect',
+    preview: { mcp_permission: { client_id: 'c1', tool: 'browser_navigate', seconds: 3600 } },
+    response_schema: { properties: { allow_for_session: { type: 'boolean' } } },
+  };
+  assert.deepEqual(card(view).buttons, ['approve', 'allow_session', 'decline']);
+  const resolved = decision(view, 'allow_session');
+  assert.deepEqual(resolved.payload, { approved: true, allow_for_session: true });
+  assert.notEqual(
+    await decisionStatement('i1', 'n1', 'd1', 'resolved', resolved.payload),
+    await decisionStatement('i1', 'n1', 'd1', 'resolved', { approved: true }),
+  );
+  for (const altered of [
+    { ...view, level: 'verify' },
+    { ...view, preview: {} },
+    { ...view, response_schema: {} },
+    { ...view, reason: 'different' },
+  ]) {
+    assert.equal(card(altered).buttons.includes('allow_session'), false);
+    assert.equal(decision(altered, 'allow_session').status, 'cancelled');
+  }
+});
+
 test('cards offer what the level allows', () => {
   assert.deepEqual(card(approval).buttons, ['approve', 'decline']);
   assert.deepEqual(card({ ...approval, level: 'local' }).buttons, []);
