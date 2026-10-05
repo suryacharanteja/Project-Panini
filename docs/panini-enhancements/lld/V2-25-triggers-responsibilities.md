@@ -162,7 +162,9 @@ The trigger bus, file watcher, signed generic webhook, shell-forwarded OS events
 read-only MCP polling, reviewed rules, background worker integration, responsibility reports and Admin
 controls are implemented behind `PANINI_TRIGGERS=false` by default. `backend/tests/triggers/test_flow.py`
 exercises real local folder watching, signed webhook rejection and dedupe, worker execution, quotas,
-source grants and a scripted responsibility report. These fixture tests do not qualify a live email or
-calendar provider, actual sleep/wake delivery on a physical PC, automatic correlation of every PANINI
-file write, or a seven-day report interval. The acceptance boxes above remain open until those checks
-are run. Red-team qualification is disabled and deferred by owner direction.
+source grants and a scripted responsibility report. Sandbox export now records its host file write before
+and after saving. A real watched-folder integration test confirms that this PANINI-created file does not
+queue another trigger run. These fixture tests do not qualify a live email or calendar provider, actual
+sleep/wake delivery on a physical PC, correlation of every PANINI file write, or a seven-day report
+interval. The acceptance boxes above remain open until those checks are run. Red-team qualification is
+disabled and deferred by owner direction.

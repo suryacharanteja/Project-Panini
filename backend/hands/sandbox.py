@@ -855,8 +855,16 @@ class SandboxHand:
                     else str(result)
                 )
                 target = export_destination(str(args.get("name") or path))
-                target.write_text(str(text), encoding="utf-8")
                 digest = hashlib.sha256(str(text).encode()).hexdigest()
+                harness = self.runtime.get("harness")
+                triggers = getattr(harness, "triggers", None)
+                if triggers is not None:
+                    # Register before the filesystem event can race a watcher callback.
+                    triggers.mark_own_write(target, digest)
+                target.write_text(str(text), encoding="utf-8")
+                if triggers is not None:
+                    # Refresh the suppression window after a slow write.
+                    triggers.mark_own_write(target, digest)
                 evidence = [
                     {"kind": "file", "summary": f"Saved on this PC: {target}", "receipt_sha256": digest}
                 ]

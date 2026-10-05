@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,6 +12,7 @@ from panini_cli.agent.model import ScriptedModel
 
 from backend.capabilities.contracts import Outcome
 from backend.fabric.ingress import Ingress
+from backend.hands.sandbox import SandboxHand
 from backend.harness.connectors import Connectors
 from backend.harness.runtime import Harness
 from backend.harness.store import Store
@@ -473,6 +475,45 @@ def test_actual_folder_watcher_queues_within_five_seconds(harness, tmp_path):
             await asyncio.sleep(0.05)
         assert h.store.one("SELECT count(*) n FROM trigger_firings")["n"] == 1
         await h.triggers.close()
+
+    asyncio.run(exercise())
+
+
+def test_sandbox_export_does_not_retrigger_a_watched_folder(harness, tmp_path, monkeypatch):
+    folder = tmp_path / "exports"
+    folder.mkdir()
+    proposal = harness.triggers.propose(
+        rule("files", {"kind": ["created"], "watch_root": str(folder), "path_glob": str(folder / "*.txt")})
+    )
+    approve(harness, proposal["review_id"])
+
+    async def read_from_sandbox(*_args, **_kwargs):
+        return {"contents": "Generated in PANINI's sandbox"}
+
+    harness.sandbox = SimpleNamespace(ensure_row=lambda _computer: None, action=read_from_sandbox)
+    monkeypatch.setattr("backend.hands.sandbox.export_destination", lambda _name: folder / "report.txt")
+    hand = SandboxHand(None, {"harness": harness})
+    ctx = SimpleNamespace(principal=SimpleNamespace(persona=None))
+
+    async def exercise():
+        harness.triggers.start()
+        try:
+            for _ in range(30):
+                if harness.triggers.file_watchers:
+                    break
+                await asyncio.sleep(0.05)
+            await asyncio.sleep(0.2)
+            result = await hand.call(ctx, SimpleNamespace(name="sandbox_export"), {"path": "report.txt"})
+            assert result.outcome == "ok"
+            assert (folder / "report.txt").read_text(encoding="utf-8") == "Generated in PANINI's sandbox"
+            await asyncio.sleep(2.5)  # Let the real debounced watcher observe the write.
+            assert harness.store.one("SELECT COUNT(*) AS n FROM trigger_firings")["n"] == 0
+            assert (
+                harness.store.one("SELECT receipt_id FROM trigger_self_writes")["receipt_id"]
+                == result.evidence[0]["receipt_sha256"]
+            )
+        finally:
+            await harness.triggers.close()
 
     asyncio.run(exercise())
 
