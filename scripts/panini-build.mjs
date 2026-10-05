@@ -29,12 +29,15 @@ await build({
     js: 'import { createRequire as paniniCreateRequire } from "node:module"; const require = paniniCreateRequire(import.meta.url);',
   },
 });
-await run('dotnet', [
+const dotnetBuildArgs = [
   'build',
   'panini-core/capabilities/desktop/Panini.Desktop.sln',
   '-c',
   'Release',
-]);
+];
+if (process.env.PANINI_DOTNET_OUTPUT_PATH)
+  dotnetBuildArgs.push(`-p:OutputPath=${process.env.PANINI_DOTNET_OUTPUT_PATH}`);
+await run('dotnet', dotnetBuildArgs);
 await run(process.execPath, ['panini-core/apps/shell/scripts/build.mjs']);
 // PANINI Admin builds into frontend/public/admin, which packaging copies with the console.
 await run(process.execPath, [

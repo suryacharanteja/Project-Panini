@@ -88,7 +88,10 @@ async function run(command, args, cwd = root, extraEnv = {}, expectedOutput = nu
     );
   });
 }
-await run(process.execPath, ['scripts/panini-build.mjs']);
+await run(process.execPath, ['scripts/panini-build.mjs'], root, {
+  PANINI_DOTNET_OUTPUT_PATH:
+    join(root, 'artifacts/dotnet-isolated/build').replaceAll('\\', '/') + '/',
+});
 await run(join(root, '.venv/Scripts/python.exe'), ['scripts/build-panini-cli-icon.py']);
 await run(join(root, '.venv/Scripts/python.exe'), [
   '-m',
@@ -278,6 +281,7 @@ for (const [project, folder] of [
     'win-x64',
     '--self-contained',
     'true',
+    `-p:OutputPath=${join(root, 'artifacts/dotnet-isolated', project).replaceAll('\\', '/')}/`,
     '-o',
     join(runtime, 'desktop', folder),
   ]);
