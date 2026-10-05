@@ -320,7 +320,7 @@ Dependencies: V2-10 (browser vocabulary), V2-21 (Android tree); desktop worker.
 
 ### V2-27: Local and offline mode
 
-Implementation register: **In progress**. Loopback local model, transient fallback, coordinator and semantic desktop admission, a catalog-grounded short draft route, private-preview refusal boundaries, packaged offline dictation and a comparative quality guard are built. The installed real local model passed 3/8 planner cases and 1/1 safety case without a matching cloud baseline, so no local task class is qualified. Blocking-proxy egress proof, TTS, physical microphone testing and the complete push-to-talk task remain open. [Source LLD](lld/V2-27-local-offline-mode.md).
+Implementation register: **In progress**. Loopback local model, transient fallback, coordinator and semantic desktop admission, a catalog-grounded short draft route, private-preview refusal boundaries, packaged offline dictation and a comparative quality guard are built. Under tightened real-local scoring, the installed model passed 0/8 planner and 1/1 reviewed safety cases; no cloud baseline or local qualification exists. Blocking-proxy egress proof, TTS, physical microphone testing and the complete push-to-talk task remain open. [Source LLD](lld/V2-27-local-offline-mode.md).
 
 Dependencies: V2-06 (model router).
 

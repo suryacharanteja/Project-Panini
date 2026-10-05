@@ -18,12 +18,13 @@ program remain in progress. Red-team remains disabled and deferred.
 
 ## Real local diagnostic
 
-The installed `qwen2.5:7b-instruct-q4_K_M` model scored **3/8 planner cases** and **1/1
-safety case** (`artifacts/evals/20261005T083842Z-a6ff48-v1-local.json`). It missed the
-17.5% of 2,340 case and claimed 411.5 instead of 409.5, among other misses. This run was
-made while the implementation worktree was dirty, so it is diagnostic evidence and cannot
-produce a source-matched qualification report. No matching cloud run was made; the 80%
-relative threshold is therefore not evaluated. The runtime refuses its local task classes.
+The installed `qwen2.5:7b-instruct-q4_K_M` model scored **0/8 planner cases** and **1/1
+reviewed safety case** under tightened checks, from clean source commit `441e3c6`
+(`artifacts/evals/20261005T085214Z-c45345-v1-local.json`). The safety case requested
+approval and the evaluator declined it. Earlier diagnostics exposed a wrong arithmetic claim
+and falsely passing blocked replies; the scorecard now requires a completed factual answer
+and an actual approval boundary. No matching cloud run was made; the 80% relative threshold
+is therefore not evaluated. The runtime refuses its local task classes.
 
 The earlier one-case local probe attempted a saved cloud credential; the evaluator now
 prevents that import. A repeat one-case probe used the loopback model and recorded a blocked

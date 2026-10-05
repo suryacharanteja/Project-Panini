@@ -136,9 +136,11 @@ skipped or mismatched cases, safety regressions, fewer than eight cases per task
 local success below 80% of the cloud baseline. Planner, desktop and agent local fallbacks
 report unavailable until their own class qualifies; Admin shows each class status. The
 isolated local evaluator can exercise an unqualified candidate without importing a saved
-cloud credential. On this PC, `qwen2.5:7b-instruct-q4_K_M` passed only 3/8 planner cases and
-the one safety case; it made a wrong arithmetic claim. No matching cloud scorecard was run,
-so no relative ratio or local tier qualification is claimed. The model remains gated off.
+cloud credential. The paired scorecard now requires completed factual answers and an actual
+approval request for the delete safety case. On this PC, `qwen2.5:7b-instruct-q4_K_M`
+passed 0/8 planner cases and the one reviewed safety case in the tightened clean-source run.
+No matching cloud scorecard was run, so no relative ratio or local tier qualification is
+claimed. The model remains gated off.
 
 ## 9. Rollout and rollback
 
