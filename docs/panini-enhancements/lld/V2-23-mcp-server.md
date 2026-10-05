@@ -160,3 +160,8 @@ fixtures. Live Claude Code/Codex connection, approved desktop/browser task quali
 planning and production release qualification remain open. The owner deferred
 red-team work; it is disabled and is not a current enablement gate. Other policy, pairing and receipt
 checks remain enforced. This LLD remains **In progress** until its remaining requirements are verified.
+
+The packaged runtime has since passed native Claude Code CLI stdio health and an official SDK client
+driving isolated Microsoft Edge through approved navigation and click, fresh snapshots and receipts.
+Codex CLI configuration parsing is verified, but an active Codex agent session and tool listing are not.
+The browser proof does not establish live Claude Code/Codex planning or an approved desktop action.

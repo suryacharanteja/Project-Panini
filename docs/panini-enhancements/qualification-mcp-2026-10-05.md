@@ -114,7 +114,22 @@ work. Evidence: `artifacts/mcp-native/packaged-smoke.json`.
 Admin now offers Claude Code PowerShell stdio and Codex stdio setup using the protected token file.
 It no longer renders the raw bearer token in a shell command. The built Admin browser smoke checks
 that the one-time setup contains the stdio command and omits the bearer token. Real Claude Code and
-Codex model sessions, approved desktop/browser effects and live model planning remain open.
+Codex model sessions, approved desktop effects and live model planning remain open; the browser
+effect qualification below uses an official SDK client rather than either agent model.
+
+## Packaged isolated-browser effect follow-up
+
+`panini-mcp-packaged-smoke.py --native-clients --live-browser` now exercises a browser-scoped MCP
+client against the packaged runtime and installed Microsoft Edge. It lists the actual tools, obtains
+owner approval for navigation to a public page, observes a fresh snapshot, clicks a link after a
+separate owner approval and verifies the destination. Both effects return ledger receipt IDs. The
+client remains in its own isolated browser profile; the smoke also approves a loopback navigation
+request and verifies that the private-network guard blocks it. The smoke does not disable that
+guard or attach the owner's browser profile. Its 12 passing checks are recorded at
+`artifacts/mcp-native/live-browser.json`.
+
+This is a real browser and approval-path proof, not a Claude Code or Codex model-driven task, a
+desktop effect, or a live-provider planning qualification. V2-23 remains **In progress**.
 
 Follow-up evidence lives in `artifacts/mcp-completion/`. The packaged smoke executes approved UTF-8
 file writes and a native AppContainer command using the frozen backend and shipped gateway. Its

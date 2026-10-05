@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import shutil
 import socket
@@ -87,7 +88,7 @@ def native_clients(url, executable, issued, directory):
     ]
 
 
-async def exercise(url, executable, owner, *, native=False, directory=None):
+async def exercise(url, executable, owner, *, native=False, live_browser=False, directory=None):
     checks = []
     expires, nonce = int(time.time() * 1000) + 60_000, secrets.token_urlsafe(16)
     payload = f"v1.{expires}.{nonce}"
@@ -163,7 +164,7 @@ async def exercise(url, executable, owner, *, native=False, directory=None):
         isolated.raise_for_status()
         sandbox = isolated.json()
 
-        async def approve(call):
+        async def approve(call, *, expected_error=False):
             async with asyncio.timeout(15):
                 while True:
                     pending = (await admin.get(url + "/api/harness/interrupts")).json()["interrupts"]
@@ -182,7 +183,7 @@ async def exercise(url, executable, owner, *, native=False, directory=None):
                 )
                 response.raise_for_status()
                 result = await call
-                assert not result.is_error, result.content[0].text
+                assert result.is_error == expected_error, result.content[0].text
                 return json.loads(result.content[0].text)
 
         async with httpx2.AsyncClient(headers={"Authorization": "Bearer " + sandbox["token"]}) as http:
@@ -213,6 +214,61 @@ async def exercise(url, executable, owner, *, native=False, directory=None):
                     assert executed["result"]["exitCode"] == 0
                     checks.append("packaged native AppContainer files/approved command/receipts")
         assert (await admin.delete(url + "/api/admin/v1/mcp/clients/" + sandbox["id"])).status_code == 200
+        if live_browser:
+            created = await admin.post(
+                url + "/api/admin/v1/mcp/clients",
+                json={"name": "Packaged browser", "grants": ["browser"]},
+            )
+            created.raise_for_status()
+            browser_client = created.json()
+            async with httpx2.AsyncClient(
+                headers={"Authorization": "Bearer " + browser_client["token"]}
+            ) as http:
+                async with streamable_http_client(url + "/mcp", http_client=http) as (read, write):
+                    async with ClientSession(read, write) as client:
+                        await client.initialize()
+                        names = {tool.name for tool in (await client.list_tools()).tools}
+                        assert {"browser_navigate", "browser_snapshot", "browser_click"} <= names
+                        refused = await approve(
+                            asyncio.create_task(client.call_tool("browser_navigate", {"url": url + "/"})),
+                            expected_error=True,
+                        )
+                        assert refused["outcome"] == "blocked"
+                        checks.append("packaged MCP isolated browser refuses local/private navigation")
+                        navigated = await approve(
+                            asyncio.create_task(
+                                client.call_tool("browser_navigate", {"url": "https://example.com/"})
+                            )
+                        )
+                        assert navigated["receipts"]
+                        snapshot = await client.call_tool("browser_snapshot", {})
+                        assert not snapshot.is_error, snapshot.content[0].text
+                        content = json.loads(snapshot.content[0].text)["result"]["page"]
+                        assert "Example Domain" in content, content[:2000]
+                        match = re.search(
+                            r'link "(?:More information|Learn more)[^"]*" \[ref=([^\]]+)\]', content
+                        )
+                        assert match, content[:2000]
+                        clicked = await approve(
+                            asyncio.create_task(
+                                client.call_tool(
+                                    "browser_click",
+                                    {"target": match[1], "element": "More information"},
+                                )
+                            )
+                        )
+                        assert clicked["receipts"]
+                        after = await client.call_tool("browser_snapshot", {})
+                        assert (
+                            not after.is_error
+                            and "iana.org" in json.loads(after.content[0].text)["result"]["page"].lower()
+                        )
+                        checks.append(
+                            "packaged isolated Edge navigation/click with owner approvals and receipts"
+                        )
+            assert (
+                await admin.delete(url + "/api/admin/v1/mcp/clients/" + browser_client["id"])
+            ).status_code == 200
     return checks
 
 
@@ -222,6 +278,11 @@ def main():
     parser.add_argument("--evidence", type=Path, default=Path("artifacts/mcp-server/packaged-smoke.json"))
     parser.add_argument(
         "--native-clients", action="store_true", help="Check installed Claude/Codex CLIs without model calls"
+    )
+    parser.add_argument(
+        "--live-browser",
+        action="store_true",
+        help="Check real isolated Edge navigation on a public test page",
     )
     args = parser.parse_args()
     runtime = args.runtime.resolve()
@@ -244,6 +305,7 @@ def main():
             "PANINI_CONSOLE_SECRET": owner,
             "PANINI_BACKEND_EXECUTABLE": str(backend),
             "PANINI_MCP_SERVER": "true",
+            "PANINI_BROWSER_DRIVER": "playwright" if args.live_browser else "legacy",
             "PANINI_HARNESS_ENABLED": "true",
             "PANINI_V2_LEDGER": "true",
             "PANINI_V2_INTERRUPTS": "true",
@@ -292,7 +354,15 @@ def main():
                         raise TimeoutError("Packaged backend did not become ready")
                 checks = asyncio.run(
                     asyncio.wait_for(
-                        exercise(url, bridge, owner, native=args.native_clients, directory=Path(data)), 90
+                        exercise(
+                            url,
+                            bridge,
+                            owner,
+                            native=args.native_clients,
+                            live_browser=args.live_browser,
+                            directory=Path(data),
+                        ),
+                        180 if args.live_browser else 90,
                     )
                 )
                 args.evidence.write_text(
