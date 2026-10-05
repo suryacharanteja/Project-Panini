@@ -830,6 +830,8 @@ function ipc() {
       return preferences;
     }
     if (operation === 'admin') {
+      if (!connected || runtimeFailed)
+        throw new Error('PANINI is still connecting. Open Admin when the conversation is ready.');
       // PANINI Admin, already signed in: pairing, keys, models, usage and every setting.
       const page =
         typeof input?.page === 'string' && /^\/[a-z/-]*$/.test(input.page) ? input.page : '/';
@@ -837,6 +839,8 @@ function ipc() {
       return;
     }
     if (operation === 'continuity') {
+      if (!connected || runtimeFailed)
+        throw new Error('PANINI is still connecting. Try again when the conversation is ready.');
       if (
         input.action === 'seen' &&
         typeof input.item_id === 'string' &&

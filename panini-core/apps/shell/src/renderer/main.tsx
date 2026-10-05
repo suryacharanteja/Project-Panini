@@ -756,9 +756,10 @@ function App() {
                 <button onClick={() => void call('admin', { page: '/inbox' })}>Open Inbox</button>
                 {!item.interrupt && (
                   <button
-                    onClick={() => {
-                      void call('continuity', { action: 'seen', item_id: item.item_id });
-                      setContinuityCards((cards) => cards.filter((card) => card.id !== item.id));
+                    onClick={async () => {
+                      const result = await call('continuity', { action: 'seen', item_id: item.item_id });
+                      if (result?.status === 'seen')
+                        setContinuityCards((cards) => cards.filter((card) => card.id !== item.id));
                     }}
                   >
                     Seen

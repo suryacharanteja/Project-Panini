@@ -73,10 +73,16 @@ try {
   const avatar = await application.firstWindow();
   avatar.on('pageerror', (error) => errors.push(error.message));
   await avatar.getByRole('heading', { name: 'Let’s get something done.', exact: true }).waitFor();
-  await avatar.waitForFunction(
-    async () => (await window.panini.invoke('status')).snapshot?.state === 'ready',
-    { timeout: 60000 },
-  );
+  // Playwright treats a Promise returned by waitForFunction as truthy before it resolves. Poll the
+  // resolved IPC result instead: installed runtime hash verification can precede startup by seconds.
+  let ready;
+  for (let attempt = 0; attempt < 240; attempt++) {
+    ready = await avatar.evaluate(() => window.panini.invoke('status'));
+    if (ready.connected && ready.snapshot?.state === 'ready') break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  if (!ready?.connected || ready.snapshot?.state !== 'ready')
+    throw Error('Native runtime did not become ready');
   await application.evaluate(({ shell }) => {
     shell.openExternal = async (url) => {
       globalThis.continuityAdminUrl = url;
@@ -96,14 +102,16 @@ try {
   const admin = await adminOpened;
   admin.on('pageerror', (error) => errors.push(error.message));
   await admin.getByText(/^Current presence:/).waitFor({ timeout: 20000 });
-  await admin.waitForFunction(
-    async () => {
+  let freshSignal = false;
+  for (let attempt = 0; attempt < 80; attempt++) {
+    freshSignal = await admin.evaluate(async () => {
       const value = await (await fetch('/api/harness/presence')).json();
       return value.signals?.some((row) => row.source === 'pc' && row.fresh);
-    },
-    null,
-    { timeout: 20000 },
-  );
+    });
+    if (freshSignal) break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  if (!freshSignal) throw Error('Native heartbeat did not arrive');
   await admin.reload();
   await admin.getByText(/^Current presence:/).waitFor();
   const signal = await admin.evaluate(async () => (await fetch('/api/harness/presence')).json());
@@ -178,6 +186,93 @@ try {
   if (!live) throw Error('Live view did not open');
   await live.getByRole('heading', { name: 'Live', exact: true }).waitFor({ timeout: 15000 });
   checks.push('native handoff opens the actual Live view with its owner session');
+  // Exercise the actual renderer/preload allowlist, rather than calling the owner HTTP API alone.
+  await avatar.getByRole('button', { name: 'Send to my phone', exact: true }).click();
+  let queuedPhone = false;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    queuedPhone = await admin.evaluate(async () => {
+      const value = await (await fetch('/api/harness/presence')).json();
+      return value.deliveries.some(
+        (row) => row.item_id.startsWith('handoff:') && row.route === 'push',
+      );
+    });
+    if (queuedPhone) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (!queuedPhone) throw Error('Native send-to-phone did not persist its push route');
+  const phoneThread = JSON.parse(
+    execFileSync(
+      join(root, '.venv/Scripts/python.exe'),
+      [
+        '-c',
+        "import json,sys; from backend.harness.store import Store; s=Store(sys.argv[1]); print(json.dumps(s.all(\"SELECT i.thread_id FROM continuity_items i JOIN continuity_deliveries d ON d.item_id=i.id WHERE i.id LIKE 'handoff:%' AND d.route='push'\"))); s.close()",
+        join(data, 'harness.sqlite3'),
+      ],
+      { cwd: root, windowsHide: true, encoding: 'utf8' },
+    ),
+  );
+  if (phoneThread.length !== 1 || phoneThread[0].thread_id !== seeded.thread_id)
+    throw Error('Native continuity IPC did not preserve the original thread');
+  checks.push('actual renderer/preload continuity IPC queues the original thread for the phone');
+  // Test notification acknowledgement failure against the real authenticated owner API. These
+  // deliberately seeded notification records exercise UI/IPC semantics, not transport delivery.
+  const seedNotification = async (id, title) =>
+    application.evaluate(
+      ({ BrowserWindow }, data) => {
+        const native = BrowserWindow.getAllWindows().find(
+          (window) => window.webContents.getURL() === 'panini://app/',
+        );
+        native.webContents.send('panini:event', { type: 'continuity.notification', data });
+      },
+      { id, item_id: 'result:' + id, title, interrupt: false },
+    );
+  await seedNotification('smoke-missing', 'Missing acknowledgement fixture');
+  const missingCard = avatar
+    .getByLabel('PANINI notification', { exact: true })
+    .filter({ hasText: 'Missing acknowledgement fixture' });
+  await missingCard.getByRole('button', { name: 'Seen', exact: true }).click();
+  await avatar.getByRole('alert').waitFor();
+  if (!(await missingCard.isVisible()))
+    throw Error('Rejected acknowledgement hid the unresolved notification');
+  await application.evaluate(({ BrowserWindow }) => {
+    const native = BrowserWindow.getAllWindows().find(
+      (window) => window.webContents.getURL() === 'panini://app/',
+    );
+    native.webContents.send('panini:event', {
+      type: 'continuity.retract',
+      data: { id: 'smoke-missing' },
+    });
+  });
+  execFileSync(
+    join(root, '.venv/Scripts/python.exe'),
+    [
+      '-c',
+      'import sys,time; from backend.harness.store import Store; s=Store(sys.argv[1]); s.execute("INSERT INTO continuity_items(id,kind,title,thread_id,created,expires) VALUES (?,?,?,?,?,?)",("result:smoke-seen","result","Seen acknowledgement fixture",sys.argv[2],time.time(),time.time()+600)); s.close()',
+      join(data, 'harness.sqlite3'),
+      seeded.thread_id,
+    ],
+    { cwd: root, windowsHide: true },
+  );
+  await seedNotification('smoke-seen', 'Seen acknowledgement fixture');
+  const seenCard = avatar
+    .getByLabel('PANINI notification', { exact: true })
+    .filter({ hasText: 'Seen acknowledgement fixture' });
+  await seenCard.getByRole('button', { name: 'Seen', exact: true }).click();
+  await seenCard.waitFor({ state: 'hidden' });
+  const seenStatus = execFileSync(
+    join(root, '.venv/Scripts/python.exe'),
+    [
+      '-c',
+      'import sys; from backend.harness.store import Store; s=Store(sys.argv[1]); print(s.one("SELECT status FROM continuity_items WHERE id=?",("result:smoke-seen",))["status"]); s.close()',
+      join(data, 'harness.sqlite3'),
+    ],
+    { cwd: root, windowsHide: true, encoding: 'utf8' },
+  ).trim();
+  if (seenStatus !== 'closed')
+    throw Error('Seen card disappeared without a durable server resolution');
+  checks.push(
+    'Seen retains a rejected card and removes a valid fixture only after durable server resolution',
+  );
   if (errors.length) throw Error(errors.join('\n'));
   const report = {
     passed: true,

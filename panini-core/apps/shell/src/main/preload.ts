@@ -21,6 +21,7 @@ const methods = [
   'execution-viewer',
   'execution-copy',
   'live',
+  'continuity',
 ];
 contextBridge.exposeInMainWorld(
   'panini',

@@ -44,6 +44,14 @@ ambiguous select labeling, legacy runs without a brain run id, and incorrectly u
 viewer for continuity. The final native smoke uses the actual Live page. Earlier failed fixture logs
 are not passing evidence.
 
+Packaged qualification also caught the smoke check treating an unresolved JavaScript Promise as ready.
+It now polls the resolved IPC status through installed runtime hash verification and checks the actual
+renderer/preload continuity call. The missing preload allowlist entry was repaired; Admin and handoff
+requests made before the native runtime connects now return a clear readiness error.
+The same native check clicks "Send to my phone" and verifies its preserved thread in durable storage.
+Seeded notification cards exercise the actual owner API: a rejected "Seen" request keeps its card,
+and a successful request removes it only after durable server resolution.
+
 ## Remaining requirements
 
 Automatic urgent escalation is **not implemented**. It still needs explicit immutable owner/trunk-bound
