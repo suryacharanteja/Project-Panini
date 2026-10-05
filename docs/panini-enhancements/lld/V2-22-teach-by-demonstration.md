@@ -173,8 +173,9 @@ The [browser checkpoint report](../qualification-teach-browser-2026-10-05.md) re
 and registry replay evidence. The changed-label repair test uses a deterministic model; live model
 qualification remains pending. Named iframe replay resolves descendants of a uniquely selected iframe
 from each fresh snapshot; other frame selectors remain manual. A pinned-recorder run in a real managed
-browser recorded, reviewed and replayed a changed input in a named iframe. It requires exactly one iframe
-in the current DOM and snapshot, and verifies the frame again before effects. The [Windows teaching checkpoint](../qualification-teach-desktop-2026-10-05.md)
+browser recorded, reviewed and replayed a changed input in a named iframe. Multiple top-level iframes
+are now permitted when the current DOM and snapshot frame counts agree, the reviewed selector matches
+exactly one DOM iframe, and its label is unique. The binding is rechecked before effects. The [Windows teaching checkpoint](../qualification-teach-desktop-2026-10-05.md)
 adds selected-window recording, normalization, private-field suppression, genuine WPF replay and installed
 Notepad record/type/save replay with a different Unicode input and exact disk verification. Opening an app
 as a recorded step, Save As dialogs, per-step crops, gestures and the remaining requirements are not

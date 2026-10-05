@@ -240,11 +240,18 @@ try {
     if (framedEffect) break;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  assert(framedEffect, 'Framed effect did not reach review');
+  if (!framedEffect)
+    throw Error(
+      `Framed effect did not reach review: ${JSON.stringify(await framedPromise)} ${JSON.stringify((await request('/preview/evidence')).receipts.slice(-3))}`,
+    );
   await approve(framedEffect);
   const framedResult = await framedPromise;
   assert.equal(framedResult.state, 'passed', JSON.stringify(framedResult));
   await reportFrame.getByText('Report ready: oranges').waitFor();
+  assert.equal(
+    await demo.frameLocator('iframe[name="Other"]').getByRole('status').textContent(),
+    '',
+  );
   const proof = await request('/preview/evidence');
   await writeFile(evidence + '/real-browser-evidence.json', JSON.stringify(proof, null, 2));
   assert(
@@ -261,6 +268,7 @@ try {
       effect_review: true,
       patch_review: true,
       real_named_iframe_replay: true,
+      multiple_frame_scope: true,
       healer_provider: 'deterministic fake, no live provider qualification',
       runs: proof.runs.map((r) => ({ state: r.state, heals: r.heals })),
     }),

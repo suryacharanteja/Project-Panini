@@ -143,25 +143,47 @@ class BrowserHand:
         return self.managed.pool.session(isolated_preset(self.run_key(ctx), data_directory() / "artifacts"))
 
     async def verified_frame(self, ctx, browser, selector, snapshot, *, session=None):
-        """Bind a reviewed named selector to the sole iframe in this exact page view."""
+        """Bind a reviewed selector to one current DOM and snapshot iframe."""
         from ..teach.replay import nodes
         from ..teach.schema import frame_name
 
-        frame_name(selector)
+        wanted = frame_name(selector)
         if browser not in {"managed", "isolated"}:
             raise ValueError("Named iframe replay needs PANINI's managed browser.")
         frames = [node for node in nodes(snapshot) if node["role"] == "iframe"]
-        if len(frames) != 1:
-            raise ValueError("Frame replay requires exactly one visible iframe in the snapshot.")
+        if not frames:
+            raise ValueError("The reviewed iframe is missing from the snapshot.")
         session = session or await self.session(browser, ctx)
         function = (
-            "() => ({total: document.querySelectorAll('iframe').length, "
-            f"matching: document.querySelectorAll({json.dumps(selector)}).length}})"
+            "() => { const frames = [...document.querySelectorAll('iframe')]; "
+            f"const matching = [...document.querySelectorAll({json.dumps(selector)})]; "
+            "return {total: frames.length, matching: matching.length, "
+            "index: frames.indexOf(matching[0]), "
+            "labels: frames.map(frame => frame.getAttribute('aria-label') || "
+            "frame.getAttribute('title') || frame.getAttribute('name') || '')}; }"
         )
         result = await session.call("browser_evaluate", {"function": function}, timeout_s=15)
-        if result.get("isError") or _json_in(text_of(result)) != {"total": 1, "matching": 1}:
+        proof = None if result.get("isError") else _json_in(text_of(result))
+        if not isinstance(proof, dict) or proof.get("matching") != 1 or proof.get("total") != len(frames):
             raise ValueError("The reviewed iframe is missing, hidden or ambiguous.")
-        return frames[0]["ref"]
+        index = proof.get("index")
+        if type(index) is not int or not 0 <= index < len(frames):
+            raise ValueError("The reviewed iframe identity cannot be verified.")
+        if len(frames) > 1:
+            labels = proof.get("labels")
+            if (
+                not isinstance(labels, list)
+                or len(labels) != len(frames)
+                or any(
+                    frame["frame"] or frame["name"] not in {"", labels[i]} for i, frame in enumerate(frames)
+                )
+                or labels[index] != wanted
+                or labels.count(wanted) != 1
+            ):
+                raise ValueError("The reviewed iframe identity cannot be verified.")
+            # Both the DOM collection and Playwright's flat frame snapshot are in document order.
+            # Reject hidden/nested frames or a changed count; no ref is reused after an effect.
+        return frames[index]["ref"]
 
     async def readiness(self, capability=None):
         ready = await self.ready()

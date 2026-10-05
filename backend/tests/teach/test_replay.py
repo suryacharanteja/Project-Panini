@@ -274,7 +274,10 @@ async def test_frame_dom_probe_requires_one_current_named_iframe():
             assert name == "browser_evaluate" and "Report" in args["function"]
             return {
                 "content": [
-                    {"type": "text", "text": json.dumps({"total": self.total, "matching": self.matching})}
+                    {
+                        "type": "text",
+                        "text": json.dumps({"total": self.total, "matching": self.matching, "index": 0}),
+                    }
                 ]
             }
 
@@ -287,7 +290,7 @@ async def test_frame_dom_probe_requires_one_current_named_iframe():
             await probe(
                 None, None, "managed", 'iframe[name="Report"]', snapshot, session=Session(total, matching)
             )
-    with pytest.raises(ValueError, match="exactly one visible iframe"):
+    with pytest.raises(ValueError, match="identity cannot be verified"):
         await probe(
             None,
             None,
@@ -296,6 +299,41 @@ async def test_frame_dom_probe_requires_one_current_named_iframe():
             snapshot + "\n- iframe [ref=f1e2]",
             session=Session(2, 1),
         )
+
+
+@pytest.mark.anyio
+async def test_reviewed_frame_with_multiple_iframes_requires_exact_dom_snapshot_binding():
+    snapshot = (
+        '- iframe "Other" [ref=f1e1]:\n  - button "Save" [ref=f2e1]\n'
+        '- iframe "Report" [ref=f1e2]:\n  - button "Save" [ref=f3e1]'
+    )
+
+    class Session:
+        def __init__(self, proof):
+            self.proof = proof
+
+        async def call(self, name, args, timeout_s):
+            assert name == "browser_evaluate"
+            assert 'iframe[name=\\"Report\\"]' in args["function"]
+            return {"content": [{"type": "text", "text": json.dumps(self.proof)}]}
+
+    probe = BrowserHand.verified_frame
+    good = {"total": 2, "matching": 1, "index": 1, "labels": ["Other", "Report"]}
+    assert (
+        await probe(None, None, "managed", 'iframe[name="Report"]', snapshot, session=Session(good)) == "f1e2"
+    )
+    unnamed = snapshot.replace('iframe "Other"', "iframe").replace('iframe "Report"', "iframe")
+    assert (
+        await probe(None, None, "managed", 'iframe[name="Report"]', unnamed, session=Session(good)) == "f1e2"
+    )
+    for changed in (
+        {**good, "index": 0},
+        {**good, "labels": ["Report", "Other"]},
+        {**good, "labels": ["Report", "Report"]},
+        {**good, "matching": 2},
+    ):
+        with pytest.raises(ValueError):
+            await probe(None, None, "managed", 'iframe[name="Report"]', snapshot, session=Session(changed))
 
 
 @pytest.mark.anyio

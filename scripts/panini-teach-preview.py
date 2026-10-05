@@ -102,6 +102,7 @@ def main():
     async def frame_demo():
         return HTMLResponse(
             "<!doctype html><title>Framed report demo</title>"
+            '<iframe name="Other" title="Other" src="/demo/frame-body"></iframe>'
             '<iframe name="Report" title="Report" src="/demo/frame-body"></iframe>'
         )
 

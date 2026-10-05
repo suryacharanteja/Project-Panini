@@ -16,3 +16,12 @@ checks. The full repository gate also passed.
 This does not qualify multiple or nested frames, cross-origin identity changes, Chrome attachment,
 or a live healer provider. The browser smoke uses a deterministic healer for its separate changed-label
 case. V2-22 and the full LLD program remain in progress. Red-team stays disabled and deferred.
+
+## Multi-frame increment
+
+Managed-browser replay now allows multiple top-level named iframes when the live DOM count matches
+the fresh Playwright snapshot, the reviewed selector matches one DOM iframe, and its label is unique.
+The binding is rechecked before each effect. The real recorder/replay smoke adds a decoy iframe with
+the same controls before the reviewed Report iframe; replay with a changed input updates only Report.
+Focused tests reject DOM/snapshot label conflicts, duplicate labels and ambiguous matches. Nested,
+hidden and cross-origin frame layouts remain unqualified. Live healer-provider qualification remains open.
