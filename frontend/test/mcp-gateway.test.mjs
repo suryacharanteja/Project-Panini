@@ -31,13 +31,21 @@ test('MCP forwards only its credentials/session headers, streams, and refuses br
         authorization: 'Bearer client-token',
         'mcp-session-id': 'session',
         'mcp-protocol-version': '2025-11-25',
+        'mcp-method': 'tools/call',
+        'mcp-name': 'panini_status',
+        'mcp-param-example': 'scalar-value',
         'last-event-id': 'last',
         'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
         'x-panini-console': 'forged',
         cookie: 'owner=private',
       },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'panini_status', arguments: {} },
+      }),
     });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('mcp-session-id'), 'bound-session');
@@ -45,6 +53,9 @@ test('MCP forwards only its credentials/session headers, streams, and refuses br
     assert.equal(seen[0].headers.authorization, 'Bearer client-token');
     assert.equal(seen[0].headers['mcp-session-id'], 'session');
     assert.equal(seen[0].headers['mcp-protocol-version'], '2025-11-25');
+    assert.equal(seen[0].headers['mcp-method'], 'tools/call');
+    assert.equal(seen[0].headers['mcp-name'], 'panini_status');
+    assert.equal(seen[0].headers['mcp-param-example'], 'scalar-value');
     assert.equal(seen[0].headers['last-event-id'], 'last');
     for (const header of ['origin', 'x-panini-console', 'cookie'])
       assert.equal(seen[0].headers[header], undefined);
