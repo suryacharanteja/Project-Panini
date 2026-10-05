@@ -101,6 +101,21 @@ fixture calls/live frames and notebook operations. It now covers signed temporar
 The preview harness was updated for the current outbound-call route. This is browser emulation,
 **not physical Android or SIP qualification**.
 
+## Native CLI connection follow-up
+
+The packaged smoke now supports `--native-clients`. Against the frozen runtime it registers a
+disposable client, configures Claude Code through its actual `mcp add-json` command in an isolated
+`CLAUDE_CONFIG_DIR`, and observes `mcp list` report the stdio server as connected. The same run checks
+that Codex CLI accepts an isolated stdio configuration. The official SDK still verifies HTTP and stdio
+tool discovery and approved sandbox effects. Codex configuration parsing is **not** an active agent
+connection or tool discovery. Neither native CLI made a model request or performed desktop/browser
+work. Evidence: `artifacts/mcp-native/packaged-smoke.json`.
+
+Admin now offers Claude Code PowerShell stdio and Codex stdio setup using the protected token file.
+It no longer renders the raw bearer token in a shell command. The built Admin browser smoke checks
+that the one-time setup contains the stdio command and omits the bearer token. Real Claude Code and
+Codex model sessions, approved desktop/browser effects and live model planning remain open.
+
 Follow-up evidence lives in `artifacts/mcp-completion/`. The packaged smoke executes approved UTF-8
 file writes and a native AppContainer command using the frozen backend and shipped gateway. Its
 result and the release hash verifier must pass before the follow-up installer is delivered. This is

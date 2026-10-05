@@ -8,6 +8,7 @@ import hmac
 import json
 import os
 import secrets
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -20,7 +21,73 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
 
-async def exercise(url, executable, owner):
+def native_clients(url, executable, issued, directory):
+    """Use installed client CLIs without invoking their agent models or global configuration."""
+    claude = shutil.which("claude.cmd")
+    codex = shutil.which("codex.exe")
+    if not claude or not codex:
+        raise RuntimeError("Install both Claude Code and Codex CLIs for native client qualification.")
+    config = directory / "claude-native"
+    config.mkdir()
+    env = {**os.environ, "CLAUDE_CONFIG_DIR": str(config.resolve())}
+    spec = {
+        "type": "stdio",
+        "command": str(executable),
+        "args": [
+            "--url",
+            url + "/mcp",
+            "--client",
+            issued["id"],
+            "--token-file",
+            issued["token_file"],
+        ],
+    }
+    added = subprocess.run(
+        [claude, "mcp", "add-json", "--scope", "user", "panini-native", json.dumps(spec)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=True,
+    )
+    assert added.returncode == 0 and "panini-native" in (config / ".claude.json").read_text(encoding="utf-8")
+    health = subprocess.run(
+        [claude, "mcp", "list"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=25,
+        check=True,
+    )
+    assert any(
+        "panini-native:" in line and "Connected" in line and "Failed" not in line
+        for line in health.stdout.splitlines()
+    ), "Claude Code did not connect to PANINI's packaged stdio bridge."
+    command = json.dumps(str(executable).replace("\\", "/"))
+    args = json.dumps(spec["args"])
+    listed = subprocess.run(
+        [
+            codex,
+            "mcp",
+            "list",
+            "-c",
+            f"mcp_servers.panini_native.command={command}",
+            "-c",
+            f"mcp_servers.panini_native.args={args}",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+    )
+    assert "panini_native" in listed.stdout and str(executable).replace("\\", "/") in listed.stdout
+    return [
+        "Claude Code CLI connected to packaged stdio bridge and listed server health",
+        "Codex CLI parsed isolated packaged stdio configuration (agent tool discovery unqualified)",
+    ]
+
+
+async def exercise(url, executable, owner, *, native=False, directory=None):
     checks = []
     expires, nonce = int(time.time() * 1000) + 60_000, secrets.token_urlsafe(16)
     payload = f"v1.{expires}.{nonce}"
@@ -79,6 +146,8 @@ async def exercise(url, executable, owner):
                 assert "panini_status" in {t.name for t in (await client.list_tools()).tools}
                 assert not (await client.call_tool("panini_status", {})).is_error
                 checks.append("packaged stdio EXE initialize/list/status")
+        if native:
+            checks.extend(await asyncio.to_thread(native_clients, url, executable, issued, directory))
         listed = (await admin.get(url + "/api/admin/v1/mcp/clients")).json()
         assert issued["token"] not in json.dumps(listed)
         assert (await admin.delete(url + "/api/admin/v1/mcp/clients/" + issued["id"])).status_code == 200
@@ -151,6 +220,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", type=Path, default=Path("artifacts/panini-runtime"))
     parser.add_argument("--evidence", type=Path, default=Path("artifacts/mcp-server/packaged-smoke.json"))
+    parser.add_argument(
+        "--native-clients", action="store_true", help="Check installed Claude/Codex CLIs without model calls"
+    )
     args = parser.parse_args()
     runtime = args.runtime.resolve()
     backend = runtime / "backend/Panini.Backend.exe"
@@ -218,7 +290,11 @@ def main():
                         time.sleep(0.2)
                     else:
                         raise TimeoutError("Packaged backend did not become ready")
-                checks = asyncio.run(asyncio.wait_for(exercise(url, bridge, owner), 45))
+                checks = asyncio.run(
+                    asyncio.wait_for(
+                        exercise(url, bridge, owner, native=args.native_clients, directory=Path(data)), 90
+                    )
+                )
                 args.evidence.write_text(
                     json.dumps(
                         {

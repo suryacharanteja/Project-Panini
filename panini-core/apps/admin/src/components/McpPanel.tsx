@@ -10,9 +10,7 @@ type Client = {
   last_used: number | null;
 };
 type Issued = Client & {
-  token: string;
   token_file: string;
-  endpoint: string;
   stdio: { command: string; args: string[] };
 };
 const scopes: [string, string][] = [
@@ -37,14 +35,14 @@ export function McpPanel() {
   const [issued, setIssued] = useState<Issued | null>(null);
   const [grantTool, setGrantTool] = useState('browser_navigate');
   const { busy, run } = useAction();
-  const http = issued
-    ? `claude mcp add --transport http panini ${issued.endpoint} --header "Authorization: Bearer ${issued.token}"`
+  const claude = issued
+    ? `claude mcp add-json --scope user panini '${JSON.stringify({ type: 'stdio', ...issued.stdio }).replaceAll("'", "''")}'`
     : '';
   const stdio = issued
     ? `[mcp_servers.panini]\ncommand = ${JSON.stringify(issued.stdio.command)}\nargs = ${JSON.stringify(issued.stdio.args)}`
     : '';
   const snippets: [string, string][] = [
-    ['Claude HTTP', http],
+    ['Claude Code (PowerShell)', claude],
     ['Codex stdio', stdio],
   ];
   return (
@@ -66,7 +64,11 @@ export function McpPanel() {
         onSubmit={(event) => {
           event.preventDefault();
           void run('create-mcp', async () => {
-            setIssued(await api<Issued>(admin('/mcp/clients'), { body: { name, grants } }));
+            const { token: _token, ...setup } = await api<Issued & { token: string }>(
+              admin('/mcp/clients'),
+              { body: { name, grants } },
+            );
+            setIssued(setup);
             setName('');
             await data.reload();
           });
@@ -129,8 +131,7 @@ export function McpPanel() {
           aria-label="One-time MCP setup"
         >
           <p className="text-sm text-amber">
-            Setup contains a secret token and is shown once. The stdio token file is protected for
-            your Windows account.
+            Setup is shown once. Both clients use a token file protected for your Windows account.
           </p>
           {snippets.map(([title, value]) => (
             <div key={title}>

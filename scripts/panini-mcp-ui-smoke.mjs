@@ -131,7 +131,11 @@ try {
   assert(
     requests.some((r) => r.body?.grants?.includes('chrome') && r.body.grants.includes('browser')),
   );
-  assert.match(await page.getByLabel('One-time MCP setup').innerText(), /claude mcp add/);
+  assert.match(await page.getByLabel('One-time MCP setup').innerText(), /claude mcp add-json/);
+  assert.doesNotMatch(
+    await page.getByLabel('One-time MCP setup').innerText(),
+    /mcp_fixture_token_for_ui_only|Bearer/,
+  );
   assert.match(await page.getByLabel('One-time MCP setup').innerText(), /\[mcp_servers.panini\]/);
   await page.getByRole('button', { name: 'Allow for one hour' }).click();
   await page.getByText('browser_navigate · temporary permission', { exact: true }).waitFor();
@@ -168,7 +172,7 @@ try {
     passed: true,
     api: 'fixture responses; real browser-rendered built Admin',
     registrationScopes: true,
-    httpAndStdioSetup: true,
+    protectedStdioSetup: true,
     temporaryGrant: true,
     interruptCardGrantDesktopAndMobile: true,
     explicitSandboxAndPersonaScopes: true,
