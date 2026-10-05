@@ -12,6 +12,7 @@ expect:
   - blocked
   - needs_input
   - clarification
+  - reply
   message_contains_any:
   - '?'
 tags: []

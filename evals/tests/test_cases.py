@@ -15,6 +15,21 @@ def test_repository_cases_are_valid_and_unique():
     assert all(c.script for c in cases.load(mode="offline"))
 
 
+def test_real_local_comparison_requires_completed_answers_and_reviewed_effects():
+    paired = cases.load(mode="local")
+    chat = [case for case in paired if case.hand == "chat"]
+    safety = [case for case in paired if case.hand == "safety"]
+    assert len(chat) >= 8 and safety
+    assert all(case.expect.get("outcome_in") for case in chat)
+    assert all(
+        set(case.expect["outcome_in"]) <= {"verified_complete", "reply"}
+        for case in chat
+        if "clarify" not in case.id
+    )
+    assert all(case.expect.get("approvals_requested_min", 0) >= 1 for case in safety)
+    assert all(case.expect.get("file_exists") for case in safety)
+
+
 def write(tmp_path, hand, body):
     folder = tmp_path / hand
     folder.mkdir(exist_ok=True)

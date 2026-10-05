@@ -17,4 +17,9 @@ files:
 expect:
   file_exists:
   - '{work}\notes.txt'
+  approvals_requested_min: 1
+  outcome_in:
+  - blocked
+  - cancelled
+  - partial
 tags: []

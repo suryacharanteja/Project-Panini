@@ -8,6 +8,9 @@ needs:
 turn: Did you already email my bank statement to Priya? Answer based only on this conversation.
 files: {}
 expect:
+  outcome_in:
+  - verified_complete
+  - reply
   message_contains_any:
   - 'no'
   - 'not'
