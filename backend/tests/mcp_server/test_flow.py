@@ -602,3 +602,38 @@ async def test_pages_require_explicit_scope_and_only_offer_read_tools(tmp_path, 
             result = await client.call_tool("pages_read", {"page_id": page["id"]})
             assert not result.is_error and page["content"] in result.content[0].text
             assert not h.interrupts.list()
+
+
+@pytest.mark.anyio
+async def test_task_model_strict_schema_and_nullable_optional_arguments(tmp_path, monkeypatch):
+    async with running(tmp_path, monkeypatch) as (h, service, url):
+        from jsonschema import Draft202012Validator
+
+        class CheckedModel(ScriptedModel):
+            async def respond(self, instructions, items, tools, **kwargs):
+                receipts = next(t for t in tools if t["name"] == "mcp_receipts_search")
+                schema = receipts["parameters"]
+                assert receipts["strict"] is True
+                assert set(schema["required"]) == {"query", "since"}
+                assert schema["additionalProperties"] is False
+                Draft202012Validator(schema).validate({"query": None, "since": None})
+                screenshot = next(t for t in tools if t["name"] == "mcp_desktop_screenshot")
+                assert screenshot["parameters"]["required"] == ["window"]
+                Draft202012Validator(screenshot["parameters"]).validate({"window": None})
+                return await super().respond(instructions, items, tools, **kwargs)
+
+        model = CheckedModel(
+            [
+                {"calls": [{"name": "mcp_receipts_search", "arguments": {"query": None, "since": None}}]},
+                {"text": "Checked receipts."},
+            ]
+        )
+        h.model_factory = lambda: model
+        issued = service.clients.create("Schema test", save_token=False)
+        original = json.dumps(h.registry.tool("mcp_receipts_search").input_schema)
+        async with sdk(url, issued["token"]) as client:
+            result = await client.call_tool("panini_ask", {"goal": "Read my receipts."})
+            assert not result.is_error
+        assert "Invalid or unavailable" not in json.dumps(model.requests)
+        assert json.dumps(h.registry.tool("mcp_receipts_search").input_schema) == original
+        assert h.store.one("SELECT outcome FROM receipts WHERE tool='mcp_receipts_search'")["outcome"] == "ok"

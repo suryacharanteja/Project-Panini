@@ -1,5 +1,7 @@
 """An MCP task uses the normal agent loop with a deliberately separate, private-data-free view."""
 
+from copy import deepcopy
+
 from ..harness.agent import Agent
 
 
@@ -58,12 +60,32 @@ class ClientAgent(Agent):
         allowed = set(mapping(self.service.h, self.ctx.mcp_client, self.ctx.view).values())
         allowed.discard("mcp_ask")  # No recursive model runs.
         allowed.update({"finish", "update_plan"})
-        return [self.registry.tool(n).model_tool() for n in sorted(allowed) if n in self.registry.specs]
+        tools = []
+        for name in sorted(allowed):
+            if name not in self.registry.specs:
+                continue
+            spec = self.registry.tool(name)
+            tool = deepcopy(spec.model_tool())
+            if spec.capability == "mcp" and spec.strict:
+                # Responses strict functions require every property, with null for optional values.
+                # The MCP wire schema and runtime validation retain their normal optional fields.
+                schema = tool["parameters"]
+                required = set(schema.get("required", []))
+                for key, value in schema.get("properties", {}).items():
+                    if key not in required:
+                        schema["properties"][key] = {"anyOf": [value, {"type": "null"}]}
+                schema["required"] = list(schema.get("properties", {}))
+            tools.append(tool)
+        return tools
 
     async def _call(self, name, args):
         self.ctx.check()
         if name not in {t["name"] for t in self.tools()}:
             return {"error": "This tool is not granted to this client."}, None
+        spec = self.registry.tool(name)
+        if spec.capability == "mcp" and spec.strict:
+            required = set(spec.input_schema.get("required", []))
+            args = {key: value for key, value in args.items() if value is not None or key in required}
         return await super()._call(name, args)
 
     def _search_memory(self, query):

@@ -23,15 +23,14 @@
 
 ## Source evidence
 
-`backend/tests/mcp_server` contains 33 passing tests using official SDK clients and actual loopback HTTP
+`backend/tests/mcp_server` contains 34 passing tests using official SDK clients and actual loopback HTTP
 and stdio transports. Desktop/browser contents are fixtures; the task-planning model is scripted.
 Checks include token protection, scopes, session identity, images/progress, owner-only approvals and
 grants, repeated effects, decline and changed targets, revocation/disconnection, private-data isolation,
 explicit notebook reads, independent sibling-session cleanup and conservative failure receipts.
 
-The final whole-project gate includes 1,206 passing backend tests (five dependency/Windows transport
-warnings), the offline scorecard, CLI, web, phone, Admin and shell suites, formatting and typechecks.
-Release logs and packaged checks are recorded under `artifacts/mcp-server/`. The initial failed full-project run is retained as
+The whole-project gate covers the backend, offline scorecard, CLI, web, phone, Admin and shell suites,
+formatting and typechecks. Final counts and packaged checks are recorded under `artifacts/mcp-server/`. The initial failed full-project run is retained as
 `first-full-check.log`; legacy browser context compatibility and SSE test-server shutdown isolation were
 fixed before the final gate.
 
@@ -59,3 +58,13 @@ real approved desktop/browser actions and live-provider task qualification remai
 The unsigned local installer is a development release. Code signing, clean-machine installation,
 production deployment and physical Android qualification are not completed. The full LLD program
 remains active. Red-team work is disabled and deferred by owner instruction; it is future development.
+
+## Compatibility fixes found during qualification
+
+The gateway now forwards the modern SDK's method/name and annotated parameter headers as well as
+legacy session headers; the bundled-runtime smoke verifies both protocol paths. Optional task-tool
+fields are converted to required nullable fields only for the strict model schema, then omitted again
+before the original registry validates execution. This follows the [official function-calling
+requirements](https://developers.openai.com/api/docs/guides/function-calling), and a scripted model
+regression verifies nullable arguments without changing the MCP wire or registry schemas. The bridge
+packager excludes the SDK's optional upstream CLI module; no additional CLI dependency is installed.
