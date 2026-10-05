@@ -205,6 +205,10 @@ class Admin:
     # -- Keys -----------------------------------------------------------------
     async def test_key(self, which, value=None):
         """(ok, detail). Uses the given value, or the configured one."""
+        from .. import private_mode
+
+        if private_mode.active():
+            return False, private_mode.reason()
         if which == "openai":
             key = value or os.getenv("OPENAI_API_KEY", "")
             url, headers = "https://api.openai.com/v1/models", {"Authorization": f"Bearer {key}"}

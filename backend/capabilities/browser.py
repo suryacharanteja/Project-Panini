@@ -41,6 +41,10 @@ class BrowserAdapter(UnavailableAdapter):
         self.fallback_reason = ""
 
     async def availability(self):
+        from .. import private_mode
+
+        if private_mode.active():
+            return {"capability": self.name, "state": "unavailable", "reason": private_mode.reason()}
         ready = all(config.configured(key) for key in ("OPENAI_API_KEY", "AI_GATEWAY_API_KEY"))
         return {
             "capability": self.name,

@@ -330,10 +330,14 @@ class Harness:
     def start(self):
         import asyncio
 
+        from .. import private_mode
+
         self.interrupts.cancel_foreground_after_restart()
         self.runs.recover()
         self.recover_ledger()
         self.worker.start()
+        if private_mode.active():
+            return  # No phone, channel, outbound, presence, or trigger background loop.
         self._mobile_start = asyncio.get_running_loop().create_task(self.mobile.start_if_enabled())
         self._channels_start = asyncio.get_running_loop().create_task(self.channels.start())
         self.outbound.start()

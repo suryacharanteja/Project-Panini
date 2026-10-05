@@ -60,6 +60,10 @@ class NeutralConnection(LiveConnection):
         return config
 
     async def create(self, sdp):
+        from .. import private_mode
+
+        if private_mode.active():
+            raise RuntimeError(private_mode.reason())
         # Reuse the existing sideband reader and audio lifecycle. Keep PANINI setup
         # diagnostics separate so the legacy /api/voice behavior stays unchanged.
         async with httpx.AsyncClient(timeout=25) as client:

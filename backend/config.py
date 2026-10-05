@@ -12,6 +12,10 @@ os.environ.setdefault("ANONYMIZED_TELEMETRY", "false")
 
 
 def configured(name: str) -> bool:
+    from . import private_mode
+
+    if private_mode.active() and name in {"OPENAI_API_KEY", "AI_GATEWAY_API_KEY", "ASSEMBLYAI_API_KEY"}:
+        return False
     value = os.getenv(name, "").strip()
     return bool(value and not value.startswith("your_") and value != "change-me")
 

@@ -680,17 +680,22 @@ class Agent:
         return offered if only is None else [t for t in offered if t["name"] in only]
 
     def _offered_tools(self):
+        from .. import private_mode
+
         if getattr(self, "registry", None) is not None:
             tools = self.registry.model_tools(self.tool_view(), capabilities=self.capabilities)
             return [
                 t
                 for t in tools
                 if not self._hidden(t["name"])
+                and private_mode.allows_tool(t["name"])
                 and not (t["name"] == "run_subagents" and not self.capabilities)
                 and not (t["name"] == "use_capability" and not self.capabilities)
-            ] + self._client_model_tools()
+            ] + ([] if private_mode.active() else self._client_model_tools())
         tools = []
         for tool in TOOLS:
+            if not private_mode.allows_tool(tool["name"]):
+                continue
             if self._hidden(tool["name"]):
                 continue
             if tool["name"] == "use_capability":
@@ -732,7 +737,7 @@ class Agent:
             ):
                 continue
             tools.append(tool)
-        return tools + self._client_model_tools()
+        return tools + ([] if private_mode.active() else self._client_model_tools())
 
     def _client_model_tools(self):
         return [{k: v for k, v in t.items() if k != "client_name"} for t in getattr(self, "client_tools", [])]
@@ -881,7 +886,9 @@ class Agent:
         else:
             items.append({"role": "user", "content": goal})
         connectors = getattr(self.h, "connectors", None)
-        if connectors and connectors.servers and not self.depth:
+        from .. import private_mode
+
+        if connectors and connectors.servers and not self.depth and not private_mode.active():
             try:
                 await asyncio.wait_for(connectors.status(), 30)
                 if self.registry is not None:
@@ -1352,6 +1359,10 @@ class Agent:
             return {"error": str(exc).strip("'")}, None
 
     async def _call(self, name, a):
+        from .. import private_mode
+
+        if not private_mode.allows_tool(name):
+            return {"error": private_mode.reason()}, None
         registry = getattr(self, "registry", None)
         if name == "place_call":
             from ..brain.control_tools import place_call

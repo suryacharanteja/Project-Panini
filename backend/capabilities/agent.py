@@ -20,6 +20,10 @@ class AgentAdapter:
         self.running = {}
 
     async def availability(self):
+        from .. import private_mode
+
+        if private_mode.active():
+            return {"capability": self.name, "state": "unavailable", "reason": private_mode.reason()}
         ready = config.configured("OPENAI_API_KEY") or bool(
             __import__("os").getenv("PANINI_CLI_SCRIPTED_MODEL")
         )

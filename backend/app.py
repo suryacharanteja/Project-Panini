@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import comparison as comparison_service
-from . import config, jev_client, stt_service
+from . import config, jev_client, private_mode, stt_service
 from .console import ConsoleBoundary
 from .extension_pairing import PairingStore
 from .fabric import router as fabric_router
@@ -34,7 +34,7 @@ from .work import CapacityError, WorkPool
 async def lifespan(app: FastAPI):
     stack = AsyncExitStack()
     mcp_monitor = None
-    if app.state.harness:
+    if app.state.harness and not private_mode.active():
         from .mcp_server.server import Service
 
         app.state.mcp = Service(app.state.harness)
@@ -151,6 +151,7 @@ def create_app(
     app.state.compare_service = compare_operation or comparison_service.compare
     app.state.transcribe_service = transcribe_operation or stt_service.transcribe_audio_bytes
     origins = config.allowed_origins()
+    app.add_middleware(private_mode.PrivateBoundary)
     app.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=[

@@ -320,7 +320,7 @@ Dependencies: V2-10 (browser vocabulary), V2-21 (Android tree); desktop worker.
 
 ### V2-27: Local and offline mode
 
-Implementation register: **In progress**. Loopback local model and transient fallback are built; private egress, speech and quality qualification remain open. [Source LLD](lld/V2-27-local-offline-mode.md).
+Implementation register: **In progress**. Loopback local model, transient fallback and private-preview refusal boundaries are built; blocking-proxy egress proof, speech and quality qualification remain open. [Source LLD](lld/V2-27-local-offline-mode.md).
 
 Dependencies: V2-06 (model router).
 

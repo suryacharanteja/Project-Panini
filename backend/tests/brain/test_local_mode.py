@@ -8,7 +8,7 @@ import pytest
 from panini_cli.agent import model, model_router
 from panini_cli.agent.local_model import FallbackModel, LocalModel, endpoint
 
-from backend import config, jev_client
+from backend import config, jev_client, private_mode, v2flags
 
 
 def test_local_endpoint_is_loopback_only():
@@ -153,3 +153,132 @@ def test_fallback_stays_local_after_transient_failure_and_discards_partial_cloud
 
     asyncio.run(run())
     assert cloud.calls == 1 and local.calls == 2 and wrapper.model == "local"
+
+
+def test_private_refuses_configured_cloud_keys_and_background_features(monkeypatch):
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+    for key in ("OPENAI_API_KEY", "AI_GATEWAY_API_KEY", "ASSEMBLYAI_API_KEY"):
+        monkeypatch.setenv(key, "test-credential")
+        assert not config.configured(key)
+    for key, raw in (
+        ("PANINI_REMOTE_MODE", "relay"),
+        ("PANINI_PHONE_LINE", "true"),
+        ("PANINI_CHANNELS", "telegram"),
+        ("PANINI_OUTBOUND_CALLS", "true"),
+        ("PANINI_TRIGGERS", "true"),
+        ("PANINI_MCP_SERVER", "true"),
+    ):
+        monkeypatch.setenv(key, raw)
+        assert v2flags.value(key) == v2flags.FLAGS[key].default
+    assert not private_mode.allows_tool("use_connector")
+    assert not private_mode.allows_tool("run_command")
+    assert not private_mode.allows_tool("read_file")
+    assert private_mode.allows_tool("recall")
+    assert not private_mode.blocks_http("/api/health", "GET")
+    assert private_mode.blocks_http("/api/harness/android/download", "GET")
+    assert private_mode.blocks_http("/api/panini/sessions/s1/commands", "POST")
+
+
+def test_private_refuses_v1_and_registry_dispatch_before_hands(monkeypatch):
+    from backend.harness.agent import Agent
+    from backend.registry.manifest import BUILTIN
+    from backend.registry.registry import Registry
+
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+
+    async def run():
+        agent = Agent.__new__(Agent)
+        result, _ = await agent._call("use_connector", {"server": "remote", "tool": "send"})
+        assert "private mode" in result["error"]
+        registry = Registry(sources=[(BUILTIN, False)])
+        refusal = await registry.call(None, "browser", {})
+        assert "private mode" in str(refusal.model_output())
+        inventory = await registry.inventory()
+        browser = next(tool for tool in inventory["chrome_direct"]["tools"] if tool["name"] == "browser")
+        assert browser["state"] == "unavailable" and browser["offered"] is False
+        assert "private mode" in browser["reason"]
+        files = next(tool for tool in inventory["computer"]["tools"] if tool["name"] == "read_file")
+        assert files["state"] == "unavailable"
+        assert Registry(sources=[])._private_allowed("read_file") is False
+
+    asyncio.run(run())
+
+
+def test_private_blocks_direct_cloud_api_before_service(monkeypatch):
+    from backend.app import create_app
+
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+    invoked = []
+
+    async def compare(*args):
+        invoked.append(args)
+        raise AssertionError("cloud service was invoked")
+
+    async def run():
+        app = create_app(compare_operation=compare)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://localhost"
+        ) as client:
+            for path in ("/api/compare", "/api/voice/session", "/api/browser/run-stream"):
+                response = await client.post(path, json={})
+                assert response.status_code == 503, path
+                assert "private mode" in response.text
+
+    asyncio.run(run())
+    assert not invoked
+
+
+def test_private_connector_lifecycle_does_not_contact_provider(monkeypatch, tmp_path):
+    import json
+
+    from backend.admin.service import Admin
+    from backend.harness.connectors import Connectors
+
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+    path = tmp_path / "connectors.json"
+    path.write_text(json.dumps({"servers": {"remote": {"url": "https://provider.invalid/mcp"}}}))
+    requests = []
+
+    def provider(request):
+        requests.append(str(request.url))
+        raise AssertionError("connector contacted provider")
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(provider)) as client:
+            connectors = Connectors(
+                path,
+                secrets=SimpleNamespace(get=lambda *args: None),
+                http_client=client,
+            )
+            assert (await connectors.status())[0]["state"] == "unavailable"
+            with pytest.raises(RuntimeError, match="private mode"):
+                await connectors.servers["remote"].start()
+            with pytest.raises(RuntimeError, match="private mode"):
+                await connectors.servers["remote"].sign_in("http://localhost/callback")
+            assert (await Admin(SimpleNamespace()).test_key("openai", "test-key"))[0] is False
+            await connectors.close()
+
+    asyncio.run(run())
+    assert requests == []
+
+
+def test_private_capability_readiness_explains_unavailability(monkeypatch):
+    from backend.capabilities.agent import AgentAdapter
+    from backend.capabilities.browser import BrowserAdapter
+    from backend.capabilities.code import CodeAdapter
+    from backend.capabilities.search import SearchAdapter
+
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+
+    async def run():
+        for adapter in (
+            AgentAdapter(None, {}),
+            BrowserAdapter(None),
+            CodeAdapter(False),
+            SearchAdapter(),
+        ):
+            available = await adapter.availability()
+            assert available["state"] == "unavailable"
+            assert "private mode" in available["reason"]
+
+    asyncio.run(run())

@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 6 · P3 · L (2 weeks) |
 | Depends on | V2-06 (model router) |
 | Flag | `PANINI_LOCAL_MODE` = `off` (default) · `fallback` · `private` |
-| Status | In progress: loopback local model, transient fallback and Admin tool-call probe built; private egress, speech and quality gate pending |
+| Status | In progress: loopback local model, transient fallback, Admin tool-call probe and private-preview refusals built; blocking-proxy qualification, speech and quality gate pending |
 
 ## 1. Outcome
 
@@ -88,9 +88,13 @@ The first development increment adds an OpenAI-compatible chat adapter restricte
 translation, zero-cost usage records, and transient cloud-to-local fallback that stays local for the run. In
 private mode the model factory constructs only the local client and Jev calls are refused. Admin can save a
 loopback endpoint and model name, then send a synthetic tool-call probe; unit tests use an HTTP mock and assert
-no cloud client construction. This is not a private-mode release: browser, channels, connectors and other
-service egress have not passed a blocking-proxy test; on-device STT/TTS and the scorecard quality gate are
-pending. Keep this flag off outside development.
+no cloud client construction. The next development increment rejects unqualified v1/v2 agent tools, disables
+remote/channel/phone/trigger startup, marks those tools unavailable in registry inventory, and refuses direct
+browser, voice, transcription, comparison, Android, connector, agent and coordinator execution APIs while
+private mode is selected. The setting requires a restart. This remains a preview: the complete process has
+not passed a blocking-proxy or physical offline test; on-device STT/TTS, a qualified desktop hand, local
+gates and the scorecard quality guard are pending. File and command hands are withheld in private mode
+until network drive and subprocess egress are qualified. Keep this flag off outside development.
 
 ## 9. Rollout and rollback
 

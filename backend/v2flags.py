@@ -131,7 +131,11 @@ def _raw(key: str) -> str:
 
 
 def value(key: str) -> str:
+    from . import private_mode
+
     raw = _raw(key)
+    if private_mode.active() and key in private_mode.DISABLED_FLAGS:
+        return FLAGS[key].default
     if (
         key in GATED
         and raw not in OFF
@@ -144,6 +148,10 @@ def value(key: str) -> str:
 
 def blocked_by_gate(key: str) -> str:
     """Why a gated flag the owner turned on is still off ("" when it is not blocked)."""
+    from . import private_mode
+
+    if private_mode.active() and key in private_mode.DISABLED_FLAGS and _raw(key) not in OFF:
+        return private_mode.reason()
     if key not in GATED or _raw(key) in OFF or _raw("PANINI_REDTEAM_ENFORCE") in OFF:
         return ""
     gate = redteam_gate()

@@ -184,6 +184,10 @@ class DesktopAdapter(UnavailableAdapter):
         return "*" in self.allowed or str(application).lower() in self.allowed
 
     async def availability(self):
+        from .. import private_mode
+
+        if private_mode.active():
+            return {"capability": self.name, "state": "unavailable", "reason": private_mode.reason()}
         reason = self.reason
         native = {}
         if self.enabled:

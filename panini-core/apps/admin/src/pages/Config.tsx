@@ -346,8 +346,8 @@ function LocalModelCard() {
     >
       <p className="text-sm text-muted">
         Set the loopback server and model above, then test whether it returns a tool call. Local
-        fallback and private routing are in development; private egress and speech qualification are
-        still pending.
+        fallback and private routing are in development. Private mode now refuses unqualified cloud
+        paths; full egress, speech and offline quality qualification remain pending.
       </p>
       {result && (
         <p

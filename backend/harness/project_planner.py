@@ -54,6 +54,10 @@ class ProjectPlanner:
         return {"project_id": project_id, "status": row["status"], **json.loads(row["data"])} if row else None
 
     async def draft(self, project_id):
+        from .. import private_mode
+
+        if private_mode.active():
+            raise ValueError(private_mode.reason())
         project = self.projects.get(project_id)
         existing = self.get(project_id)
         if existing and existing["status"] == "running":

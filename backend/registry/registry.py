@@ -61,6 +61,12 @@ class Registry:
     def load(self):
         manifests, errors = load_all(self.sources)
         self.manifests, self.errors, self.specs, self.hands, self.control = manifests, errors, {}, {}, set()
+        self.local_builtin = {
+            tool.name
+            for manifest in manifests
+            if Path(manifest.source).resolve().parent == BUILTIN.resolve()
+            for tool in manifest.tools
+        }
         self.order, self.offered, self.adapters = {}, {}, {}
         for manifest in manifests:
             hand = None
@@ -101,11 +107,19 @@ class Registry:
     def tool(self, name: str) -> ToolSpec:
         return self.specs[name]
 
+    def _private_allowed(self, name: str) -> bool:
+        from .. import private_mode
+
+        return private_mode.allows_tool(name) and (not private_mode.active() or name in self.local_builtin)
+
     def tools(self, view: ToolView) -> list[ToolSpec]:
         chosen = [
             spec
             for name, spec in self.specs.items()
-            if self.offered.get(name) and view.satisfies(spec.requires) and self.enabled(spec.capability)
+            if self.offered.get(name)
+            and self._private_allowed(name)
+            and view.satisfies(spec.requires)
+            and self.enabled(spec.capability)
         ]
         return sorted(chosen, key=lambda s: (self.order.get(s.name, 1000), s.name))
 
@@ -141,6 +155,8 @@ class Registry:
         return "; ".join(parts)
 
     async def inventory(self) -> dict:
+        from .. import private_mode
+
         result = {}
         for manifest in self.manifests:
             entry = {"title": manifest.title, "summary": manifest.summary, "tools": [], "state": "ready"}
@@ -148,21 +164,24 @@ class Registry:
                 spec = self.specs.get(tool.name)
                 hand = self.hands.get(tool.name)
                 state = "ready"
-                if tool.adapter and hand is not None:
+                if not self._private_allowed(tool.name):
+                    state = "unavailable"
+                elif tool.adapter and hand is not None:
                     try:
                         async with asyncio.timeout(10):
                             state = (await hand.readiness(tool.adapter)).state
                     except (TimeoutError, Exception):  # noqa: BLE001
                         state = "unavailable"
-                entry["tools"].append(
-                    {
-                        "name": tool.name,
-                        "effect": str(spec.effect) if spec else tool.effect,
-                        "group": tool.group,
-                        "offered": self.offered.get(tool.name, False),
-                        "state": state,
-                    }
-                )
+                row = {
+                    "name": tool.name,
+                    "effect": str(spec.effect) if spec else tool.effect,
+                    "group": tool.group,
+                    "offered": self.offered.get(tool.name, False) and self._private_allowed(tool.name),
+                    "state": state,
+                }
+                if not self._private_allowed(tool.name):
+                    row["reason"] = private_mode.reason()
+                entry["tools"].append(row)
             entry["enabled"] = self.enabled(manifest.id)
             result[manifest.id] = entry
         return result
@@ -215,6 +234,10 @@ class Registry:
 
     async def call(self, ctx: ToolContext, name: str, args: dict) -> ToolResult:
         """The only path from the brain to a hand (invariant I1)."""
+        from .. import private_mode
+
+        if not self._private_allowed(name):
+            return _refused(private_mode.reason())
         if name not in self.specs or name not in self.hands:
             return _refused("This tool is unavailable in this task.")
         spec = self.specs[name]
