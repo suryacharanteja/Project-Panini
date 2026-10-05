@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 6 · P3 · L (2 weeks) |
 | Depends on | V2-06 (model router) |
 | Flag | `PANINI_LOCAL_MODE` = `off` (default) · `fallback` · `private` |
-| Status | In progress: loopback local model, transient fallback, Admin tool-call probe and private-preview refusals built; blocking-proxy qualification, speech and quality gate pending |
+| Status | In progress: loopback local model, transient fallback, strict local evidence gates and private-preview refusals built; blocking-proxy qualification, speech and quality guard pending |
 
 ## 1. Outcome
 
@@ -93,8 +93,14 @@ remote/channel/phone/trigger startup, marks those tools unavailable in registry 
 browser, voice, transcription, comparison, Android, connector, agent and coordinator execution APIs while
 private mode is selected. The setting requires a restart. This remains a preview: the complete process has
 not passed a blocking-proxy or physical offline test; on-device STT/TTS, a qualified desktop hand, local
-gates and the scorecard quality guard are pending. File and command hands are withheld in private mode
-until network drive and subprocess egress are qualified. Keep this flag off outside development.
+gate quality and the scorecard quality guard are pending. File and command hands are withheld in private
+mode until network drive and subprocess egress are qualified. Keep this flag off outside development.
+
+The next increment asks the loopback model for schema-constrained boolean evidence decisions before
+private-mode early completion and verified claims. Missing, malformed or unsupported responses fail
+closed. Admin's synthetic probe checks the JSON schema path and rejects a made-up achievement. The
+context-selection optimization still falls back to showing all local tools. These tests exercise a
+mock loopback server, not a qualified real local model; the gate's decision accuracy remains open.
 
 ## 9. Rollout and rollback
 

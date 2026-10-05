@@ -282,3 +282,75 @@ def test_private_capability_readiness_explains_unavailability(monkeypatch):
             assert "private mode" in available["reason"]
 
     asyncio.run(run())
+
+
+def test_local_evidence_gate_requires_exact_boolean_schema(monkeypatch):
+    from backend.brain import local_gate
+
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+    seen = []
+
+    def response(request):
+        body = __import__("json").loads(request.content)
+        seen.append(body)
+        assert request.url.host == "127.0.0.1"
+        assert body["response_format"]["json_schema"]["strict"] is True
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"achieved":true}'}}]})
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(response)) as client:
+            local = LocalModel("small-local", "http://127.0.0.1:11434/v1", client=client)
+            answer = await local_gate.ask(
+                {"goal": "open a file", "results": [{"outcome": "verified_complete"}]},
+                {"achieved": {"type": "boolean", "instructions": "Is the goal proven?"}},
+                model=local,
+            )
+            assert answer["answers"]["achieved"]["probability"] == 1.0
+
+    asyncio.run(run())
+    assert len(seen) == 1
+
+    for content in ('{"achieved":"true"}', '{"achieved":true,"extra":false}', "yes"):
+
+        async def reject():
+            async with httpx.AsyncClient(
+                transport=httpx.MockTransport(
+                    lambda _: httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+                )
+            ) as client:
+                local = LocalModel("small-local", "http://127.0.0.1:11434/v1", client=client)
+                with pytest.raises(ValueError, match="local gate"):
+                    await local_gate.ask(
+                        {"goal": "x"},
+                        {"achieved": {"type": "boolean", "instructions": "Proven?"}},
+                        model=local,
+                    )
+
+        asyncio.run(reject())
+
+
+def test_private_finish_and_done_gates_fail_closed(monkeypatch):
+    from backend.brain import local_gate
+    from backend.harness.agent import Agent
+
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+    agent = Agent.__new__(Agent)
+    agent.goal = "save a note"
+    agent.outcomes = [{"capability": "memory", "outcome": "verified_complete"}]
+    agent.plan = []
+
+    async def approved(state, questions):
+        if "achieved" in questions:
+            return {"answers": {"achieved": {"probability": 1.0}}}
+        return {"answers": {"done": {"probability": 1.0}, "remaining": {"probability": 0.0}}}
+
+    monkeypatch.setattr(local_gate, "ask", approved)
+    assert asyncio.run(agent._jev_done()) is True
+    assert asyncio.run(agent._jev_confirms("saved")) is True
+
+    async def unavailable(*args):
+        raise RuntimeError("local model unavailable")
+
+    monkeypatch.setattr(local_gate, "ask", unavailable)
+    assert asyncio.run(agent._jev_done()) is False
+    assert asyncio.run(agent._jev_confirms("saved")) is False

@@ -198,6 +198,39 @@ def test_local_model_settings_are_loopback_only_and_probe_is_authenticated(clien
     }
 
 
+def test_private_local_model_probe_rejects_unsupported_evidence(client, monkeypatch):
+    from types import SimpleNamespace
+
+    from panini_cli.agent import local_model
+
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+    response = {"achieved": False}
+
+    class FakeLocal:
+        def __init__(self, timeout):
+            assert timeout == 10.0
+
+        async def probe(self):
+            return {"model": "small-local", "tool_calls": True}
+
+        async def respond(self, instructions, items, tools, *, output_schema, max_output_tokens):
+            assert output_schema["properties"]["achieved"]["type"] == "boolean"
+            assert "delegated_results" in items[0]["content"]
+            return SimpleNamespace(text=__import__("json").dumps(response), calls=[])
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(local_model, "LocalModel", FakeLocal)
+    url = "/api/admin/v1/local-model/test"
+    assert client.post(url, headers=HEADERS).json() == {
+        "ok": True,
+        "detail": "small-local passed tool-call and evidence-schema tests.",
+    }
+    response["achieved"] = True
+    assert "unsupported claim" in client.post(url, headers=HEADERS).json()["detail"]
+
+
 def test_connectors_agents_skills_and_hooks_without_files(client, tmp_path, monkeypatch):
     import sys
     from pathlib import Path

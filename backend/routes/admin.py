@@ -277,14 +277,32 @@ async def test_local_model():
     from panini_cli.agent.local_model import LocalModel
     from panini_cli.agent.model import ModelError
 
+    from .. import private_mode
+
     try:
         local = LocalModel(timeout=10.0)
     except ModelError as exc:
         return {"ok": False, "detail": str(exc)}
     try:
         result = await local.probe()
+        if private_mode.active():
+            from ..brain.local_gate import ask as ask_local
+
+            answer = await ask_local(
+                {"goal": "Open Notepad", "claim": "Notepad opened", "delegated_results": []},
+                {
+                    "achieved": {
+                        "type": "boolean",
+                        "instructions": "Is there evidence that Notepad opened?",
+                    }
+                },
+                model=local,
+            )
+            if answer["answers"]["achieved"]["probability"] != 0.0:
+                return {"ok": False, "detail": "The local evidence gate accepted an unsupported claim."}
+            return {"ok": True, "detail": f"{result['model']} passed tool-call and evidence-schema tests."}
         return {"ok": True, "detail": f"{result['model']} answered the tool-call test."}
-    except ModelError as exc:
+    except (ModelError, ValueError, TimeoutError) as exc:
         return {"ok": False, "detail": str(exc)}
     finally:
         await local.close()
