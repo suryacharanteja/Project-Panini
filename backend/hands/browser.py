@@ -21,6 +21,7 @@ from .playwright_mcp import (
     node_executable,
     text_of,
 )
+from .snapshot import normalize_aria
 
 OUTPUT_CHARS = 12000
 REF_LINE = re.compile(r"\[ref=(?P<ref>[a-z0-9]+)\]")
@@ -201,6 +202,11 @@ class ManagedBrowserHand:
         self.names.update(element_names(text))
         settled = int((time.monotonic() - started) * 1000)
         data = {"page": text[:OUTPUT_CHARS], "settled_ms": settled}  # What the model reads.
+        if name == "managed_snapshot" or PAGE_STATE.search(text):
+            try:
+                data["normalized_snapshot"], _ = normalize_aria(text, prefix="e")
+            except ValueError:
+                pass  # Keep the original driver observation when it has no addressable refs.
         evidence = []
         if name == "managed_verify_text":
             evidence.append({"kind": "assertion", "summary": f"Text is visible: {args['text'][:200]}"})

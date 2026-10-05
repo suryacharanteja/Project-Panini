@@ -137,7 +137,7 @@
       "name": "sandbox_snapshot",
       "hand": "sandbox",
       "title": "Snapshot the sandbox page",
-      "description": "Snapshot the sandbox browser: controls with refs and a snapshotId to act on.",
+      "description": "Snapshot the sandbox browser: normalized s-refs and a snapshotId to act on. A new snapshot invalidates old s-refs.",
       "input_schema": {
         "type": "object",
         "additionalProperties": false,
@@ -185,14 +185,14 @@
       "name": "sandbox_click",
       "hand": "sandbox",
       "title": "Click in the sandbox",
-      "description": "Click an element in the sandbox browser by ref and snapshotId from the latest sandbox_snapshot.",
+      "description": "Click an element using its s-ref and snapshotId from the latest sandbox_snapshot.",
       "input_schema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "ref": {
             "type": "string",
-            "description": "Element ref from the latest sandbox_snapshot."
+            "description": "s-ref from the latest sandbox_snapshot."
           },
           "snapshotId": {
             "type": "integer",
@@ -219,14 +219,14 @@
       "name": "sandbox_type",
       "hand": "sandbox",
       "title": "Type in the sandbox",
-      "description": "Type text into an element in the sandbox browser; submit presses Enter afterwards.",
+      "description": "Type text into an element using its latest s-ref; submit presses Enter afterwards.",
       "input_schema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "ref": {
             "type": "string",
-            "description": "Element ref from the latest sandbox_snapshot."
+            "description": "s-ref from the latest sandbox_snapshot."
           },
           "snapshotId": {
             "type": "integer",

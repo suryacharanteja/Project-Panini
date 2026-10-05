@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 6 · P2 · L (2 weeks) |
 | Depends on | V2-10 (browser vocabulary), V2-21 (Android tree); desktop worker |
 | Flag | `PANINI_DESKTOP_TOOLS` = `coarse` (default) · `fine` |
-| Status | In progress: shared grammar and fine Windows registry hand built; macros, sandbox normalization and comparison gate pending |
+| Status | In progress: shared grammar, fine Windows registry hand, browser/Android/sandbox normalization built; macros and comparison gate pending |
 
 ## 1. Outcome
 
@@ -139,7 +139,7 @@ the macro): success ≥ coarse, fewer model calls per task, p50 latency ≤ coar
 
 - [x] Desktop snapshot works in Win32, WPF and WinUI apps (including where `FromPoint` fails).
 - [ ] Fine tools meet the evaluation gate on the desktop golden tasks.
-- [ ] One grammar across web, Windows, Android and sandbox (shared parser tests).
+- [x] One grammar across web, Windows, Android and sandbox (shared parser tests).
 
 The [Windows checkpoint report](../qualification-desktop-fine-2026-10-05.md) records genuine Win32 and
 WPF fixture runs, plus installed Notepad with Win32/XAML providers. Fine pointer actions use bounded tree
@@ -148,6 +148,10 @@ contents are checked on disk. These runs do not establish the coarse-planner com
 draw/open macros, combined type-and-submit and remaining hand normalizers are pending. Selected-window
 desktop recording/replay and non-invoking focus are delivered in the [Windows teaching checkpoint](../qualification-teach-desktop-2026-10-05.md);
 remaining recording qualification is explicit there.
+Browser snapshots now expose a normalized grammar alongside their original driver output. Sandbox snapshots
+return `s` refs mapped server-side to the exact upstream `snapshotId`; a subsequent snapshot or action invalidates
+them. The shared parser tests cover all four prefixes and an Android accessibility tree. This does not establish
+the live OpenBot sandbox or the golden-task comparison gate.
 
 ## 9. Rollout and rollback
 

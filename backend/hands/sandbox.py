@@ -30,6 +30,7 @@ import httpx
 
 from .. import live
 from ..core_contracts import Readiness, ToolResult
+from .snapshot import normalize_aria
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 PREFIX = "panini-computer:"
@@ -763,6 +764,8 @@ class SandboxHand:
     def __init__(self, manifest, runtime):
         self.manifest, self.runtime = manifest, runtime
         self._service = None
+        self._snapshots = {}
+        self._generation = {}
 
     @property
     def service(self) -> SandboxService:
@@ -861,8 +864,37 @@ class SandboxHand:
             action = TOOL_ACTIONS.get(name)
             if action is None:
                 return ToolResult("blocked", f"{name} is not available.")
+            if action in {"click", "type"} and str(args.get("ref", "")).startswith("s"):
+                current = self._snapshots.get(computer)
+                if (
+                    not current
+                    or args.get("snapshotId") != current["snapshotId"]
+                    or args["ref"] not in current["refs"]
+                ):
+                    raise SandboxError("Stale sandbox ref. Take sandbox_snapshot again.")
+                args = {**args, "ref": current["refs"][args["ref"]]}
+            if action not in {"snapshot", "read", "screenshot"}:
+                self._snapshots.pop(computer, None)
             cancel = asyncio.Event()
             result = await service.action(computer, action, args, "agent", cancel=cancel)
+            if action == "snapshot":
+                self._snapshots.pop(computer, None)
+                if (
+                    isinstance(result, dict)
+                    and isinstance(result.get("text"), str)
+                    and "[ref=" in result["text"]
+                ):
+                    snapshot_id = result.get("snapshotId")
+                    if not isinstance(snapshot_id, int) or isinstance(snapshot_id, bool):
+                        raise SandboxError("The sandbox returned an invalid snapshotId.")
+                    try:
+                        generation = self._generation.get(computer, 0) + 1
+                        normalized, refs = normalize_aria(result["text"], prefix="s", generation=generation)
+                    except ValueError:
+                        raise SandboxError("The sandbox returned an invalid referenced snapshot.") from None
+                    self._generation[computer] = generation
+                    self._snapshots[computer] = {"snapshotId": snapshot_id, "refs": refs}
+                    result = {**result, "text": normalized}
         except SandboxError as exc:
             message = str(exc)
             outcome = (

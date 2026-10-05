@@ -123,3 +123,71 @@ def parse(text):
         nodes.append(node)
     render(nodes)  # Apply the same ref, role and size checks as serialization.
     return nodes
+
+
+def normalize_aria(text, *, prefix="s", generation=0):
+    """Turn referenced Playwright/OpenBot lines into the common bounded grammar.
+
+    The returned ref map stays server-side: a sandbox action translates an s-ref
+    back to the upstream e-ref while preserving the upstream snapshotId.
+    """
+    if (
+        prefix not in PREFIXES
+        or not isinstance(text, str)
+        or len(text) > 600_000
+        or not isinstance(generation, int)
+        or isinstance(generation, bool)
+        or not 0 <= generation <= 1_000_000_000
+    ):
+        raise ValueError("Invalid browser snapshot.")
+    nodes, refs = [], {}
+    decoder = json.JSONDecoder()
+    for line in text.splitlines():
+        match = re.match(r"^( *)(?:- )([a-z][a-z0-9_-]*)(.*)$", line)
+        if not match:
+            continue  # Page headings and metadata are not addressable controls.
+        rest = match[3].lstrip()
+        name = ""
+        if rest.startswith('"'):
+            name, end = decoder.raw_decode(rest)
+            if not isinstance(name, str):
+                raise ValueError("Invalid browser node name.")
+            rest = rest[end:]
+        upstream = re.search(r"\[ref=(e[0-9]+)\]", rest)
+        if not upstream:
+            continue
+        if len(nodes) >= 600 or len(match[1]) % 2 or len(match[1]) // 2 > 30:
+            raise ValueError("The browser snapshot exceeds its bounds.")
+        states = {state for state in STATES if f"[{state}]" in rest}
+        if re.search(r"password|passcode|verification.code|\bpin\b|\botp\b|\bcvv\b", name, re.I):
+            states.add("password")
+        value = None
+        value_at = rest.find("[value=")
+        if value_at >= 0 and "password" not in states:
+            value, _ = decoder.raw_decode(rest[value_at + 7 :])
+            if not isinstance(value, str):
+                raise ValueError("Invalid browser node value.")
+        box = None
+        bounds = re.search(r"\[box=(-?\d+),(-?\d+),(\d+),(\d+)\]", rest)
+        if bounds:
+            box = tuple(map(int, bounds.groups()))
+        reference = f"{prefix}{generation * 1000 + len(nodes) + 1}"
+        if upstream[1] in refs.values():
+            raise ValueError("Duplicate browser ref.")
+        refs[reference] = upstream[1]
+        nodes.append(
+            Node(
+                reference,
+                match[2],
+                "Password field" if "password" in states else name[:500],
+                value[:100] if value is not None else None,
+                states,
+                box,
+                len(match[1]) // 2,
+            )
+        )
+    if not nodes:
+        raise ValueError("The browser snapshot has no addressable controls.")
+    normalized = render(nodes)
+    assert parse(normalized) == nodes
+    return normalized, refs

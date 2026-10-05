@@ -32,6 +32,7 @@ from .browser_tools import (
     TOOLS,
 )
 from .playwright_mcp import BrowserDriverError, SessionCrashed, isolated_preset, text_of
+from .snapshot import normalize_aria
 
 REF = re.compile(r"^(f\d+)?e\d+$")
 PAGE_URL = re.compile(r"Page URL: (\S+)")
@@ -297,6 +298,11 @@ class BrowserHand:
             "page": content,
             "settled_ms": int((time.monotonic() - started) * 1000),
         }
+        if tool.name == "browser_snapshot" or "### Page" in text:
+            try:
+                data["normalized_snapshot"], _ = normalize_aria(text, prefix="e")
+            except ValueError:
+                pass
         return ToolResult("ok", content, data=data, evidence=evidence, artifact_ids=artifact_ids)
 
     @staticmethod

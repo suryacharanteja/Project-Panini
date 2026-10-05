@@ -97,7 +97,9 @@ def call(world, name, args):
 def test_the_active_browser_and_switching(world):
     status = call(world, "browser_status", {})
     assert status.data["browsers"]["managed"]["state"] == "ready"
-    assert call(world, "browser_snapshot", {}).data["browser"] == "managed"
+    snapshot = call(world, "browser_snapshot", {})
+    assert snapshot.data["browser"] == "managed"
+    assert "[ref=e4]" in snapshot.data["normalized_snapshot"]
     assert "Choose" in call(world, "browser_select", {"browser": "nope"}).content
     assert call(world, "browser_select", {"browser": "isolated"}).outcome == "ok"
     blocked = call(world, "browser_navigate", {"url": "http://127.0.0.1/"})

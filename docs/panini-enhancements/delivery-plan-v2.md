@@ -316,7 +316,7 @@ Dependencies: V2-10 (browser vocabulary), V2-21 (Android tree); desktop worker.
 
 - [x] Desktop snapshot works in Win32, WPF and WinUI apps (including where `FromPoint` fails).
 - [ ] Fine tools meet the evaluation gate on the desktop golden tasks.
-- [ ] One grammar across web, Windows, Android and sandbox (shared parser tests).
+- [x] One grammar across web, Windows, Android and sandbox (shared parser tests).
 
 ### V2-27: Local and offline mode
 
