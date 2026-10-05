@@ -86,7 +86,7 @@ byte buffer as a file; its log is retained as `private-proof-harness-failure.log
 
 V2-22 remains **in progress**. Opening applications as recorded steps, Save As, rapid focus changes, application
 dialogs outside the selected root, per-step crops, drag gestures, recording indicators outside Admin,
-model-assisted input/expectation suggestions, frame-scoped browser replay and live healer qualification
+model-assisted input/expectation suggestions, broader frame layouts and live healer qualification
 remain open. Shortcuts whose pre-key receiver cannot be verified are manual rather than guessed. The
 current native proof covers one Windows provider and does not qualify arbitrary apps or input timing.
 

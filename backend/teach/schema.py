@@ -10,6 +10,16 @@ from ..harness.memory import _SECRET
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 PARAM = re.compile(r"\{\{([a-z][a-z0-9_]{0,39})\}\}")
+FRAME = re.compile(r"^iframe\[(?:name|title)=(['\"])([^'\"\]\\]{1,200})\1\]$")
+
+
+def frame_name(selector):
+    match = FRAME.fullmatch(selector)
+    if not match:
+        raise ValueError("Only a named iframe can be replayed; correct this frame in review.")
+    return match[2]
+
+
 SENSITIVE = re.compile(
     r"password|passwd|passcode|one.time|\bpin\b|\b(?:cvv|cvc|otp)\b|credit.card|card.number|security.code|verification.code",
     re.I,
@@ -56,6 +66,8 @@ class Target(Strict):
 
     @model_validator(mode="after")
     def bounded(self):
+        if self.frame:
+            frame_name(self.frame)
         if self.name_regex and not self.name_regex.startswith("^"):
             raise ValueError("Name patterns must be a literal anchored prefix.")
         if self.name_regex and re.search(r"(?<!\\)[.*+?{}\[\]()|$]", PARAM.sub("input", self.name_regex[1:])):

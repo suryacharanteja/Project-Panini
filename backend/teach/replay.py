@@ -11,7 +11,7 @@ from ..core_contracts import ToolResult
 from ..interrupts import digest
 from ..registry.context import ToolContext
 from . import healer
-from .schema import SENSITIVE, Target, input_values, substitute
+from .schema import SENSITIVE, Target, frame_name, input_values, substitute
 
 NODE = re.compile(r'^\s*-\s+([\w-]+)(?:\s+"((?:[^"\\]|\\.)*)")?.*?\[ref=((?:f\d+)?[ewas]\d+)\](.*)$')
 
@@ -35,6 +35,7 @@ def nodes(snapshot):
         ][-8:]
         private = SENSITIVE.search(name) or "[password]" in line or any(p.get("private") for p in parents)
         if not private:
+            frame = next((p for p in reversed(parents) if p["role"] == "iframe"), None)
             result.append(
                 {
                     "role": match[1],
@@ -43,31 +44,38 @@ def nodes(snapshot):
                     "checked": "[checked]" in line,
                     "disabled": "[disabled]" in line,
                     "ancestors": ancestry,
+                    "frame": frame["ref"] if frame else "",
                 }
             )
         while len(parents) < depth:
             parents.append({"role": "generic", "name": ""})
-        parents.append({"role": match[1], "name": name, "private": bool(private)})
+        parents.append({"role": match[1], "name": name, "ref": match[3], "private": bool(private)})
     return result[:600]
 
 
-def scope(target, candidates):
-    if target.frame:
-        raise ValueError("Frame-scoped replay requires owner correction; it cannot match another frame.")
+def scope(target, candidates, frame_ref=""):
+    frame = frame_ref
+    if target.frame and not frame:
+        wanted = frame_name(target.frame)
+        matches = [n for n in candidates if n["role"] == "iframe" and n["name"] == wanted]
+        if len(matches) != 1:
+            raise ValueError("The reviewed iframe is missing or ambiguous.")
+        frame = matches[0]["ref"]
     main_frame = candidates[0]["ref"].split("e")[0] if candidates and "e" in candidates[0]["ref"] else ""
     ancestry = [p.model_dump() for p in target.ancestors]
     return [
         n
         for n in candidates
         if not n["disabled"]
-        and (n["ref"].split("e")[0] if "e" in n["ref"] else "") == main_frame
+        and n["frame"] == frame
+        and (frame or (n["ref"].split("e")[0] if "e" in n["ref"] else "") == main_frame)
         and (not target.role or n["role"] == target.role)
         and (not ancestry or n.get("ancestors", []) == ancestry)
     ]
 
 
-def resolve(target, candidates):
-    chosen = scope(target, candidates)
+def resolve(target, candidates, frame_ref=""):
+    chosen = scope(target, candidates, frame_ref)
     exact = [n for n in chosen if n["name"] == target.name] if target.name else []
     if not exact and target.name_regex:
         prefix = re.sub(r"\\(.)", r"\1", target.name_regex[1:])
@@ -97,6 +105,7 @@ class Replayer:
         ctx.occurrences = parent.__dict__.setdefault("occurrences", {})
         ctx.confirm_decision = getattr(parent, "confirm_decision", None)
         ctx.teach_binding = getattr(parent, "teach_binding", None)
+        ctx.teach_frame_selector = getattr(parent, "teach_frame_selector", "")
         result = await self.h.registry.call(ctx, tool, args)
         if result.outcome != "ok":
             raise ReplayFailure(result)
@@ -168,6 +177,7 @@ class Replayer:
                 else:
                     await self.call(ctx, "browser_select", {"browser": browser})
                 for index, step in enumerate(replay.steps):
+                    ctx.teach_frame_selector = ""
                     if not self.h.teach.allowed() or not self.h.teach.valid_binding(ctx):
                         raise ValueError("Teach replay was disabled or PANINI was paused.")
                     if step.tool == "manual":
@@ -177,12 +187,18 @@ class Replayer:
                         target = Target.model_validate(substitute(step.target.model_dump(), values))
                         fresh = await self.call(ctx, snapshot_tool, {})
                         candidates = nodes(fresh.content)
-                        node = resolve(target, candidates)
+                        frame_ref = ""
+                        if target.frame and not any(n["role"] == "iframe" and n["name"] for n in candidates):
+                            hand = self.h.registry.hands["browser_snapshot"]
+                            if not hasattr(hand, "verified_frame"):
+                                raise ValueError("The reviewed iframe identity cannot be verified.")
+                            frame_ref = await hand.verified_frame(ctx, browser, target.frame, fresh.content)
+                        node = resolve(target, candidates, frame_ref)
                         if node is None:
                             # No step has been dispatched. Never retry an effect with an unknown result.
                             if heals >= 2 or target.frame:
                                 raise ValueError("The reviewed target is missing or ambiguous.")
-                            safe = scope(target, candidates)
+                            safe = scope(target, candidates, frame_ref)
                             node = await healer.propose(self.h.model_factory, step, safe)
                             if node is None:
                                 raise ValueError("The healer could not identify a unique safe target.")
@@ -204,6 +220,7 @@ class Replayer:
                             if desktop
                             else {"target": node["ref"], "element": f"{node['role']} {node['name']}"}
                         )
+                        ctx.teach_frame_selector = target.frame
                         if step.tool in {"desktop_press", "desktop_type"}:
                             await self.call(ctx, "desktop_focus", grounded)
                             fresh = await self.call(ctx, snapshot_tool, {})
@@ -219,11 +236,19 @@ class Replayer:
                     result = await self.call(ctx, step.tool, args)
                     evidence.extend(result.evidence)
                 for expectation in replay.expect:
+                    ctx.teach_frame_selector = ""
                     args = substitute(expectation.args, values)
                     if expectation.target:
                         target = Target.model_validate(substitute(expectation.target.model_dump(), values))
                         fresh = await self.call(ctx, snapshot_tool, {})
-                        node = resolve(target, nodes(fresh.content))
+                        candidates = nodes(fresh.content)
+                        frame_ref = ""
+                        if target.frame and not any(n["role"] == "iframe" and n["name"] for n in candidates):
+                            hand = self.h.registry.hands["browser_snapshot"]
+                            if not hasattr(hand, "verified_frame"):
+                                raise ValueError("The reviewed iframe identity cannot be verified.")
+                            frame_ref = await hand.verified_frame(ctx, browser, target.frame, fresh.content)
+                        node = resolve(target, candidates, frame_ref)
                         if node is None:
                             raise ValueError("An expected target is missing or ambiguous.")
                         if desktop:

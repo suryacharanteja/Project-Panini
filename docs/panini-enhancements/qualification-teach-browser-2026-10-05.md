@@ -11,7 +11,9 @@ The pinned Playwright recorder produces Python statements through a PANINI event
 AST parser normalizes literal actions without evaluating or executing recorder source. Navigation, click,
 double click, fill, press, option values, check/uncheck, hover and file selection are normalized. Unknown
 syntax becomes a generic manual step; its raw source is discarded. Frame locators retain their scope for
-review but frame-scoped replay is refused in this checkpoint. Raw selectors without accessible names and
+review. A later checkpoint supports the pinned recorder's `content_frame` syntax for a single named iframe;
+the frame selector is checked against the live DOM and snapshot before replay and before each effect.
+Raw selectors without accessible names and
 label/index-only option selection also require correction.
 
 Sensitive controls block native typing while recording; the person stops before entering credentials.
@@ -60,7 +62,7 @@ hashes and exact-commit verification are recorded there after packaging.
 
 - Desktop recorder hooks, UIA bounds hit-testing, signed broker recording operations, desktop normalization
   and a real Notepad recording/replay with new text.
-- Frame-scoped browser replay and its origin/frame identity qualification; broader recorded fixtures,
+- Broader frame layouts and origin/frame identity qualification; broader recorded fixtures,
   including popup/file chooser flows and label/index option selection.
 - Live healer-provider qualification, optional model-assisted input naming and screenshot-assisted repair.
 - Physical Android qualification, real SIP/audio/IVR/takeover/billing and remaining LLD acceptance evidence.

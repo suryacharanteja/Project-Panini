@@ -198,6 +198,53 @@ try {
   const stopped = await request('/api/harness/teach/stop', 'POST', {});
   assert(!JSON.stringify(stopped).includes('orange-credential-fixture'));
   assert.deepEqual(stopped.replay.recording_artifacts, {});
+  // A real iframe recording must keep its frame identity through review and replay.
+  await request('/api/harness/teach/record/start', 'POST', { browser: 'managed' });
+  await demo.goto(origin + '/demo/frame');
+  const reportFrame = demo.frameLocator('iframe[name="Report"]');
+  await reportFrame.getByLabel('Query').fill('apples');
+  await reportFrame.getByRole('button', { name: 'Save report' }).click();
+  await reportFrame.getByText('Report ready: apples').waitFor();
+  await demo.waitForTimeout(600);
+  const framed = await request('/api/harness/teach/stop', 'POST', {});
+  await writeFile(evidence + '/framed-recording.json', JSON.stringify(framed, null, 2));
+  assert(
+    framed.replay.steps.some((step) => step.target?.frame),
+    JSON.stringify(framed.replay),
+  );
+  assert(
+    framed.replay.steps.every((step) => step.tool !== 'manual'),
+    JSON.stringify(framed.replay),
+  );
+  framed.replay.expect = [
+    { id: 's99', tool: 'browser_verify_text_visible', args: { text: 'Report ready' } },
+  ];
+  const framedProposal = await request('/api/harness/teach/propose', 'POST', {
+    name: 'framed-report',
+    description: 'Create a report in the named iframe',
+    replay: framed.replay,
+  });
+  await approve(framedProposal.review);
+  const framedSkill = await request('/api/harness/teach/skills/framed-report');
+  const framedInput = Object.keys(framedSkill.replay.inputs)[0];
+  const framedPromise = request('/api/harness/teach/run', 'POST', {
+    name: 'framed-report',
+    inputs: { [framedInput]: 'oranges' },
+    browser: 'managed',
+  });
+  let framedEffect;
+  for (let i = 0; i < 100; i++) {
+    framedEffect = (await request('/api/harness/interrupts')).interrupts.find(
+      (review) => review.reason === 'teach_effect',
+    );
+    if (framedEffect) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert(framedEffect, 'Framed effect did not reach review');
+  await approve(framedEffect);
+  const framedResult = await framedPromise;
+  assert.equal(framedResult.state, 'passed', JSON.stringify(framedResult));
+  await reportFrame.getByText('Report ready: oranges').waitFor();
   const proof = await request('/preview/evidence');
   await writeFile(evidence + '/real-browser-evidence.json', JSON.stringify(proof, null, 2));
   assert(
@@ -213,6 +260,7 @@ try {
       credential_input_blocked: true,
       effect_review: true,
       patch_review: true,
+      real_named_iframe_replay: true,
       healer_provider: 'deterministic fake, no live provider qualification',
       runs: proof.runs.map((r) => ({ state: r.state, heals: r.heals })),
     }),

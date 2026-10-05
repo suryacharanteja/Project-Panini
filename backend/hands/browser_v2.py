@@ -142,6 +142,27 @@ class BrowserHand:
 
         return self.managed.pool.session(isolated_preset(self.run_key(ctx), data_directory() / "artifacts"))
 
+    async def verified_frame(self, ctx, browser, selector, snapshot, *, session=None):
+        """Bind a reviewed named selector to the sole iframe in this exact page view."""
+        from ..teach.replay import nodes
+        from ..teach.schema import frame_name
+
+        frame_name(selector)
+        if browser not in {"managed", "isolated"}:
+            raise ValueError("Named iframe replay needs PANINI's managed browser.")
+        frames = [node for node in nodes(snapshot) if node["role"] == "iframe"]
+        if len(frames) != 1:
+            raise ValueError("Frame replay requires exactly one visible iframe in the snapshot.")
+        session = session or await self.session(browser, ctx)
+        function = (
+            "() => ({total: document.querySelectorAll('iframe').length, "
+            f"matching: document.querySelectorAll({json.dumps(selector)}).length}})"
+        )
+        result = await session.call("browser_evaluate", {"function": function}, timeout_s=15)
+        if result.get("isError") or _json_in(text_of(result)) != {"total": 1, "matching": 1}:
+            raise ValueError("The reviewed iframe is missing, hidden or ambiguous.")
+        return frames[0]["ref"]
+
     async def readiness(self, capability=None):
         ready = await self.ready()
         if ready["chrome"].state == "ready" or ready["managed"].state == "ready":
@@ -228,6 +249,16 @@ class BrowserHand:
                         raise ValueError(
                             "The reviewed target changed during approval. Inspect the page before acting."
                         )
+                    if frame_selector := getattr(ctx, "teach_frame_selector", ""):
+                        from ..teach.replay import nodes
+
+                        frame_ref = await self.verified_frame(
+                            ctx, browser, frame_selector, text_of(latest), session=session
+                        )
+                        if not any(
+                            n["ref"] == ref and n["frame"] == frame_ref for n in nodes(text_of(latest))
+                        ):
+                            raise ValueError("The reviewed iframe target changed before dispatch.")
             await self._trace(ctx, browser, session)
             if tool.typing:
                 await self._probe_typing(session, key, tool, args)

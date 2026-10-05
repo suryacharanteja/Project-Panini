@@ -98,6 +98,21 @@ def main():
           <h1>Report demo</h1><label>Query <input id="query"></label><button id="save">Save report</button><p id="result" role="status"></p>
           <script>document.querySelector('#save').onclick=()=>document.querySelector('#result').textContent='Report ready: '+document.querySelector('#query').value;</script></html>""")
 
+    @app.get("/demo/frame")
+    async def frame_demo():
+        return HTMLResponse(
+            "<!doctype html><title>Framed report demo</title>"
+            '<iframe name="Report" title="Report" src="/demo/frame-body"></iframe>'
+        )
+
+    @app.get("/demo/frame-body")
+    async def frame_body():
+        return HTMLResponse(
+            '<!doctype html><label>Query <input id="query"></label>'
+            '<button id="save">Save report</button><p id="result" role="status"></p>'
+            '<script>save.onclick=()=>result.textContent="Report ready: "+query.value</script>'
+        )
+
     @app.get("/preview/evidence")
     async def evidence():
         return {

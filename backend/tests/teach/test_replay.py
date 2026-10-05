@@ -7,6 +7,7 @@ import pytest
 
 from backend import interrupts, ledger
 from backend.core_contracts import Principal, ToolResult
+from backend.hands.browser_v2 import BrowserHand
 from backend.harness.skills import Skills
 from backend.harness.store import Store
 from backend.interrupts import Interrupts, decided_by
@@ -35,11 +36,14 @@ class Hand:
         self.calls = []
         self.failure = None
         self.gate = None
+        self.snapshot = None
 
     async def call(self, ctx, spec, args):
         self.calls.append((spec.name, args))
         if spec.name == "browser_snapshot":
-            return ToolResult(content=f'- textbox "Query" [ref=e1]\n- button "{self.label}" [ref=e2]')
+            return ToolResult(
+                content=self.snapshot or f'- textbox "Query" [ref=e1]\n- button "{self.label}" [ref=e2]'
+            )
         if spec.name == "browser_click" and self.gate:
             await self.gate.wait()
         if spec.name == "browser_click" and self.failure:
@@ -237,8 +241,81 @@ def test_refs_and_literal_prefix_resolve_uniquely():
     assert len(candidates) == 3
     assert resolve(Target(role="button", name="Save"), candidates) is None
     assert resolve(Target(role="link", name_regex="^Report"), candidates)["ref"] == "e3"
-    with pytest.raises(ValueError, match="Frame"):
-        resolve(Target(name="Save", frame="iframe"), candidates)
+    with pytest.raises(ValueError, match="named iframe"):
+        Target(name="Save", frame="iframe")
+
+
+def test_named_frame_resolves_only_its_own_descendants():
+    candidates = nodes(
+        '- button "Save" [ref=f1e1]\n'
+        '- iframe "Report" [ref=f1e2]:\n'
+        '  - button "Save" [ref=f2e1]\n'
+        '- iframe "Other" [ref=f1e3]:\n'
+        '  - button "Save" [ref=f3e1]'
+    )
+    assert resolve(Target(role="button", name="Save"), candidates)["ref"] == "f1e1"
+    target = Target(role="button", name="Save", frame='iframe[name="Report"]')
+    assert resolve(target, candidates)["ref"] == "f2e1"
+    with pytest.raises(ValueError, match="missing or ambiguous"):
+        resolve(Target(role="button", name="Save", frame='iframe[title="Missing"]'), candidates)
+    with pytest.raises(ValueError, match="missing or ambiguous"):
+        resolve(target, candidates + [dict(candidates[1], ref="f1e4")])
+
+
+@pytest.mark.anyio
+async def test_frame_dom_probe_requires_one_current_named_iframe():
+    snapshot = '- iframe [ref=f1e1]:\n  - button "Save" [ref=f2e1]'
+
+    class Session:
+        def __init__(self, total, matching):
+            self.total, self.matching = total, matching
+
+        async def call(self, name, args, timeout_s):
+            assert name == "browser_evaluate" and "Report" in args["function"]
+            return {
+                "content": [
+                    {"type": "text", "text": json.dumps({"total": self.total, "matching": self.matching})}
+                ]
+            }
+
+    probe = BrowserHand.verified_frame
+    assert (
+        await probe(None, None, "managed", 'iframe[name="Report"]', snapshot, session=Session(1, 1)) == "f1e1"
+    )
+    for total, matching in ((2, 1), (1, 0), (1, 2)):
+        with pytest.raises(ValueError, match="missing, hidden or ambiguous"):
+            await probe(
+                None, None, "managed", 'iframe[name="Report"]', snapshot, session=Session(total, matching)
+            )
+    with pytest.raises(ValueError, match="exactly one visible iframe"):
+        await probe(
+            None,
+            None,
+            "managed",
+            'iframe[name="Report"]',
+            snapshot + "\n- iframe [ref=f1e2]",
+            session=Session(2, 1),
+        )
+
+
+@pytest.mark.anyio
+async def test_reviewed_named_frame_replays_through_registry(world):
+    h, hand, ctx, _ = world
+    hand.snapshot = (
+        '- iframe "Report" [ref=f1e1]:\n'
+        '  - textbox "Query" [ref=f2e1]\n'
+        '  - button "Save report" [ref=f2e2]\n'
+        '- iframe "Other" [ref=f1e2]:\n'
+        '  - button "Save report" [ref=f3e1]'
+    )
+    payload = document()
+    for step in payload["steps"]:
+        step["target"]["frame"] = 'iframe[name="Report"]'
+    proposal = h.teach.bundles.propose("frame-demo", "Create a framed report", payload)
+    approve(h, proposal["review"])
+    result = await h.registry.call(ctx, "use_skill", {"name": "frame-demo", "inputs": {}})
+    assert result.outcome == "ok" and result.data["state"] == "passed"
+    assert any(name == "browser_click" and args["target"] == "f2e2" for name, args in hand.calls)
 
 
 def test_main_frame_prefix_is_not_an_iframe():
@@ -363,7 +440,7 @@ async def test_external_client_cannot_invoke_private_skill(world):
     assert not h.store.all("SELECT * FROM skill_runs")
 
 
-def test_missing_expectation_and_unsupported_frame_cannot_be_saved(world):
+def test_missing_expectation_and_unnamed_frame_cannot_be_saved(world):
     h, *_ = world
     payload = document()
     payload["expect"] = []
@@ -371,7 +448,7 @@ def test_missing_expectation_and_unsupported_frame_cannot_be_saved(world):
         h.teach.bundles.propose("report-demo", "Demo", payload)
     payload = document()
     payload["steps"][0]["target"]["frame"] = "iframe"
-    with pytest.raises(ValueError, match="Frame-scoped"):
+    with pytest.raises(ValueError, match="named iframe"):
         h.teach.bundles.propose("report-demo", "Demo", payload)
 
 

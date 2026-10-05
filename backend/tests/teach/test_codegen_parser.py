@@ -29,8 +29,19 @@ def test_supported_literals(statement, tool):
 
 
 def test_frame_keeps_scope_for_review():
-    step = parse('page.frame_locator("iframe[name=report]").get_by_role("button", name="Save").click()')[0]
-    assert step["target"]["frame"] == "iframe[name=report]"
+    selector = 'iframe[name="report"]'
+    step = parse('page.frame_locator(\'iframe[name="report"]\').get_by_role("button", name="Save").click()')[
+        0
+    ]
+    assert step["target"]["frame"] == selector
+    pinned = parse(
+        'page.locator("iframe[name=\\"Report\\"]").content_frame.get_by_role("button", name="Save").click()'
+    )[0]
+    assert pinned["tool"] == "browser_click" and pinned["target"]["frame"] == 'iframe[name="Report"]'
+    assert (
+        parse('page.locator("iframe").content_frame.get_by_role("button", name="Save").click()')[0]["tool"]
+        == "manual"
+    )
 
 
 @pytest.mark.parametrize(

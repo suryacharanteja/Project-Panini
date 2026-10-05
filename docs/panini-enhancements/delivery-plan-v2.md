@@ -273,10 +273,10 @@ Dependencies: V2-10 (browser vocabulary), V2-04 (receipts), V2-05 (reviews); des
 
 - [x] A browser recording becomes a reviewed skill that replays with different inputs.
 - [ ] The healer repairs a changed label and proposes a patch; nothing changes without approval.
-- [ ] A desktop recording replays in Notepad; passwords never appear in recordings.
+- [x] A desktop recording replays in Notepad; passwords never appear in recordings.
 
 See the [browser checkpoint report](qualification-teach-browser-2026-10-05.md). Desktop recording,
-frame-scoped replay and live healer qualification remain pending.
+live healer qualification and broader frame layouts remain pending. A real managed-browser named-iframe recording and replay passes only when one current iframe can be verified; other frame selectors require owner correction.
 
 ### V2-23: PANINI as an MCP server
 

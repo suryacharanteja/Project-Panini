@@ -7,7 +7,7 @@ import ast
 import re
 
 from ..harness.memory import _SECRET
-from .schema import SENSITIVE
+from .schema import SENSITIVE, frame_name
 
 
 def literal(node):
@@ -43,8 +43,24 @@ def locator(node):
             result["frame"] = literal(receiver.args[0])
         else:
             raise ValueError("Unsupported chained locator")
+    elif isinstance(receiver, ast.Attribute) and receiver.attr == "content_frame":
+        # Pinned Playwright Python codegen emits page.locator(...).content_frame.
+        call = receiver.value
+        if (
+            not isinstance(call, ast.Call)
+            or not isinstance(call.func, ast.Attribute)
+            or call.func.attr != "locator"
+            or not isinstance(call.func.value, ast.Name)
+            or not re.fullmatch(r"page\d*", call.func.value.id)
+            or len(call.args) != 1
+            or call.keywords
+        ):
+            raise ValueError("Unsupported frame locator")
+        result["frame"] = literal(call.args[0])
     elif not isinstance(receiver, ast.Name) or not re.fullmatch(r"page\d*", receiver.id):
         raise ValueError("Unsupported page")
+    if "frame" in result:
+        frame_name(result["frame"])
     result["locator"] = ast.unparse(node)
     return result
 

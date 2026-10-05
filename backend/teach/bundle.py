@@ -52,10 +52,6 @@ class Bundles:
         if any(s.tool == "manual" for s in replay.steps):
             raise ValueError("Correct or remove manual steps before saving a replayable skill.")
         for step in replay.steps + replay.expect:
-            if step.target and step.target.frame:
-                raise ValueError(
-                    "Frame-scoped replay is not qualified yet. Keep this draft until frame support is available."
-                )
             spec = self.h.registry.specs.get(step.tool)
             if not spec:
                 raise ValueError("A required replay tool is unavailable.")
