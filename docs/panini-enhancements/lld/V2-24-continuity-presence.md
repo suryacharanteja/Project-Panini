@@ -154,7 +154,13 @@ offers Stop while it is playing. It skips the cue when microphone audio is activ
 restored conversation available. The source Electron smoke observed a real WAV and resolved playback.
 Physical speaker output and voice-initiated handoff remain unqualified.
 
-Remaining: spoken call prompts and voice handoff commands, actual Android/Wear OS
+Local dictation now recognizes the complete phrases "Send it to my phone" and "Call me about it" when
+an existing phone conversation is active and the composer is empty. It invokes the same authenticated
+handoff/review actions as the visible buttons. Other transcriptions remain editable drafts. This is
+record-then-transcribe control, not a live call voice command; actual microphone and provider qualification
+remain pending.
+
+Remaining: spoken call prompts and live voice handoff commands, actual Android/Wear OS
 push/action/retraction within five seconds, live preferred channel and real owner SIP qualification.
 Urgent call behavior on a physical phone and live provider remains unqualified. The flag remains off
 by default. Red-team remains disabled and deferred. See

@@ -10,6 +10,7 @@ import { Avatar, type AvatarState, levelMeter } from './avatar/Avatar';
 import { avatarStateFor } from './avatar/state';
 import { Backdrop, Capabilities, Engine, Lexicon, StageTitle } from './Stage';
 import { presentation } from '../../../phone/lib/persona.mjs';
+import { eligibleContinuityVoiceCommand } from './continuityVoice';
 
 declare global {
   interface Window {
@@ -309,8 +310,22 @@ function App() {
           const result = await api.invoke('transcribe', { audio_b64: audio });
           if (!disposed.current) {
             if (!result?.text?.trim()) throw new Error('No speech detected. Try again.');
-            setInput((previous) => [previous.trim(), result.text.trim()].filter(Boolean).join(' '));
-            note('LOCAL_DICTATION · REVIEW THE TRANSCRIPT BEFORE SENDING');
+            const transcript = result.text.trim();
+            const command = eligibleContinuityVoiceCommand(
+              transcript,
+              continuation?.thread_id,
+              input,
+            );
+            if (command) {
+              const response = await call('continuity', {
+                action: command,
+                thread_id: continuation.thread_id,
+              });
+              if (response) note(`VOICE_HANDOFF · ${command.toUpperCase()}`);
+            } else {
+              setInput((previous) => [previous.trim(), transcript].filter(Boolean).join(' '));
+              note('LOCAL_DICTATION · REVIEW THE TRANSCRIPT BEFORE SENDING');
+            }
           }
         } catch (error: any) {
           if (!disposed.current) setError(error.message || 'Local transcription failed.');

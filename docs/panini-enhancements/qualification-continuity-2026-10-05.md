@@ -61,8 +61,11 @@ fixture-provider tests. The owner API rejects unauthenticated opt-in and revocat
 authorize arbitrary approvals, notices or conversation disclosure. No live SIP call was placed.
 The native handoff now requests a fixed local Windows speech cue through its authenticated controller
 lease. The source Electron smoke produced WAV bytes and observed renderer playback resolve after the
-original thread was restored. Audible physical speaker output remains unqualified. Spoken call prompts
-and voice handoff commands are not implemented. Live Android/Wear OS
+original thread was restored; the packaged Electron smoke passed the same playback check. Local dictation
+recognizes only complete handoff/review phrases with an active continued thread and empty composer, then
+uses the existing authenticated actions. The parser rejects longer or ambiguous utterances in unit tests.
+Audible physical speaker output remains unqualified. Spoken call prompts and live voice handoff commands
+are not implemented. Live Android/Wear OS
 push/action/retraction within five seconds, preferred-channel qualification and real SIP owner calls
 remain pending. V2-24 is In progress; full LLD completion, production promotion and Dot equivalence are
 not certified. Red-team remains disabled and deferred, and PANINI_PRESENCE defaults off.
