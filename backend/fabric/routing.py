@@ -135,6 +135,9 @@ class Continuity:
         self.lock = asyncio.Lock()
         self.h.interrupts.listeners.append(self.interrupt)
         self.h.notices.listeners.append(self.notice)
+        from .urgent import UrgentEscalation
+
+        self.urgent = UrgentEscalation(self)
 
     @property
     def enabled(self):
@@ -172,7 +175,7 @@ class Continuity:
                 "SELECT COUNT(*) AS n FROM continuity_commands WHERE acknowledged=0 AND expires>?",
                 (self.clock(),),
             )["n"],
-            "owner_call_escalation": "not_implemented",
+            "owner_call_escalation": self.urgent.status(),
         }
 
     def settings(self):
@@ -229,13 +232,21 @@ class Continuity:
                 (row["item_id"],),
             )
 
-    def publish(self, identifier, kind, title, *, thread_id=None, expires=None):
+    def publish(self, identifier, kind, title, *, thread_id=None, expires=None, urgent=False):
         if not self.enabled:
             return
         now = self.clock()
         self.store.execute(
-            "INSERT OR IGNORE INTO continuity_items(id,kind,title,thread_id,created,expires) VALUES (?,?,?,?,?,?)",
-            (identifier, kind, title[:200], thread_id, now, expires if expires is not None else now + 86400),
+            "INSERT OR IGNORE INTO continuity_items(id,kind,title,thread_id,created,expires,urgent) VALUES (?,?,?,?,?,?,?)",
+            (
+                identifier,
+                kind,
+                title[:200],
+                thread_id,
+                now,
+                expires if expires is not None else now + 86400,
+                int(urgent),
+            ),
         )
 
     def interrupt(self, event, view):
@@ -256,7 +267,7 @@ class Continuity:
             return  # Already represented by the original interrupt and nonce.
         identifier = "notice:" + notice["id"]
         if event == "opened":
-            self.publish(identifier, "background", notice["title"])
+            self.publish(identifier, "background", notice["title"], urgent=bool(notice["urgent"]))
         else:
             self.resolve(identifier)
 
@@ -274,6 +285,7 @@ class Continuity:
             "UPDATE continuity_commands SET acknowledged=1 WHERE item_id=? AND kind='notification'",
             (identifier,),
         )
+        self.urgent.cancel_item(identifier)
         self.command("retract", {"id": identifier.split(":", 1)[1]}, identifier)
         # Retractions have their own durable identity and bypass quiet hours.
         self.store.execute(
@@ -399,6 +411,9 @@ class Continuity:
                     else self.settings()["rules"][item["kind"]][state]
                 )
                 desired = {route for route, _ in routes}
+                if item["urgent"] and "push" not in desired:
+                    routes = [*routes, ("push", 0)]
+                    desired.add("push")
                 # Cancel stale pending routes as presence changes. Already sent receipts stay durable.
                 for pending in self.store.all(
                     "SELECT route FROM continuity_deliveries WHERE item_id=? AND state='queued'",
@@ -426,7 +441,14 @@ class Continuity:
                 if row["route"] != "retract" and (not self.enabled or row["status"] != "open"):
                     continue
                 if row["route"] in {"push", "channel"}:
-                    due = quiet_until(now, self.settings()["quiet"])
+                    due = (
+                        now
+                        if row["route"] == "retract"
+                        or self.store.one(
+                            "SELECT urgent FROM continuity_items WHERE id=?", (row["item_id"],)
+                        )["urgent"]
+                        else quiet_until(now, self.settings()["quiet"])
+                    )
                     if due > now:
                         self.store.execute(
                             "UPDATE continuity_deliveries SET due=? WHERE item_id=? AND route=?",
@@ -454,6 +476,8 @@ class Continuity:
                     )
                     continue
                 await self.dispatch(row)
+            if self.enabled:
+                self.urgent.tick()
             # A channel send may finish after a resolution raced it. Retry edits only when a provider id exists.
             for closed in self.store.all(
                 "SELECT DISTINCT i.id FROM continuity_items i JOIN continuity_deliveries d ON d.item_id=i.id WHERE i.status='closed' AND d.route='channel' AND d.state='queued_channel'"

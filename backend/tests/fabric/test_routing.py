@@ -108,6 +108,26 @@ def test_quiet_hours_delay_push_but_never_retraction(service):
     assert continuity.fabric.push.send.call_args.args[0]["type"] == "interrupt_resolved"
 
 
+def test_trusted_urgent_responsibility_notice_bypasses_quiet_hours_for_push(service):
+    continuity, now = service
+    now[0] = datetime.fromisoformat("2026-10-05T23:00:00+04:00").timestamp()
+    config = defaults()
+    config["quiet"]["timezone"] = "Asia/Dubai"
+    continuity.configure(config)
+    notice = continuity.h.notices.add(
+        "responsibility", "Responsibility paused after failures", "Review it", urgent=True
+    )
+    tick(continuity)
+    assert continuity.fabric.push.send.await_count == 1
+    assert continuity.fabric.push.send.call_args.args[0]["id"] == notice["id"]
+    assert (
+        continuity.store.one("SELECT urgent FROM continuity_items WHERE id=?", ("notice:" + notice["id"],))[
+            "urgent"
+        ]
+        == 1
+    )
+
+
 def test_exact_thread_handoff_persists_without_new_sessions(service):
     continuity, _ = service
     thread = continuity.h.sessions.create("Owner conversation")

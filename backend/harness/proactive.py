@@ -34,12 +34,14 @@ class Notices:
         self.store, self.clock = store, clock
         self.listeners = []
 
-    def add(self, kind, title, body, *, task_id=None, action=None, dedupe=None):
+    def add(self, kind, title, body, *, task_id=None, action=None, dedupe=None, urgent=False):
         """Returns the notice, or None when an identical one already exists."""
+        if type(urgent) is not bool:
+            raise ValueError("Urgent must be an explicit boolean from a trusted source.")
         notice_id = uuid4().hex
         cursor = self.store.execute(
-            "INSERT OR IGNORE INTO notices(id, kind, title, body, task_id, action, dedupe, created) "
-            "VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT OR IGNORE INTO notices(id, kind, title, body, task_id, action, dedupe, created, urgent) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
             (
                 notice_id,
                 kind,
@@ -49,6 +51,7 @@ class Notices:
                 json.dumps(action) if action else None,
                 dedupe,
                 self.clock(),
+                int(urgent),
             ),
         )
         notice = self.get(notice_id) if cursor.rowcount else None

@@ -103,6 +103,183 @@ def approve(h, row, *, surface="phone_app", method="tap", approved=True):
     )
 
 
+def approve_urgent_grant(h, review_id):
+    view = h.interrupts.get(review_id, include_secret=True)
+    return h.interrupts.resolve(
+        review_id,
+        nonce=view["nonce"],
+        action_digest=view["action_digest"],
+        status="resolved",
+        payload={"approved": True},
+        decided_by={"surface": "console", "method": "local", "principal_kind": "owner"},
+    )
+
+
+@pytest.mark.anyio
+async def test_urgent_owner_grant_calls_once_after_five_minutes_without_item_contents(world, monkeypatch):
+    monkeypatch.setenv("PANINI_PRESENCE", "true")
+    h, service, observed, now = world
+    h.continuity.clock = h.continuity.urgent.clock = lambda: now[0]
+    h.continuity.presence.clock = lambda: now[0]
+    h.notices.clock = lambda: now[0]
+    grant = h.continuity.urgent.propose()
+    assert grant["status"] == "proposed"
+    approve_urgent_grant(h, grant["review_id"])
+    assert h.continuity.urgent.status()["status"] == "active"
+    notice = h.notices.add(
+        "responsibility", "Responsibility paused after failures", "PRIVATE FAILURE CONTENT", urgent=True
+    )
+    await h.continuity.tick()
+    assert h.store.one("SELECT COUNT(*) AS n FROM continuity_urgent_attempts")["n"] == 0
+    now[0] += 301
+    await h.continuity.tick()
+    attempt = h.store.one("SELECT * FROM continuity_urgent_attempts")
+    assert attempt["item_id"] == "notice:" + notice["id"]
+    row = service.get(attempt["brief_id"])
+    assert row["interrupt_id"] is None and row["standing_grant_id"] == grant["id"]
+    assert "PRIVATE FAILURE CONTENT" not in json.dumps(row["brief"])
+    await service.tick()
+    await service.work
+    assert len([action for action, _, _ in observed if action == "create"]) == 1
+    await h.continuity.tick()
+    assert h.store.one("SELECT COUNT(*) AS n FROM continuity_urgent_attempts")["n"] == 1
+
+
+@pytest.mark.anyio
+async def test_urgent_owner_grant_resolution_and_revocation_prevent_dispatch(world, monkeypatch):
+    monkeypatch.setenv("PANINI_PRESENCE", "true")
+    h, service, observed, now = world
+    h.continuity.clock = h.continuity.urgent.clock = lambda: now[0]
+    h.continuity.presence.clock = lambda: now[0]
+    h.notices.clock = lambda: now[0]
+    grant = h.continuity.urgent.propose()
+    approve_urgent_grant(h, grant["review_id"])
+    first = h.notices.add("responsibility", "Urgent failure", "Private", urgent=True)
+    h.notices.mark(first["id"], "read")
+    now[0] += 301
+    await h.continuity.tick()
+    assert h.store.one("SELECT COUNT(*) AS n FROM continuity_urgent_attempts")["n"] == 0
+    second = h.notices.add("responsibility", "Urgent failure 2", "Private", urgent=True)
+    now[0] += 301
+    await h.continuity.tick()
+    assert h.store.one("SELECT COUNT(*) AS n FROM continuity_urgent_attempts")["n"] == 1
+    h.continuity.urgent.revoke(grant["id"])
+    row = h.store.one("SELECT state FROM outbound_briefs WHERE standing_grant_id=?", (grant["id"],))
+    assert row["state"] == "cancelled"
+    await service.tick()
+    assert observed == []
+    assert h.notices.get(second["id"])["status"] == "unread"
+
+
+@pytest.mark.anyio
+async def test_urgent_grant_requires_pc_and_cancels_pending_on_resolution(world, monkeypatch):
+    monkeypatch.setenv("PANINI_PRESENCE", "true")
+    h, service, observed, now = world
+    h.continuity.clock = h.continuity.urgent.clock = lambda: now[0]
+    h.continuity.presence.clock = lambda: now[0]
+    h.notices.clock = lambda: now[0]
+    grant = h.continuity.urgent.propose()
+    view = h.interrupts.get(grant["review_id"], include_secret=True)
+    with pytest.raises(Fault, match="PC"):
+        h.interrupts.resolve(
+            view["id"],
+            nonce=view["nonce"],
+            action_digest=view["action_digest"],
+            status="resolved",
+            payload={"approved": True},
+            decided_by={"surface": "phone_app", "method": "tap", "principal_kind": "owner"},
+        )
+    approve_urgent_grant(h, grant["review_id"])
+    notice = h.notices.add("responsibility", "Urgent failure", "Private", urgent=True)
+    now[0] += 301
+    await h.continuity.tick()
+    attempt = h.store.one("SELECT * FROM continuity_urgent_attempts")
+    h.notices.mark(notice["id"], "read")
+    assert service.get(attempt["brief_id"])["state"] == "cancelled"
+    await service.tick()
+    assert observed == []
+
+
+@pytest.mark.anyio
+async def test_urgent_grant_waits_for_away_state_and_caps_daily_attempts(world, monkeypatch):
+    monkeypatch.setenv("PANINI_PRESENCE", "true")
+    h, service, _, now = world
+    h.continuity.clock = h.continuity.urgent.clock = lambda: now[0]
+    h.continuity.presence.clock = lambda: now[0]
+    h.notices.clock = lambda: now[0]
+    grant = h.continuity.urgent.propose()
+    approve_urgent_grant(h, grant["review_id"])
+    h.notices.add("responsibility", "Failure one", "Private", urgent=True)
+    h.notices.add("responsibility", "Failure two", "Private", urgent=True)
+    now[0] += 301
+    h.continuity.presence.signal(
+        "pc", {"idle_s": 0, "locked": False, "suspended": False, "avatar_visible": True}
+    )
+    await h.continuity.tick()
+    assert h.store.one("SELECT COUNT(*) AS n FROM continuity_urgent_attempts")["n"] == 0
+    now[0] += 31
+    await h.continuity.tick()
+    assert h.store.one("SELECT COUNT(*) AS n FROM continuity_urgent_attempts")["n"] == 1
+    service.update(h.store.one("SELECT brief_id FROM continuity_urgent_attempts")["brief_id"], "ended")
+    now[0] += 301
+    await h.continuity.tick()
+    assert h.store.one("SELECT COUNT(*) AS n FROM continuity_urgent_attempts")["n"] == 1
+
+
+@pytest.mark.anyio
+async def test_rotating_trunk_revokes_urgent_grant_even_at_same_clock_tick(world, monkeypatch):
+    monkeypatch.setenv("PANINI_PRESENCE", "true")
+    h, service, observed, now = world
+    h.continuity.clock = h.continuity.urgent.clock = lambda: now[0]
+    h.continuity.presence.clock = lambda: now[0]
+    h.notices.clock = lambda: now[0]
+    grant = h.continuity.urgent.propose()
+    approve_urgent_grant(h, grant["review_id"])
+    h.notices.add("responsibility", "Failure", "Private", urgent=True)
+    now[0] += 301
+    await h.continuity.tick()
+    assert h.store.one("SELECT COUNT(*) AS n FROM continuity_urgent_attempts")["n"] == 1
+    old = service.settings()["config"]
+    service.configure(
+        old,
+        username="new-test-user",
+        password="new-test-password",
+        checklist=dict.fromkeys(CHECKLIST, True),
+    )
+    assert (
+        h.store.one("SELECT status FROM continuity_urgent_grants WHERE id=?", (grant["id"],))["status"]
+        == "revoked"
+    )
+    assert (
+        h.store.one("SELECT state FROM outbound_briefs WHERE standing_grant_id=?", (grant["id"],))["state"]
+        == "cancelled"
+    )
+    await service.tick()
+    assert observed == []
+
+
+@pytest.mark.anyio
+async def test_expired_or_private_urgent_grant_cannot_queue_owner_calls(world, monkeypatch):
+    monkeypatch.setenv("PANINI_PRESENCE", "true")
+    h, _, observed, now = world
+    h.continuity.clock = h.continuity.urgent.clock = lambda: now[0]
+    h.continuity.presence.clock = lambda: now[0]
+    h.notices.clock = lambda: now[0]
+    grant = h.continuity.urgent.propose()
+    approve_urgent_grant(h, grant["review_id"])
+    h.notices.add("responsibility", "First failure", "Private", urgent=True)
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+    now[0] += 301
+    await h.continuity.tick()
+    assert h.store.one("SELECT COUNT(*) AS n FROM continuity_urgent_attempts")["n"] == 0
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "off")
+    now[0] = grant["expires"] + 1
+    await h.continuity.tick()
+    assert h.continuity.urgent.status()["status"] == "unavailable"
+    assert h.store.one("SELECT COUNT(*) AS n FROM continuity_urgent_attempts")["n"] == 0
+    assert observed == []
+
+
 @pytest.mark.anyio
 async def test_continuity_owner_call_uses_fixed_configured_facts_and_waits_for_exact_approval(
     world, monkeypatch
@@ -540,8 +717,9 @@ async def test_transport_events_reach_lifecycle_callback():
 
 
 @pytest.mark.anyio
-async def test_console_boundary_and_no_credential_echo(world):
+async def test_console_boundary_and_no_credential_echo(world, monkeypatch):
     h, _, _, _ = world
+    monkeypatch.setenv("PANINI_PRESENCE", "true")
     client = TestClient(
         create_app(console_token="owner-test-token", harness_factory=lambda: h), base_url="http://127.0.0.1"
     )
@@ -555,5 +733,16 @@ async def test_console_boundary_and_no_credential_echo(world):
             json={"password": "credential-must-not-echo", "arbitrary": True},
         )
         assert rejected.status_code == 422 and "credential-must-not-echo" not in rejected.text
+        assert client.post("/api/harness/presence/urgent-grants").status_code == 401
+        proposed = client.post(
+            "/api/harness/presence/urgent-grants",
+            headers={"x-panini-console": "owner-test-token"},
+        )
+        assert proposed.status_code == 200 and proposed.json()["status"] == "proposed"
+        revoked = client.delete(
+            "/api/harness/presence/urgent-grants/" + proposed.json()["id"],
+            headers={"x-panini-console": "owner-test-token"},
+        )
+        assert revoked.status_code == 200 and revoked.json()["status"] == "off"
     finally:
         client.close()

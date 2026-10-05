@@ -54,9 +54,12 @@ and a successful request removes it only after durable server resolution.
 
 ## Remaining requirements
 
-Automatic urgent escalation is **not implemented**. It still needs explicit immutable owner/trunk-bound
-standing authorization, current policy enforcement, rates/budgets, timers, revocation and cancellation.
-Spoken avatar/call prompts and voice handoff commands are also not implemented. Live Android/Wear OS
+Automatic urgent escalation now has a PC-reviewed, revocable standing grant for internally marked
+responsibility failures. The fixed brief, five-minute timer, away-state check, trunk binding,
+one-per-day/three-total cap, resolution cancellation and pre-dispatch policy/calling-hour checks pass
+fixture-provider tests. The owner API rejects unauthenticated opt-in and revocation. The grant does not
+authorize arbitrary approvals, notices or conversation disclosure. No live SIP call was placed.
+Spoken avatar/call prompts and voice handoff commands are not implemented. Live Android/Wear OS
 push/action/retraction within five seconds, preferred-channel qualification and real SIP owner calls
 remain pending. V2-24 is In progress; full LLD completion, production promotion and Dot equivalence are
 not certified. Red-team remains disabled and deferred, and PANINI_PRESENCE defaults off.

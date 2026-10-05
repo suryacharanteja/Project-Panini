@@ -137,10 +137,19 @@ separately covers the phone command. Physical-device handoff remains unqualified
 
 "Review a call to me" creates one fixed, digest-bound V2-20 brief for the configured owner number,
 with no commitments, no conversation disclosure, a two-minute bound and no voicemail. It requires the
-existing owner approval, trunk checklist, calling windows, policy and budget checks. This implements
-the reviewed manual request; automatic opt-in urgent escalation is still unimplemented.
+existing owner approval, trunk checklist, calling windows, policy and budget checks.
 
-Remaining: bounded standing authorization and urgent timers, spoken avatar/call prompts and voice
-handoff commands, actual Android/Wear OS push/action/retraction within five seconds, live preferred
-channel and real owner SIP qualification. The flag remains off by default. Red-team remains disabled
-and deferred. See [qualification record](../qualification-continuity-2026-10-05.md).
+The next increment adds a separate, revocable seven-day standing grant. It requires a local PC decision
+over the exact owner number, fixed two-minute no-voicemail brief, one-call-per-day and three-call-total
+limits. Only internally marked urgent responsibility failure notices enter the timer. An unresolved item
+waits five minutes and requires away presence, current trunk identity, outbound checklist, policy and
+calling hours before one durable call attempt. Resolution and revocation cancel pending attempts; a
+rotated trunk revokes the grant. The call service rechecks the grant immediately before provider
+dispatch and during an active call. The Admin panel exposes review and revoke controls. The tests use a
+fixture SIP provider; no owner number was dialed in this development increment.
+
+Remaining: spoken avatar/call prompts and voice handoff commands, actual Android/Wear OS
+push/action/retraction within five seconds, live preferred channel and real owner SIP qualification.
+Urgent call behavior on a physical phone and live provider remains unqualified. The flag remains off
+by default. Red-team remains disabled and deferred. See
+[qualification record](../qualification-continuity-2026-10-05.md).

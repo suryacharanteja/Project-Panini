@@ -133,12 +133,16 @@ class OutboundCalls:
                     self.store.execute(
                         "UPDATE outbound_settings SET checklist=NULL,signed_at=NULL WHERE id=1"
                     )
+                    self.store.execute(
+                        "UPDATE continuity_urgent_grants SET status='revoked' WHERE status IN ('proposed','active')"
+                    )
                     for row in self.store.all(
                         "SELECT id,interrupt_id FROM outbound_briefs WHERE state IN ('review','scheduled')"
                     ):
-                        self.h.interrupts.cancel(
-                            row["interrupt_id"], "Outbound setup changed; review a new brief."
-                        )
+                        if row["interrupt_id"]:
+                            self.h.interrupts.cancel(
+                                row["interrupt_id"], "Outbound setup changed; review a new brief."
+                            )
                         self.update(row["id"], "cancelled", "Outbound setup changed; review a new brief.")
                     self.store.execute("COMMIT")
                 except BaseException:
@@ -337,7 +341,34 @@ class OutboundCalls:
         action = {"call_brief_id": identifier, "brief": brief.model_dump(), "surface": surface}
         return {**action, "schedule": plan} if plan is not None else action
 
+    def draft_standing(self, brief, thread_id, grant_id, item_id):
+        """Queue only the fixed brief derived from an already reviewed standing grant."""
+        identifier, now = uuid4().hex, self.clock()
+        action = {
+            "type": "standing_urgent_call",
+            "grant_id": grant_id,
+            "item_id": item_id,
+            "brief": brief.model_dump(),
+        }
+        self.store.execute(
+            "INSERT INTO outbound_briefs(id,brief,digest,interrupt_id,thread_id,created,updated,surface,standing_grant_id,urgent_item_id) VALUES (?,?,?,NULL,?,?,?,?,?,?)",
+            (
+                identifier,
+                json.dumps(brief.model_dump()),
+                digest(action),
+                thread_id,
+                now,
+                now,
+                "avatar",
+                grant_id,
+                item_id,
+            ),
+        )
+        return self.get(identifier)
+
     def approval(self, row, brief):
+        if row["standing_grant_id"]:
+            return self.h.continuity.urgent.authorize(row, brief)
         answer = self.h.interrupts.get(row["interrupt_id"])
         if (
             answer["status"] != "resolved"
@@ -360,7 +391,8 @@ class OutboundCalls:
         row = self.get(identifier)
         if row["state"] not in {"review", "scheduled"}:
             raise Fault("CALL_CHANGED", "Only a pending call can be cancelled here.", 409)
-        self.h.interrupts.cancel(row["interrupt_id"], reason)
+        if row["interrupt_id"]:
+            self.h.interrupts.cancel(row["interrupt_id"], reason)
         self.update(identifier, "cancelled", reason)
 
     def prune_scheduled(self):
@@ -403,6 +435,9 @@ class OutboundCalls:
         if self.active:
             call = self.active
             try:
+                active_row = self.get(call["id"])
+                if active_row["standing_grant_id"]:
+                    self.approval(active_row, call["brief"])
                 self.check(call["brief"], hours=False, surface=call["surface"])
                 if (
                     call.get("transfer_requested") is not None
@@ -432,6 +467,15 @@ class OutboundCalls:
             "SELECT id FROM outbound_briefs WHERE state IN ('review','scheduled') ORDER BY created"
         ):
             brief = self.get(row["id"])
+            if brief["standing_grant_id"]:
+                try:
+                    self.approval(brief, CallBrief.model_validate(brief["brief"]))
+                except (Fault, ValueError, KeyError):
+                    self.update(brief["id"], "cancelled", "Urgent grant or item changed before dialing.")
+                    continue
+                self.work = asyncio.create_task(self.dial(brief["id"]))
+                self.work.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                break
             answer = self.h.interrupts.get(brief["interrupt_id"])
             if answer["status"] == "open":
                 if not self.enabled():
@@ -539,6 +583,20 @@ class OutboundCalls:
                         },
                     },
                 }
+                if row["standing_grant_id"]:
+                    try:
+                        self.approval(self.get(identifier), brief)
+                    except Fault:
+                        self.update(
+                            identifier, "cancelled", "Urgent grant or item changed before provider dispatch."
+                        )
+                        self.h.ledger.end(
+                            receipt["id"],
+                            outcome="blocked",
+                            data={"reason": "urgent_grant_changed"},
+                            dispatched=False,
+                        )
+                        return
                 result = await self.provider("create", body=body)
                 session = result["session"]["id"]
                 if not isinstance(session, str) or not SESSION_ID.fullmatch(session):

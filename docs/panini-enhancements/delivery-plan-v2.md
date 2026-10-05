@@ -366,6 +366,7 @@ are recorded in [the MCP report](qualification-mcp-2026-10-05.md); no all-LLD co
 V2-24 adds native and encrypted phone presence, durable routing/quiet hours, retraction and same-thread
 PC/phone handoff. A real Electron smoke restores the avatar's original agent thread and opens Live;
 Admin rules save through the real gateway/backend at desktop/mobile widths. A manual owner-call request
-remains digest-bound and owner-reviewed. Automatic urgent escalation, voice/spoken handoffs and physical
-Android/Wear OS/live push/SIP qualification remain pending. See
+remains digest-bound and owner-reviewed. A separate, locally approved standing grant now bounds urgent
+responsibility-failure calls to one per day and three total, after five minutes while away. Fixture
+provider tests pass; voice/spoken handoffs and physical Android/Wear OS/live push/SIP qualification remain pending. See
 [continuity evidence](qualification-continuity-2026-10-05.md). Full-program promotion remains open.

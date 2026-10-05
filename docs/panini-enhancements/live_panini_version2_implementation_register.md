@@ -284,6 +284,8 @@ See [qualification record](qualification-mcp-2026-10-05.md). Red-team remains di
 V2-24 implements expiring native/phone presence, durable configurable routing and quiet hours,
 notification retraction, same-thread native handoff/Live view and a fixed owner-call review.
 Native Electron and encrypted Android-sized Chromium have source integration evidence.
-Automatic urgent escalation and spoken/voice handoffs remain unimplemented; physical Android/Wear OS,
+An opt-in, locally approved urgent responsibility escalation path now exists with a fixed owner brief,
+five-minute timer, caps and revocation; it has fixture-provider evidence only. Spoken/voice handoffs,
+physical Android/Wear OS,
 live push/channel and owner SIP qualification remain open. V2-24 remains In progress. See
 [the continuity qualification record](qualification-continuity-2026-10-05.md).

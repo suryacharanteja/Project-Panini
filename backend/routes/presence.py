@@ -77,6 +77,27 @@ def add_presence(router, guard, *, phone=False, native=False):
             except ValueError as error:
                 raise HTTPException(422, str(error)) from None
 
+        @router.post("/presence/urgent-grants")
+        async def propose_urgent_grant(request: Request):
+            guard(request)
+            try:
+                return continuity(request).urgent.propose()
+            except (ValueError, RuntimeError) as error:
+                raise HTTPException(409, str(error)) from None
+
+        @router.delete("/presence/urgent-grants/{grant_id}")
+        async def revoke_urgent_grant(grant_id: str, request: Request):
+            guard(request)
+            try:
+                service = continuity(request)
+                result = service.urgent.revoke(grant_id)
+                active = service.h.outbound.active
+                if active and service.h.outbound.get(active["id"])["standing_grant_id"] == grant_id:
+                    await service.h.outbound.end(reason="Urgent call grant revoked by the owner.")
+                return result
+            except KeyError:
+                raise HTTPException(404, "Unknown urgent call grant.") from None
+
         @router.get("/presence/commands")
         async def commands(request: Request):
             guard(request)

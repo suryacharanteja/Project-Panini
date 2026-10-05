@@ -298,6 +298,7 @@ class Responsibilities:
                 "Responsibility paused after failures",
                 row["title"],
                 dedupe="responsibility-paused:" + identifier + ":" + task_id,
+                urgent=True,
             )
 
     async def tick(self):

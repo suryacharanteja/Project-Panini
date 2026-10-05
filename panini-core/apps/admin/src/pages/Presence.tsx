@@ -35,8 +35,73 @@ export function PresencePanel() {
       </p>
       <p className="mt-2 text-sm text-muted">
         Push acceptance confirms delivery to a push service. It does not confirm that a phone
-        displayed it. Automatic urgent owner calls and spoken call prompts are not available yet.
+        displayed it. Urgent owner calls need a separate PC approval and an acknowledged outbound
+        trunk. Live SIP delivery is not qualified.
       </p>
+      <div className="mt-3 rounded-lg border border-zinc-3 p-3 text-sm">
+        <strong>Urgent responsibility failures</strong>
+        <p className="mt-1 text-muted">
+          If approved, PANINI may call your configured owner number after an urgent item remains
+          unresolved for five minutes while you are away. The grant lasts seven days, allows at most
+          one call per day and three total, and uses a fixed two-minute brief with no voicemail.
+          Current call policy and calling hours still apply.
+        </p>
+        <p className="mt-2" role="status">
+          {resource.data?.owner_call_escalation?.status === 'active'
+            ? `Active for ${resource.data.owner_call_escalation.number} until ${new Date(resource.data.owner_call_escalation.expires * 1000).toLocaleString()}`
+            : resource.data?.owner_call_escalation?.status === 'proposed'
+              ? 'Waiting for your PC approval in Inbox.'
+              : resource.data?.owner_call_escalation?.status === 'unavailable'
+                ? 'Grant unavailable: check the trunk, flags, expiry and current policy.'
+                : 'Off'}
+        </p>
+        <div className="mt-2 flex gap-2">
+          {resource.data?.owner_call_escalation?.status === 'off' ? (
+            <Button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setMessage('');
+                try {
+                  await api(harness('/presence/urgent-grants'), { method: 'POST' });
+                  setMessage('Review the exact urgent call grant in Inbox on this PC.');
+                  await resource.reload();
+                } catch (error) {
+                  setMessage((error as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Review urgent call opt-in
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setMessage('');
+                try {
+                  await api(
+                    harness(`/presence/urgent-grants/${resource.data.owner_call_escalation.id}`),
+                    { method: 'DELETE' },
+                  );
+                  setMessage('Urgent owner calling revoked.');
+                  await resource.reload();
+                } catch (error) {
+                  setMessage((error as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Revoke urgent calls
+            </Button>
+          )}
+        </div>
+      </div>
       <form
         className="mt-4 grid gap-4"
         onSubmit={async (event) => {
