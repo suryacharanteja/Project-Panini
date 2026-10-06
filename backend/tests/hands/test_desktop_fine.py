@@ -522,7 +522,9 @@ async def test_type_and_submit_is_one_submit_effect_then_enter_in_the_same_field
     )
     assert result.outcome == "ok", result.content
     assert result.data["submitted"] is True
-    assert h.ctx.decision.effect == EffectClass.SUBMIT  # Classified (and reviewed, where policy asks) as a submit.
+    assert (
+        h.ctx.decision.effect == EffectClass.SUBMIT
+    )  # Classified (and reviewed, where policy asks) as a submit.
     actions = [c for c in h.pipe.calls if c["op"] == "fine_action"]
     assert actions[-1]["action"] == {"kind": "keypress", "key": "Enter"}
     assert actions[-2]["action"]["text"] == "weather today"
@@ -533,7 +535,9 @@ async def test_type_and_submit_is_one_submit_effect_then_enter_in_the_same_field
 async def test_declined_type_and_submit_sends_nothing(world, monkeypatch):
     h = world
     session = await snapshot(h)
-    monkeypatch.setenv("PANINI_POLICY_PROFILE", "cautious")  # Ask before every action, so the owner can decline.
+    monkeypatch.setenv(
+        "PANINI_POLICY_PROFILE", "cautious"
+    )  # Ask before every action, so the owner can decline.
 
     async def confirm(title, detail, decision):
         return False

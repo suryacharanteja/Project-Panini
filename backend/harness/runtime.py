@@ -450,8 +450,14 @@ class Harness:
         agent.run_id = task["id"]
         agent.confirm_decision = agent.confirm
         # A channel job, or a task that continues an owner conversation (V2-15 phone turns), runs in that thread.
-        bound = None if channel_job else self.store.one("SELECT thread_id FROM task_threads WHERE task_id=?", (task["id"],))
-        agent.thread_id = channel_job["thread_id"] if channel_job else (bound["thread_id"] if bound else task["id"])
+        bound = (
+            None
+            if channel_job
+            else self.store.one("SELECT thread_id FROM task_threads WHERE task_id=?", (task["id"],))
+        )
+        agent.thread_id = (
+            channel_job["thread_id"] if channel_job else (bound["thread_id"] if bound else task["id"])
+        )
         if task.get("kind") in {"trigger", "responsibility"}:
             from dataclasses import replace
 
