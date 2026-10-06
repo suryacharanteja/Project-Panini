@@ -16,7 +16,7 @@ from .. import v2flags
 from ..panini.contracts import Fault
 from .callers import Callers, from_headers
 from .connection import PhoneConnection
-from .prompts import PHONE_INSTRUCTIONS
+from .prompts import MESSAGE_GREETING, MESSAGE_INSTRUCTIONS, PHONE_INSTRUCTIONS
 
 SESSION_ID = re.compile(r"^[a-zA-Z0-9_-]{1,150}$")
 WORK_STOP_TIMEOUT_S = 10
@@ -52,6 +52,22 @@ class Call:
     transcript_chars: int = 0
     receipt: str | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    mode: str = "owner"  # owner | message (an unknown caller leaving a message: no tools, no owner data)
+
+
+def unknown_mode():
+    """PANINI_UNKNOWN_CALLERS: reject (default) | message (take a message) | ask (the owner decides in 20 s)."""
+    mode = os.getenv("PANINI_UNKNOWN_CALLERS", "reject").strip().lower()
+    return mode if mode in {"reject", "message", "ask"} else "reject"
+
+
+def call_cost(duration_s):
+    """Voice cost from duration at PANINI_CALL_USD_PER_MINUTE (about 0.05 USD a minute for live voice)."""
+    try:
+        rate = max(0.0, min(5.0, float(os.getenv("PANINI_CALL_USD_PER_MINUTE", "0.05"))))
+    except ValueError:
+        rate = 0.05
+    return round(duration_s / 60 * rate, 4)
 
 
 class CallService:
@@ -171,7 +187,9 @@ class CallService:
                 self.h.outbound.active or self.h.outbound.work and not self.h.outbound.work.done()
             ):
                 reason = "An outbound call is already using the phone line."
-            elif not caller or caller["kind"] == "blocked":
+            elif caller and caller["kind"] == "blocked":
+                reason, code = "Caller is not permitted.", 603
+            elif not caller and (not number or unknown_mode() == "reject"):
                 reason, code = "Caller is not permitted.", 603
             elif self.active or any(not task.done() for task in self.draining):
                 reason = "Another call is active."
@@ -181,6 +199,13 @@ class CallService:
             ):
                 reason = "Daily call limit reached."
             profile = None
+            mode = "owner"
+            if not reason and not caller:
+                # PANINI_UNKNOWN_CALLERS=message|ask: the caller may only leave a message (no tools, no owner data).
+                caller = {"kind": "unknown", "persona_id": "panini", "number": number, "pin_hash": None}
+                mode = "message"
+                if unknown_mode() == "ask" and not await self.owner_answers(identifier, number):
+                    reason = "The owner did not answer."
             if not reason:
                 try:
                     persona = self.h.personas.get(caller["persona_id"])
@@ -195,7 +220,7 @@ class CallService:
                 else None
             )
             self.store.execute(
-                "INSERT INTO calls(id,number,persona_id,state,started,thread_id,reason) VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO calls(id,number,persona_id,state,started,thread_id,reason,mode) VALUES (?,?,?,?,?,?,?,?)",
                 (
                     identifier,
                     number or "unknown",
@@ -204,12 +229,13 @@ class CallService:
                     now,
                     thread,
                     reason,
+                    mode,
                 ),
             )
             if reason:
                 await self.provider(identifier, "reject", {"status_code": code})
                 return
-            call = Call(identifier, caller, thread, now)
+            call = Call(identifier, caller, thread, now, mode=mode)
             self.active = call
             call.connection = self.connection_factory(
                 os.getenv("OPENAI_API_KEY", ""),
@@ -227,7 +253,7 @@ class CallService:
                     "session": {
                         "type": "live",
                         "model": os.getenv("VOICE_MODEL", "gpt-live-1"),
-                        "instructions": PHONE_INSTRUCTIONS,
+                        "instructions": MESSAGE_INSTRUCTIONS if mode == "message" else PHONE_INSTRUCTIONS,
                         "audio": {"output": {"voice": profile["voice"]}},
                         "delegation": {"type": "client"},
                         "store": False,
@@ -248,6 +274,11 @@ class CallService:
                     "Call time limit reached.",
                 )
             )
+            if mode == "message":
+                self.store.execute("UPDATE calls SET state='message' WHERE id=?", (identifier,))
+                call.watcher = asyncio.create_task(self.watch(call))
+                await call.connection.speak(MESSAGE_GREETING)
+                return
             call.verification_timer = asyncio.create_task(
                 self.expire(call, 60, "Caller verification timed out.")
             )
@@ -277,6 +308,12 @@ class CallService:
             raise Fault("CALL_CLOSED", "The phone call is no longer active.")
         if self.h.policy.paused():
             raise Fault("PANINI_PAUSED", "PANINI is paused.")
+        if call.mode == "message":
+            # A message-taker stays allowed while the line is on, unless the number has since been blocked.
+            current = self.callers.get(call.caller["number"]) if call.caller.get("number") else None
+            if (current and current["kind"] == "blocked") or unknown_mode() == "reject":
+                raise Fault("CALLER_REMOVED", "Unknown callers are no longer accepted.")
+            return
         current = self.callers.get(call.caller["number"])
         if (
             not current
@@ -290,7 +327,13 @@ class CallService:
             raise Fault("PERSONA_UNAVAILABLE", "Personas are disabled.")
 
     async def digits(self, call, digit):
-        if call.closing or call.verified or digit not in "0123456789*#" or len(digit) != 1:
+        if (
+            call.closing
+            or call.verified
+            or call.mode == "message"
+            or digit not in "0123456789*#"
+            or len(digit) != 1
+        ):
             return
         if digit == "*":
             call.digits = ""
@@ -356,7 +399,11 @@ class CallService:
     async def event(self, call, event):
         if event.get("type") in {"call.closed", "disconnected"}:
             asyncio.create_task(self.end(call, "Call ended.", usage=event.get("usage")))
-        elif event.get("type") == "transcript" and call.verified and call.transcript_chars < 200_000:
+        elif (
+            event.get("type") == "transcript"
+            and (call.verified or call.mode == "message")  # A message call records the message itself.
+            and call.transcript_chars < 200_000
+        ):
             text = str(event.get("delta", ""))[:4000]
             call.transcript.append(
                 {
@@ -381,6 +428,12 @@ class CallService:
             if call.work:
                 call.work.cancel()
             await call.connection.speak("Stopping the current request.", delegation_id=identifier)
+            return
+        if call.mode == "message":
+            await call.connection.speak(
+                "I can only take a message. Please tell me your name, why you are calling and how to reach you.",
+                delegation_id=identifier,
+            )
             return
         if not call.verified:
             await call.connection.speak(
@@ -599,12 +652,18 @@ class CallService:
         self.h.ledger.end(
             receipt["id"],
             outcome=state,
-            data={"reason": reason, "duration_s": duration, "verified": call.verified},
+            data={
+                "reason": reason,
+                "duration_s": duration,
+                "verified": call.verified,
+                "mode": call.mode,
+                "cost_usd": call_cost(duration),
+            },
             artifact_ids=[aid],
             dispatched=True,
         )
         self.store.execute(
-            "UPDATE calls SET state=?,ended=?,duration_s=?,reason=?,usage=?,transcript_artifact_id=?,receipt_id=? WHERE id=?",
+            "UPDATE calls SET state=?,ended=?,duration_s=?,reason=?,usage=?,transcript_artifact_id=?,receipt_id=?,cost_usd=? WHERE id=?",
             (
                 state,
                 self.clock(),
@@ -613,13 +672,56 @@ class CallService:
                 json.dumps(usage or getattr(call.connection, "usage", None)),
                 aid,
                 receipt["id"],
+                call_cost(duration),
                 call.id,
             ),
         )
         call.receipt = receipt["id"]
+        try:  # The voice minutes count in PANINI's spend summary and daily budgets (V2-06).
+            from .. import usage_log
+
+            usage_log.record("phone_line", os.getenv("VOICE_MODEL", "gpt-live-1"), cost=call_cost(duration))
+        except Exception:  # noqa: BLE001 -- accounting never breaks call finalization.
+            pass
+        if call.mode == "message":
+            self.leave_message(call, duration)
         self.sync_receipts()
         if self.h.policy.paused() and (self.receipt_sync is None or self.receipt_sync.done()):
             self.receipt_sync = asyncio.create_task(self.resume_receipts())
+
+    async def owner_answers(self, identifier, number):
+        """PANINI_UNKNOWN_CALLERS=ask: a 20-second "Take a message?" prompt on the paired phone or PC."""
+        from ..interrupts import InterruptSpec
+
+        shown = f"…{number[-4:]}" if number else "an unknown number"
+        try:
+            card = self.h.interrupts.open(
+                InterruptSpec(
+                    "approval",
+                    "unknown_caller",
+                    f"Take a message from {shown}?",
+                    f"An unknown caller ({shown}) is calling. PANINI can take a message; it shares nothing about you.",
+                    action={"call_id": identifier},
+                    level="tap",
+                    ttl_s=20,
+                ),
+                run_id=identifier,
+            )
+            decided = await self.h.interrupts.wait(card["id"], 20)
+        except Exception:  # noqa: BLE001 -- unanswered or unavailable: do not take the call.
+            return False
+        decision = decided.get("decision") or {}
+        return decided.get("status") == "resolved" and (decision.get("payload") or {}).get("approved") is True
+
+    def leave_message(self, call, duration):
+        """The message an unknown caller left, as a notice for the owner. The caller's words are untrusted."""
+        said = " ".join(m.get("text", "") for m in call.transcript if m.get("role") == "user").strip()
+        number = call.caller.get("number") or ""
+        shown = f"…{number[-4:]}" if number else "an unknown number"
+        body = (
+            said[:1500] or "The caller did not leave a message."
+        ) + f" (Call from {shown}, {int(duration)} s.)"
+        self.h.notices.add("call_message", f"Message from {shown}", body, dedupe=f"call_message:{call.id}")
 
     def drained(self, task):
         self.draining.discard(task)

@@ -221,3 +221,24 @@ No real SIP call has been placed or qualified. Real number/HTTPS ingress, priced
 `backend/tests/telephony/test_lifecycle.py` now proves late transcript preservation with immutable artifacts and chained evidence, paused receipt delivery across a service restart, a crash after session save without duplicate delivery, sanitized hangup failure, bounded cancellation with overlapping work refused, already-closed provider sessions and End before caller verification. Receipt summaries use recorded processing states and are delivered to the bound thread and the phone Inbox. No transcript is interpreted as a trusted instruction or task result. Migration 0015 adds durable receipt delivery state; an existing-call upgrade test passes.
 
 The latest synthetic browser probe proves decoded audio and a quiet tail for Marin/Cedar. It does not qualify the SIP transport. Duration/provider usage are recorded; priced cost and spend integration remain pending. The [latest qualification record](../qualification-2026-10-04.md) records scope, earlier failed probe and remaining infrastructure requirements.
+
+
+## Unknown callers and priced cost — 2026-10-06
+
+- `PANINI_UNKNOWN_CALLERS`:
+  - `reject` (default): 603, as before.
+  - `message`: the call is answered by a message-taker with its own instructions. No PIN; keypad and spoken
+    requests do nothing; no tools and no owner data. The caller's words are kept as the transcript and arrive
+    as a "Message from …1234" notice (untrusted text).
+  - `ask`: the owner gets a 20-second "Take a message from …1234?" approval on the paired phone or PC. Only an
+    approval answers the call, in message mode.
+
+  Switching back to `reject`, pausing, or blocking the number ends a message call within half a second. Calls
+  record their `mode`.
+- **Cost:** `cost_usd` = duration × `PANINI_CALL_USD_PER_MINUTE` (default 0.05). It is stored on the call and
+  its receipt, and recorded in the usage log, so it counts toward spend summaries and daily budgets. Backend
+  model tokens are already recorded by their own runs.
+- Migration `0036_call_cost.sql`. Tests: five new cases in `backend/tests/telephony/test_inbound.py`.
+
+Still open: a real SIP number and call (provider account), and priced provider usage from `session.closed`
+when the provider reports it.

@@ -422,3 +422,99 @@ async def test_actual_agent_policy_waits_for_a_separate_owner_decision(tmp_path,
     finally:
         await service.close()
         h.store.close()
+
+
+STRANGER = [{"name": "From", "value": "Someone <sip:+447700900123@trunk.example>"}]
+
+
+@pytest.mark.anyio
+async def test_unknown_callers_are_rejected_by_default(world):
+    service, _ = world
+    await service.incoming("stranger", STRANGER)
+    assert service.provider.call_args.args == ("stranger", "reject", {"status_code": 603})
+
+
+@pytest.mark.anyio
+async def test_message_mode_takes_a_message_without_pin_tools_or_owner_data(world, monkeypatch):
+    service, h = world
+    monkeypatch.setenv("PANINI_UNKNOWN_CALLERS", "message")
+    await service.incoming("msg", STRANGER)
+    call = service.active
+    config = service.provider.call_args.args[2]["session"]
+    assert (
+        "take a message" in config["instructions"] and "PRIVATE OWNER IDENTITY" not in config["instructions"]
+    )
+    assert call.mode == "message" and call.verification_timer is None
+    assert "take a message" in call.connection.speak.call_args.args[0]
+    service.compute = AsyncMock()
+    await service.request(call, "What is on their calendar today?", "d1")
+    service.compute.assert_not_awaited()  # No tools, no owner data.
+    await service.digits(call, "1")
+    assert call.digits == ""
+    await service.event(
+        call, {"type": "transcript", "role": "user", "delta": "This is Asha, please call me back."}
+    )
+    call.started -= 90
+    await service.end(call, "Caller hung up.")
+    row = h.store.one("SELECT * FROM calls WHERE id='msg'")
+    assert row["mode"] == "message" and row["cost_usd"] > 0
+    notice = next(n for n in h.notices.list() if n["kind"] == "call_message")
+    assert notice["title"] == "Message from …0123" and "This is Asha" in notice["body"]
+
+
+@pytest.mark.anyio
+async def test_ask_mode_answers_only_after_the_owner_approves_in_time(world, monkeypatch):
+    from backend.interrupts import decided_by
+
+    service, h = world
+    monkeypatch.setenv("PANINI_UNKNOWN_CALLERS", "ask")
+
+    async def answer(approved):
+        for _ in range(100):
+            await asyncio.sleep(0.01)
+            cards = h.interrupts.list()
+            if cards:
+                full = h.interrupts.get(cards[0]["id"], include_secret=True)
+                h.interrupts.resolve(full["id"], nonce=full["nonce"], action_digest=full["action_digest"],
+                                     status="resolved", payload={"approved": approved},
+                                     decided_by=decided_by("phone_app", "tap"))  # fmt: skip
+                return
+
+    approver = asyncio.ensure_future(answer(True))
+    await service.incoming("asked", STRANGER)
+    await approver
+    assert service.active is not None and service.active.mode == "message"
+    await service.end()
+    decliner = asyncio.ensure_future(answer(False))
+    await service.incoming("declined", STRANGER)
+    await decliner
+    assert service.active is None and service.provider.call_args.args[1] == "reject"
+    assert "did not answer" in h.store.one("SELECT reason FROM calls WHERE id='declined'")["reason"]
+
+
+@pytest.mark.anyio
+async def test_switching_unknown_callers_back_to_reject_ends_a_message_call(world, monkeypatch):
+    service, _ = world
+    monkeypatch.setenv("PANINI_UNKNOWN_CALLERS", "message")
+    await service.incoming("switch", STRANGER)
+    call = service.active
+    monkeypatch.setenv("PANINI_UNKNOWN_CALLERS", "reject")
+    for _ in range(40):
+        await asyncio.sleep(0.05)
+        if call.closing:
+            break
+    assert call.closing
+
+
+@pytest.mark.anyio
+async def test_call_cost_is_priced_from_duration_and_recorded_on_the_receipt(world, monkeypatch):
+    service, h = world
+    monkeypatch.setenv("PANINI_CALL_USD_PER_MINUTE", "0.06")
+    await service.incoming("priced", HEADERS)
+    call = service.active
+    call.started -= 120
+    await service.end(call)
+    row = h.store.one("SELECT cost_usd, receipt_id FROM calls WHERE id='priced'")
+    assert 0.119 <= row["cost_usd"] <= 0.125
+    receipt = h.store.one("SELECT * FROM receipts WHERE id=?", (row["receipt_id"],))
+    assert "cost_usd" in json.dumps(dict(receipt))
