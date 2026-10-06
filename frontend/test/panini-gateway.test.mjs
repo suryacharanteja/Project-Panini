@@ -125,7 +125,14 @@ test('one gateway serves the PANINI shell API, the extension pairing and the sig
       adminBuilt ? 'PANINI Admin' : 'JevRev — Structured intelligence',
     );
     if (adminBuilt)
-      for (const path of ['/inbox', '/build/connectors', '/capabilities/code', '/settings/keys'])
+      for (const path of [
+        '/inbox',
+        '/build/connectors',
+        '/capabilities/code',
+        '/settings/keys',
+        '/spaces',
+        '/spaces/space_1/pages/page_2',
+      ])
         assert.equal(await titleOf(path), 'PANINI Admin', path);
     assert.match(await titleOf('/playground/compare'), /JevRev/);
     for (const path of ['/browser', '/activity', '/agent'])

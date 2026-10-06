@@ -355,7 +355,7 @@ function LocalModelCard() {
         this model and build. Full egress, speech playback and physical microphone qualification
         remain open.
       </p>
-      {qualification.data && (
+      {qualification.data?.classes && (
         <ul className="mt-3 space-y-1 text-sm" aria-label="Local task qualification">
           {Object.entries(qualification.data.classes).map(([name, state]) => (
             <li key={name} className={state.ready ? 'text-copper-light' : 'text-muted'}>

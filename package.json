@@ -43,7 +43,8 @@
     "phone:smoke": "node scripts/panini-phone-smoke.mjs",
     "personas:smoke": "node scripts/panini-persona-smoke.mjs",
     "personas:ui:smoke": "node scripts/panini-persona-ui-smoke.mjs",
-    "personas:voice:live": ".venv\\Scripts\\python.exe scripts/panini-persona-voice-live.py"
+    "personas:voice:live": ".venv\\Scripts\\python.exe scripts/panini-persona-voice-live.py",
+    "product:test": "node scripts/panini-product-test.mjs"
   },
   "keywords": [
     "panini",

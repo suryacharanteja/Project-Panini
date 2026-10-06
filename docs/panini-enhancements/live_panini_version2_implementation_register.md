@@ -237,6 +237,7 @@ command output summary.
 | 2026-10-03 | V2-14 | Fabric built and tested; off until the V2-13 red-team gate passes | npm test; backend/tests/fabric (incl. Node relay e2e + I6); Admin Remote access live | green; 28 fabric tests; relay saw ciphertext only |
 | 2026-10-06 | V2-22 | Save As dialog recorded and replayed in real Notepad | python scripts/panini-teach-notepad-smoke.py; npm test | passed: saveAsDialogQualified true, 2 dialog steps, replayed file verified on disk; npm test green |
 | 2026-10-06 | V2-18 | Persona handoff unit tests and persona scorecard cases | pytest backend/tests/panini/test_voice_adapter.py evals/tests; panini-eval run --mode offline; npm test | passed: handoff tests; 18/18 offline evals incl. personas.offline-delegation and personas.offline-isolation; npm test green |
+| 2026-10-06 | V2-00 | Whole-product test for UAT ([guide](uat-whole-product.md)) | npm run product:test | 64 passed, 0 failed, 5 skipped (live provider, Docker, packaged); found and fixed Spaces deep links, Keys page crash, desktop pipe start/Stop race, delegate run attribution |
 | — | — | — | — | — |
 
 ---

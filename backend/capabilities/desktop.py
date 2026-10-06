@@ -92,8 +92,13 @@ class DesktopPipe:
         import ctypes
 
         name = "\\\\.\\pipe\\" + self.name
-        if not ctypes.windll.kernel32.WaitNamedPipeW(name, 1500):
-            raise Fault("DESKTOP_OFFLINE", "The Windows companion is unavailable. Restart PANINI.", 503)
+        # WaitNamedPipe fails at once while the pipe does not exist yet (broker starting) and times out while
+        # every instance is busy (broker cleaning up after a Stop): retry for a few seconds before giving up.
+        waited = time.monotonic() + 5
+        while not ctypes.windll.kernel32.WaitNamedPipeW(name, 500):
+            if time.monotonic() >= waited:
+                raise Fault("DESKTOP_OFFLINE", "The Windows companion is unavailable. Restart PANINI.", 503)
+            time.sleep(0.1)
         identifier, deadline = str(uuid4()), int(time.time() * 1000) + request_window_ms(payload)
         raw = json.dumps(payload, separators=(",", ":"))
         mac = hmac.new(

@@ -231,7 +231,8 @@ export function createGateway({
   app.get('/', home);
   app.get('/playground/compare', (_req, res) => res.sendFile(join(publicRoot, 'index.html')));
   app.get(
-    /^\/(inbox|conversations|runs|receipts|projects|memory|playground|audit)\/?$|^\/(build|capabilities|settings)\/[a-z-]+\/?$/,
+    // Spaces pages are deep links too: /spaces and /spaces/<space>/pages/<page> must survive a reload.
+    /^\/(inbox|conversations|runs|receipts|projects|memory|playground|audit|spaces)\/?$|^\/(build|capabilities|settings)\/[a-z-]+\/?$|^\/spaces\/[A-Za-z0-9_-]{1,80}\/pages\/[A-Za-z0-9_-]{1,80}\/?$/,
     home,
   );
   app.get('/browser', (_req, res) => res.sendFile(join(publicRoot, 'browser-use.html')));

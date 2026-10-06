@@ -342,3 +342,32 @@ async def test_user_focus_change_during_planning_stops_before_dispatch(harness, 
     assert result.outcome == "blocked" and "Focus changed" in result.message
     assert not adapter.pipe.actions
     assert not any(phase == "needs_focus" for phase, _ in context.events)
+
+
+def test_pipe_waits_for_a_starting_or_busy_broker_before_reporting_offline(monkeypatch):
+    import ctypes
+
+    from backend.capabilities import desktop
+
+    answers = iter([False, False, True])
+    calls = []
+
+    def wait(name, timeout):
+        calls.append(timeout)
+        return next(answers)
+
+    monkeypatch.setattr(ctypes.windll.kernel32, "WaitNamedPipeW", wait, raising=False)
+    monkeypatch.setattr(desktop.time, "sleep", lambda seconds: None)
+
+    class Connected(Exception):
+        pass
+
+    def connected(*args, **kwargs):
+        raise Connected
+
+    monkeypatch.setattr("builtins.open", connected)
+    pipe = desktop.DesktopPipe()
+    pipe.name, pipe.secret = "panini-test", "s" * 32
+    with pytest.raises(Connected):
+        pipe._call({"op": "targets"})
+    assert len(calls) == 3  # Two failed waits (starting, then busy) before the third finds the broker.

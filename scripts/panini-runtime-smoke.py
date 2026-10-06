@@ -74,7 +74,15 @@ async def main():
         stderr=subprocess.DEVNULL,
     )
     try:
-        await asyncio.sleep(0.3)
+        import ctypes
+
+        # WaitNamedPipe fails at once while the pipe does not exist yet: wait until the broker listens.
+        for _ in range(100):
+            if ctypes.windll.kernel32.WaitNamedPipeW(
+                "\\\\.\\pipe\\" + os.environ["PANINI_DESKTOP_PIPE"], 100
+            ):
+                break
+            await asyncio.sleep(0.1)
         pipe = DesktopPipe()
         task_id = str(uuid4())
         pending = asyncio.create_task(pipe.call({"op": "observe", "task_id": task_id}))
@@ -86,12 +94,12 @@ async def main():
             await pending
             raise AssertionError("Hung worker reported success")
         except Fault as exc:
-            assert exc.code == "UNKNOWN_EFFECT"
+            assert exc.code == "UNKNOWN_EFFECT", (exc.code, exc.message)
         try:
             await pipe.call({"op": "action", "task_id": task_id})
             raise AssertionError("A fenced task restarted a worker")
         except Fault as exc:
-            assert exc.code == "UNKNOWN_EFFECT"
+            assert exc.code == "UNKNOWN_EFFECT", (exc.code, exc.message)
         wrong = DesktopPipe()
         wrong.secret = secrets.token_urlsafe(32)
         try:
