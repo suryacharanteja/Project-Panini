@@ -157,7 +157,9 @@ async def main():
     async def sample_conversation():
         thread_id = h.sessions.create("Preview continuity conversation")
         h.sessions.save(thread_id, [{"role": "user", "content": "Continue the original conversation"}])
-        h.threads.attach("avatar", f"preview-{thread_id}", thread_id)  # An owner conversation, as on the avatar.
+        h.threads.attach(
+            "avatar", f"preview-{thread_id}", thread_id
+        )  # An owner conversation, as on the avatar.
         return {"thread_id": thread_id}
 
     @control.get("/continuity")

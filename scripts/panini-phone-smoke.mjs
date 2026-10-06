@@ -283,9 +283,13 @@ try {
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
     'base64',
   );
-  await page.locator('input[type=file]').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: png });
+  await page
+    .locator('input[type=file]')
+    .setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: png });
   await page.getByText(/receipt\.png \(1 KB\)/).waitFor();
-  await page.getByRole('textbox', { name: 'Ask PANINI', exact: true }).fill('Add this receipt to the trip.');
+  await page
+    .getByRole('textbox', { name: 'Ask PANINI', exact: true })
+    .fill('Add this receipt to the trip.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByRole('heading', { name: 'Ready', exact: true }).waitFor();
   const continued = await control('/state');
