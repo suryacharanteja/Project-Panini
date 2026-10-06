@@ -143,6 +143,26 @@ async def passkey_decision_options(interrupt_id: str, payload: PasskeyDecision, 
 class Ask(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(min_length=1, max_length=4000)
+    attachments: list[str] = Field(default_factory=list, max_length=5)
+    thread_id: str | None = Field(default=None, max_length=64)
+
+
+class Upload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=120)
+    mime: str = Field(max_length=80)
+    base64: str = Field(min_length=4, max_length=1_000_000)
+
+
+class Dictation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mime: str = Field(max_length=80)
+    base64: str = Field(min_length=4, max_length=1_000_000)
+
+
+UPLOAD_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain"}
+UPLOAD_MAX = 700_000  # One envelope carries at most 1 MB; base64 adds a third.
+OWNER_SURFACES = ("avatar", "phone_app", "agui", "telegram", "slack", "whatsapp", "email")
 
 
 class Share(BaseModel):
@@ -279,12 +299,107 @@ async def forget(request: Request):
     return {"forgotten": True}
 
 
+@router.post("/attachments")
+async def attach(payload: Upload, request: Request):
+    """A photo or file from the phone, kept as an artifact for the next request. Its content is untrusted."""
+    _fabric(request)
+    import base64 as b64
+    import binascii
+
+    if payload.mime not in UPLOAD_TYPES:
+        raise HTTPException(415, "Send a photo (JPEG, PNG, WebP), a PDF or a text file.")
+    try:
+        data = b64.b64decode(payload.base64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(422, "The file did not arrive intact.") from None
+    if not 1 <= len(data) <= UPLOAD_MAX:
+        raise HTTPException(413, "Files from the phone can be up to 700 KB.")
+    artifact = _harness(request).artifacts.put("phone-upload", data, payload.mime)
+    return {"id": artifact, "name": payload.name, "mime": payload.mime, "bytes": len(data)}
+
+
+@router.post("/dictation")
+async def dictation(payload: Dictation, request: Request):
+    """Voice from the phone when the browser cannot recognise speech itself: transcribed on the PC."""
+    _fabric(request)
+    import base64 as b64
+    import binascii
+
+    from ..routes.speech import transcribe
+
+    if not payload.mime.startswith("audio/"):
+        raise HTTPException(415, "Send audio.")
+    try:
+        data = b64.b64decode(payload.base64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(422, "The recording did not arrive intact.") from None
+    result = await transcribe(data, request)
+    return {"text": str((result or {}).get("text", "") if isinstance(result, dict) else result)[:4000]}
+
+
+@router.get("/conversations")
+async def conversations(request: Request):
+    """Recent owner conversations from every surface (avatar, phone, console, channels), to continue here."""
+    _fabric(request)
+    h = _harness(request)
+    marks = ",".join("?" for _ in OWNER_SURFACES)
+    rows = h.store.all(
+        f"SELECT s.id, s.title, s.updated, GROUP_CONCAT(DISTINCT b.surface) AS surfaces FROM sessions s "
+        f"JOIN thread_bindings b ON b.thread_id=s.id WHERE b.surface IN ({marks}) "
+        "GROUP BY s.id ORDER BY s.updated DESC LIMIT 20",
+        OWNER_SURFACES,
+    )
+    return {"conversations": [{**dict(r), "surfaces": (r["surfaces"] or "").split(",")} for r in rows]}
+
+
+def _owner_thread(h, thread_id):
+    marks = ",".join("?" for _ in OWNER_SURFACES)
+    row = h.store.one(
+        f"SELECT thread_id FROM thread_bindings WHERE thread_id=? AND surface IN ({marks}) LIMIT 1",
+        (thread_id, *OWNER_SURFACES),
+    )
+    if row is None:
+        raise HTTPException(404, "This conversation is not available to continue.")
+    return thread_id
+
+
 @router.post("/ask")
 async def ask(payload: Ask, request: Request):
-    """A request from the phone. It runs as a background task (least privilege); its approvals come back here."""
+    """A request from the phone. It runs as a background task (least privilege); its approvals come back here.
+    With thread_id it continues that owner conversation, wherever it started; otherwise it starts a new one."""
+    import time
+    import uuid
+
+    from ..policy.provenance import quarantine
+
     _, device_id = _fabric(request)
-    task = _harness(request).tasks.submit(payload.text, origin="phone", title=payload.text[:80])
-    return {"task_id": task["id"], "title": task.get("title", "")}
+    h = _harness(request)
+    thread_id = (
+        _owner_thread(h, payload.thread_id)
+        if payload.thread_id
+        else h.threads.bind(
+            "phone_app", f"{device_id}:{uuid.uuid4().hex}", title=payload.text[:80], continue_recent=False
+        )
+    )
+    goal = payload.text
+    if payload.attachments:
+        files = []
+        for artifact_id in payload.attachments:
+            found = h.artifacts.get(artifact_id)
+            if found is None or found[0].get("kind") != "phone-upload":
+                raise HTTPException(404, "An attachment is no longer available.")
+            files.append(
+                {"artifact_id": artifact_id, "mime": found[0].get("mime"), "bytes": found[0].get("bytes")}
+            )
+        goal = " ".join(
+            [goal, "Attached from my phone:", quarantine({"files": files}, ["shared"])["untrusted"]]
+        )
+    task = h.tasks.submit(goal[:4000], origin="phone", title=payload.text[:80])
+    h.store.execute(
+        "INSERT OR REPLACE INTO task_threads(task_id, thread_id, created) VALUES (?,?,?)",
+        (task["id"], thread_id, time.time()),
+    )
+    return {"task_id": task["id"], "title": task.get("title", ""), "thread_id": thread_id}
 
 
 @router.post("/share")

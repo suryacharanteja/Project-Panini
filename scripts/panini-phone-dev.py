@@ -157,6 +157,7 @@ async def main():
     async def sample_conversation():
         thread_id = h.sessions.create("Preview continuity conversation")
         h.sessions.save(thread_id, [{"role": "user", "content": "Continue the original conversation"}])
+        h.threads.attach("avatar", f"preview-{thread_id}", thread_id)  # An owner conversation, as on the avatar.
         return {"thread_id": thread_id}
 
     @control.get("/continuity")
@@ -219,7 +220,8 @@ async def main():
 
     @control.get("/state")
     async def state():
-        return {"devices": fabric.devices.list(), "interrupts": interrupts.list(status=None), "asks": asks}
+        return {"devices": fabric.devices.list(), "interrupts": interrupts.list(status=None), "asks": asks,
+                "task_threads": store.all("SELECT task_id, thread_id FROM task_threads")}  # fmt: skip
 
     @control.post("/notebook/concurrent-edit")
     async def concurrent_edit():

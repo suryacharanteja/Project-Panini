@@ -449,7 +449,9 @@ class Harness:
         )
         agent.run_id = task["id"]
         agent.confirm_decision = agent.confirm
-        agent.thread_id = channel_job["thread_id"] if channel_job else task["id"]
+        # A channel job, or a task that continues an owner conversation (V2-15 phone turns), runs in that thread.
+        bound = None if channel_job else self.store.one("SELECT thread_id FROM task_threads WHERE task_id=?", (task["id"],))
+        agent.thread_id = channel_job["thread_id"] if channel_job else (bound["thread_id"] if bound else task["id"])
         if task.get("kind") in {"trigger", "responsibility"}:
             from dataclasses import replace
 
@@ -532,7 +534,7 @@ class Harness:
             self.store.event(task["id"], "resumed", "Continuing from where the task stopped.")
         try:
             result = await agent.run(
-                goal, session_id=agent.thread_id if channel_job else None, resume=checkpoint
+                goal, session_id=agent.thread_id if (channel_job or bound) else None, resume=checkpoint
             )
         except Parked as parked:
             return (

@@ -177,4 +177,27 @@ with an Admin-export explanation instead of corrupting the fabric response.
 Real fabric browser smoke passes WebAuthn enrollment/approval using a virtual authenticator, notebook
 draft recovery/conflict review and export downloads, saved call receipts and existing pairing/work/live/
 share/offline/revocation checks. This does not establish hardware biometric or lock-screen behavior.
-Photo/file input, voice dictation and full cross-surface conversation continuation remain open.
+Photo/file input, voice dictation and cross-surface conversation continuation were added on 2026-10-06 (below).
+
+
+## Photo, dictation and continuation — 2026-10-06
+
+- **Photos and files:** Ask has "Attach photo or file" (JPEG, PNG, WebP, PDF, text; up to 700 KB so one envelope
+  carries it). `POST /attachments` stores the file as a `phone-upload` artifact. The next `/ask` references it
+  inside an `<untrusted source="shared">` envelope, so its content is data, not instructions.
+- **Dictation:** Android Chrome's speech recognition fills the box. Without it, the phone records 5 s and
+  `POST /dictation` transcribes on the PC with the existing speech service (private mode uses local STT).
+- **Continuation from any surface:** migration `0035_task_threads.sql` binds a task to an existing owner
+  conversation. `GET /conversations` lists recent owner threads from the avatar, phone, console and channels.
+  "Continue here" in Conversations makes the next Ask join that thread, and the background run resumes its
+  history (`session_id`). New phone requests start their own resumable thread. Non-owner or unknown threads are
+  refused.
+
+Tests: `backend/tests/fabric/test_phone_continuation.py`:
+- untrusted artifact references; refused types and missing attachments;
+- PC transcription;
+- an avatar conversation continued from the phone, with the run seeing the earlier turns.
+
+`npm run phone:smoke` now also, in Android-sized Chromium: continues the preview conversation, attaches a real
+PNG through the file picker, sends, and checks that the PC received it quarantined and bound to the original
+thread. Screenshot: `artifacts/phone/android-continue-attach.png`.

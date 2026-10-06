@@ -271,6 +271,30 @@ try {
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByRole('heading', { name: 'Ready', exact: true }).waitFor();
   if ((await control('/state')).asks.length !== 2) throw Error('Share did not arrive');
+  // V2-15: continue an owner conversation from the phone, with a photo attached.
+  await page.goto(`http://localhost:${phonePort}/`);
+  await page.getByRole('button', { name: 'Work', exact: true }).click();
+  await page.getByRole('button', { name: 'Conversations · continue on PC', exact: true }).click();
+  await page.getByRole('button', { name: 'Preview continuity conversation', exact: true }).click();
+  await page.getByRole('button', { name: 'Continue here', exact: true }).click();
+  await page.getByText('Continuing', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Dictate', exact: true }).waitFor();
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await page.locator('input[type=file]').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: png });
+  await page.getByText(/receipt\.png \(1 KB\)/).waitFor();
+  await page.getByRole('textbox', { name: 'Ask PANINI', exact: true }).fill('Add this receipt to the trip.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.getByRole('heading', { name: 'Ready', exact: true }).waitFor();
+  const continued = await control('/state');
+  const last = continued.asks.at(-1);
+  if (!last.goal.includes('Add this receipt') || !last.goal.includes('<untrusted source="shared">'))
+    throw Error('Attachment did not reach the PC as untrusted content: ' + last.goal.slice(0, 400));
+  if (!continued.task_threads.some((row) => row.thread_id === originalConversation.thread_id))
+    throw Error('The phone turn did not continue the original conversation');
+  await page.screenshot({ path: 'artifacts/phone/android-continue-attach.png' });
   await page.goto(`http://localhost:${phonePort}/`);
   await page.getByRole('heading', { name: 'Ready', exact: true }).waitFor();
   await context.setOffline(true);
@@ -299,7 +323,7 @@ try {
     throw Error('Revoked keys retained');
   if (errors.length) throw Error(errors.join('\n'));
   console.log(
-    'PASS encrypted pairing, persistent non-extractable keys, signed tap approval, real WebAuthn enrollment and verify approval with virtual authenticator, phone notebook create/edit/draft recovery and saved call receipt, Ask exactly once, task history/stop, phone call verification/end/receipt/Inbox delivery, reload, Live, Android share target, offline recovery and revocation in Android-sized Chromium',
+    'PASS encrypted pairing, persistent non-extractable keys, signed tap approval, real WebAuthn enrollment and verify approval with virtual authenticator, phone notebook create/edit/draft recovery and saved call receipt, Ask exactly once, continue a conversation with a photo attached, task history/stop, phone call verification/end/receipt/Inbox delivery, reload, Live, Android share target, offline recovery and revocation in Android-sized Chromium',
   );
 } catch (error) {
   for (const page of browser?.contexts().flatMap((c) => c.pages()) || []) {

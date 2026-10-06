@@ -11,6 +11,17 @@ export async function conversation(app) {
       h('p.muted', { text: thread.summary }),
       h('pre', { text: thread.transcript }),
       h(
+        'button.primary.wide',
+        {
+          onclick: () => {
+            // Continue this conversation from the phone: the next Ask joins it (V2-15).
+            app.thread = { id, title: thread.title || 'PANINI conversation' };
+            app.show('ask');
+          },
+        },
+        'Continue here',
+      ),
+      h(
         'button.wide',
         {
           onclick: (event) =>

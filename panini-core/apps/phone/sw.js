@@ -4,7 +4,7 @@ import { Fabric } from './lib/fabric.mjs';
 import * as db from './lib/db.mjs';
 import { rememberClosed, notificationPath } from './lib/notifications.mjs';
 
-const CACHE = 'panini-phone-v14';
+const CACHE = 'panini-phone-v15';
 const SHELL = [
   '/',
   '/app.js',
