@@ -511,3 +511,55 @@ async def test_legacy_review_cannot_authorize_stronger_desktop_action(world, lev
     result = await h.registry.call(h.ctx, "desktop_click", {"ref": ref(session, "Apply draft")})
     assert result.outcome == "blocked" and "stronger approval" in result.content
     assert not any(c["op"] == "fine_action" for c in h.pipe.calls)
+
+
+@pytest.mark.anyio
+async def test_type_and_submit_is_one_submit_effect_then_enter_in_the_same_field(world):
+    h = world
+    session = await snapshot(h)
+    result = await h.registry.call(
+        h.ctx, "desktop_type", {"ref": ref(session, "Draft text"), "text": "weather today", "submit": True}
+    )
+    assert result.outcome == "ok", result.content
+    assert result.data["submitted"] is True
+    assert h.ctx.decision.effect == EffectClass.SUBMIT  # Classified (and reviewed, where policy asks) as a submit.
+    actions = [c for c in h.pipe.calls if c["op"] == "fine_action"]
+    assert actions[-1]["action"] == {"kind": "keypress", "key": "Enter"}
+    assert actions[-2]["action"]["text"] == "weather today"
+    assert actions[-1]["ref"] == actions[-2]["ref"] or actions[-1]["target"] == actions[-2]["target"]
+
+
+@pytest.mark.anyio
+async def test_declined_type_and_submit_sends_nothing(world, monkeypatch):
+    h = world
+    session = await snapshot(h)
+    monkeypatch.setenv("PANINI_POLICY_PROFILE", "cautious")  # Ask before every action, so the owner can decline.
+
+    async def confirm(title, detail, decision):
+        return False
+
+    h.ctx.confirm_decision = confirm
+    result = await h.registry.call(
+        h.ctx, "desktop_type", {"ref": ref(session, "Draft text"), "text": "x", "submit": True}
+    )
+    assert result.outcome == "blocked", result.content
+    assert not any(c["op"] == "fine_action" for c in h.pipe.calls)
+
+
+@pytest.mark.anyio
+async def test_draw_macro_hands_the_subject_to_the_visual_planner_for_the_selected_window(world):
+    h = world
+    asked = []
+
+    async def delegate(capability, instruction):
+        asked.append((capability, instruction))
+        return {"outcome": "partial", "message": "Drew an elephant.", "results": [], "evidence_ids": []}
+
+    h.ctx.delegate = delegate
+    blocked = await h.registry.call(h.ctx, "desktop_draw", {"subject": "a simple elephant"})
+    assert blocked.outcome == "blocked" and not asked  # No window selected yet.
+    session = await snapshot(h)
+    drawn = await h.registry.call(h.ctx, "desktop_draw", {"subject": "a simple elephant"})
+    assert drawn.outcome == "ok" and drawn.data["outcome"] == "partial"
+    assert asked == [("desktop", f"In {session['target']['label']}, draw a simple elephant.")]
+    assert not session["nodes"]  # Canvas refs are stale after drawing.

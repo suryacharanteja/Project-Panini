@@ -191,6 +191,9 @@ class DesktopFine:
             effect = raise_effect(effect, EffectClass.ACCOUNT)
         if word := classify_words(n.name):
             effect = raise_effect(effect, word)
+        if spec.name == "desktop_type" and args.get("submit"):
+            # Type-and-submit is one reviewed step with the submit effect (V2-26 combined action).
+            effect = raise_effect(effect, EffectClass.SUBMIT)
         if spec.name == "desktop_type" and n.role not in {"textbox", "document"}:
             raise ValueError("Typing requires an editable text control.")
         if (
@@ -352,6 +355,33 @@ class DesktopFine:
         self.ready(ctx)
         return session, app, before
 
+    async def draw(self, ctx, session, args):
+        """The drawing macro (V2-26 §5.4): the visual planner draws in the selected window; it plans its own
+        strokes and asks before acting where policy requires. Fine refs are not used for canvases."""
+        if not session or not session.get("target"):
+            return ToolResult("blocked", "Select the canvas window with desktop_snapshot first.")
+        if ctx.delegate is None:
+            return ToolResult("blocked", "Drawing needs the desktop capability in this run.")
+        subject = " ".join(str(args.get("subject", "")).split())[:300]
+        label = (
+            session["target"].get("label") or session["target"].get("application") or "the selected window"
+        )
+        session["nodes"] = {}  # The drawing changes the canvas: earlier refs are stale.
+        outcome = await ctx.delegate("desktop", f"In {label}, draw {subject}.")
+        state = outcome.get("outcome", "failed")
+        result = (
+            "ok"
+            if state in {"verified_complete", "partial"}
+            else ("blocked" if state == "blocked" else "failed")
+        )
+        return ToolResult(
+            result,
+            str(outcome.get("message", ""))[:600],
+            data={"outcome": state, "subject": subject, "next": "Take a snapshot to see the result."},
+            evidence=[{"kind": "drawing", "summary": f"Drew {subject}"}] if result == "ok" else [],
+            dispatched=state != "blocked",
+        )
+
     async def call(self, ctx, spec, args):
         async with self.lock:
             attempted = False
@@ -360,6 +390,8 @@ class DesktopFine:
                 session = self.ready(ctx)
                 if spec.name == "desktop_windows":
                     return ToolResult(data={"windows": await self.adapter.targets()})
+                if spec.name == "desktop_draw":
+                    return await self.draw(ctx, session, args)
                 if spec.name == "desktop_applications":
                     return ToolResult(data={"applications": await self.adapter.applications()})
                 if spec.name == "desktop_open_application":
@@ -555,10 +587,36 @@ class DesktopFine:
                         "action": action,
                     }
                 )
+                submitted = None
+                if spec.name == "desktop_type" and args.get("submit") and receipt.get("dispatched"):
+                    # Enter goes to the same control only: re-find it by identity in a fresh snapshot.
+                    page, found, _ = await self.snapshot(ctx, session, publish=False)
+                    # The typed value changes the control's identity; its anchor (position in the tree) does not.
+                    again = [
+                        (n2, r2)
+                        for n2, r2 in found.values()
+                        if r2["anchor"] == row["anchor"] and "password" not in n2.states
+                    ]
+                    if len(again) != 1 or not page["foreground"] or page.get("title") != title:
+                        raise ValueError(
+                            "Typed, but the field changed before submitting. Take a new snapshot."
+                        )
+                    takeover().gate("desktop", session["choice"], observe=False)
+                    submitted = await self.adapter.pipe.call(
+                        {
+                            "op": "fine_action",
+                            "task_id": ctx.run_id,
+                            "target": session["target"],
+                            "snapshot_id": page["snapshot_id"],
+                            "ref": again[0][0].ref,
+                            "action": {"kind": "keypress", "key": "Enter"},
+                        }
+                    )
                 return ToolResult(
                     data={
                         "dispatched": bool(receipt["dispatched"]),
                         "verified": bool(receipt["verified"]),
+                        **({"submitted": bool(submitted["dispatched"])} if submitted is not None else {}),
                         "next": "Take a snapshot and assert the expected result.",
                     },
                     dispatched=True,
