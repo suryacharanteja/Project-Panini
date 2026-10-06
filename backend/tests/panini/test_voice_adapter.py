@@ -169,3 +169,72 @@ async def test_voice_reconnect_history_is_bounded_and_scoped(monkeypatch):
         await first.event({"type": "transcript", "role": "user", "delta": "u" * 4000})
         await first.event({"type": "transcript", "role": "assistant", "delta": "a" * 4000})
     assert sum(len(row["text"]) for row in session.voice_history["panini"]) <= 6000
+
+
+@pytest.mark.anyio
+async def test_spoken_handoff_reconnects_in_the_next_personas_voice_with_only_the_owners_words(
+    tmp_path, monkeypatch
+):
+    from backend.harness.store import Store
+    from backend.personas import Personas
+    from backend.personas.routing import handoff_target
+    from backend.policy.engine import Policy
+
+    monkeypatch.setenv("PANINI_PERSONAS", "true")
+    store = Store(tmp_path / "handoff.sqlite3")
+    personas = Personas(
+        store, Policy(store), identity_read=lambda: "Owner identity", identity_write=lambda text: None
+    )
+    personas.create("scout", name="Scout", instructions="Research only", color="cyan", voice="cedar")
+    personas.create("writer", name="Writer", instructions="Write only", color="violet", voice="marin")
+    for text, expected in (
+        ("Hand me to Scout", "scout"),
+        ("let me talk to the writer please", "writer"),
+        ("Okay, back to PANINI.", "panini"),
+        ("Could you switch me over to Scout?", "scout"),
+        ("switch to dark mode", None),
+        ("Tell Scout to hand me the report", None),
+        ("let me talk to Bob", None),
+    ):
+        assert handoff_target(personas, text) == expected, text
+    published = []
+    owner = SimpleNamespace(
+        authorize=lambda *args: None,
+        submit=AsyncMock(),
+        adapters={"agent": SimpleNamespace(harness=SimpleNamespace(personas=personas))},
+    )
+    session = SimpleNamespace(
+        session_id="handoff",
+        voice_persona_id="scout",
+        state="ready",
+        voice_history={
+            "scout": [
+                {"role": "user", "text": "Find three sources on tidal power"},
+                {"role": "assistant", "text": "Scout private notes"},
+            ]
+        },
+        hub=SimpleNamespace(publish=lambda kind, data: published.append((kind, data))),
+    )
+    media = VoiceMedia(owner, session, object(), 1)
+    media.connection.speak = AsyncMock()
+    await media.request("Hand me to the writer", "one")
+    owner.submit.assert_not_awaited()  # A handoff is not a task.
+    assert media.connection.speak.call_args.args[0] == "Handing you to Writer."
+    assert published == [
+        ("voice.handoff", {"from": "scout", "persona": {"id": "writer", "name": "Writer", "color": "violet"}})
+    ]
+    carried = session.voice_history["writer"][-1]["text"]
+    assert "tidal power" in carried and "Scout private notes" not in carried
+    following = VoiceMedia(
+        owner, SimpleNamespace(**{**vars(session), "voice_persona_id": "writer"}), object(), 1
+    )
+    assert following.connection.configuration()["audio"]["output"]["voice"] == "marin"
+    assert "tidal power" in str(following.connection.configuration()["input"])
+    await media.request("let me talk to Scout", "two")
+    assert "already talking to Scout" in media.connection.speak.call_args.args[0]
+    personas.archive("writer")
+    await media.request("hand me to Writer", "three")
+    assert (
+        len(published) == 1 and owner.submit.await_count == 1
+    )  # Not a persona any more: an ordinary request.
+    store.close()

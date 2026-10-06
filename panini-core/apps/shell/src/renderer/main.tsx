@@ -433,6 +433,15 @@ function App() {
       }
     }
   };
+  // A spoken handoff ("hand me to Scout"): reconnect audio in the next persona's voice after its goodbye line.
+  const handoff = useRef<(id: string) => void>(() => {});
+  handoff.current = (id: string) => {
+    setVoicePersona(id);
+    setTimeout(async () => {
+      const closed = await closeMic();
+      if (closed !== null) await startMic(id, true);
+    }, 1800);
+  };
   const mute = (value: boolean) => {
     local.current?.getAudioTracks().forEach((t) => {
       t.enabled = !value;
@@ -530,6 +539,10 @@ function App() {
         setContinuityCards((cards) => cards.filter((card) => card.id !== data.id));
       } else if (event.type === 'execution.viewer_error') {
         setError(data.message);
+      } else if (event.type === 'voice.handoff' && data.persona?.id) {
+        setPersona(presentation(data.persona));
+        note(`HANDOFF · ${String(data.persona.name || data.persona.id).toUpperCase()}`);
+        handoff.current(String(data.persona.id));
       } else if (event.type === 'media.connected' && data.persona) {
         setPersona(presentation(data.persona));
       } else if (event.type === 'media.closed' || event.type === 'session.closed') {

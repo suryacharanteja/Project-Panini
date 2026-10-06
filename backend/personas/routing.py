@@ -23,6 +23,29 @@ def select(personas, text, *, surface="avatar", bound=None, voice=False, probabi
     return personas.surface_default(surface)
 
 
+_HANDOFF = re.compile(
+    r"^\s*(?:(?:please|ok(?:ay)?|hey|now)[,\s]+)*"
+    r"(?:(?:can|could|may) (?:i|you)\s+)?"
+    r"(?:let me (?:talk|speak) (?:to|with)|(?:i want|i'd like|i would like) to (?:talk|speak) (?:to|with)"
+    r"|(?:hand|pass|put|transfer|switch) (?:me )?(?:over |back |through )?to|go back to|back to)"
+    r"\s+(?:the\s+)?(?P<name>[^.,!?]{1,60}?)(?:[,\s]+please)?[.!?]*\s*$",
+    re.IGNORECASE,
+)
+
+
+def handoff_target(personas, text):
+    """A whole utterance asking to talk to another persona ("hand me to Scout", "back to PANINI"). The named
+    persona's id, or None. It must name an existing persona exactly; "switch to dark mode" never hands off."""
+    match = _HANDOFF.match(text or "")
+    if not match:
+        return None
+    wanted = match["name"].strip().casefold()
+    for row in personas.list():
+        if wanted in {row["id"].casefold(), row["name"].casefold()}:
+            return row["id"]
+    return None
+
+
 async def voice_probabilities(personas, text):
     from .. import config, jev_client, usage_log
 

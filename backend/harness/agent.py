@@ -1195,6 +1195,7 @@ class Agent:
             parent_run_id=(resume or {}).get("run_id") or self.parent_run,
             tier=router.tier,
             budget=budget.view(),
+            persona_id=self.persona_id,
         )
         self.brain = {"run": run_id, "router": router, "meter": meter}
         self.emit("run", f"Using the {router.tier} model.", run_id=run_id, tier=router.tier)

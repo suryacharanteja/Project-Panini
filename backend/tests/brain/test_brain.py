@@ -112,6 +112,14 @@ def test_meter_reports_the_crossed_limit(monkeypatch):
 
 
 # Runs ---------------------------------------------------------------------------
+def test_a_delegates_run_is_attributed_to_its_persona(store):
+    runs = Runs(store)
+    lead = runs.start(mode="foreground", principal={"kind": "owner"})
+    child = runs.start(mode="subagent", principal={"kind": "persona"}, parent_run_id=lead, persona_id="scout")
+    rows = {r["id"]: r["persona_id"] for r in store.all("SELECT id, persona_id FROM runs")}
+    assert rows == {lead: "panini", child: "scout"}
+
+
 def test_runs_record_checkpoints_and_spend(store):
     runs = Runs(store)
     run_id = runs.start(mode="background", principal={"kind": "system"}, task_id="t1", tier="fast")

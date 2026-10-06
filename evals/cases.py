@@ -6,7 +6,20 @@ from pathlib import Path
 import yaml
 
 CASES = Path(__file__).parent / "cases"
-HANDS = {"chat", "computer", "search", "browser", "desktop", "code", "memory", "background", "safety", "web"}
+HANDS = {
+    "chat",
+    "computer",
+    "search",
+    "browser",
+    "desktop",
+    "code",
+    "memory",
+    "background",
+    "safety",
+    "web",
+    "personas",
+}
+PERSONA_FIELDS = {"id", "name", "role", "instructions", "color", "voice"}
 MODES = {"offline", "live", "local"}
 APPROVALS = {"decline", "approve", "timeout"}
 KNOWN_EXPECT = {
@@ -23,6 +36,8 @@ KNOWN_EXPECT = {
     "max_seconds",
     "evidence_min",
     "task_status_in",
+    "personas_ran",
+    "personas_not_ran",
 }
 
 
@@ -44,6 +59,7 @@ class Case:
     expect: dict = field(default_factory=dict)
     tags: tuple[str, ...] = ()
     needs: tuple[str, ...] = ()  # live prerequisites: desktop, chrome, docker, phone ...
+    personas: tuple = ()  # specialists created in the case's data folder (PANINI_PERSONAS on)
     path: str = ""
 
 
@@ -69,6 +85,9 @@ def parse(path: Path) -> Case:
         raise CaseError(f"{path}: unknown expectations {sorted(unknown)}")
     if data.get("kind", "turn") not in {"turn", "background"}:
         raise CaseError(f"{path}: kind must be turn or background")
+    for persona in data.get("personas") or ():
+        if not isinstance(persona, dict) or "id" not in persona or set(persona) - PERSONA_FIELDS:
+            raise CaseError(f"{path}: personas need an id and only {sorted(PERSONA_FIELDS)}")
     return Case(
         id=data["id"],
         title=data["title"],
@@ -82,6 +101,7 @@ def parse(path: Path) -> Case:
         expect=dict(data["expect"]),
         tags=tuple(data.get("tags") or ()),
         needs=tuple(data.get("needs") or ()),
+        personas=tuple(data.get("personas") or ()),
         path=str(path),
     )
 

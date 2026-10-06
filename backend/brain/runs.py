@@ -23,12 +23,21 @@ class Runs:
         self.store, self.clock = store, clock
 
     def start(
-        self, *, mode, principal, thread_id=None, task_id=None, parent_run_id=None, tier=None, budget=None
+        self,
+        *,
+        mode,
+        principal,
+        thread_id=None,
+        task_id=None,
+        parent_run_id=None,
+        tier=None,
+        budget=None,
+        persona_id="panini",
     ) -> str:
         run_id, now = uuid4().hex, self.clock()
         self.store.execute(
             "INSERT INTO runs(id, thread_id, principal, mode, parent_run_id, task_id, state, tier, created, "
-            "updated, budget) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "updated, budget, persona_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 run_id,
                 thread_id,
@@ -41,6 +50,7 @@ class Runs:
                 now,
                 now,
                 json.dumps(budget or {}),
+                persona_id or "panini",  # A delegate's run is attributed to the specialist that ran it.
             ),
         )
         return run_id

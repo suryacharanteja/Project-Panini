@@ -1,0 +1,20 @@
+id: personas.offline-delegation
+title: The lead delegates research to a specialist and reports its result (scripted)
+modes: [offline]
+personas:
+  - id: scout
+    name: Scout
+    role: Researcher
+    instructions: Find sources. Report what you found; do not write files.
+turn: "Ask Scout for two sources on tidal power, then tell me what Scout found."
+script:
+  # The lead (PANINI) delegates; Scout takes the next turn in its own run; the lead then reports.
+  - calls: [{name: delegate_to_persona, arguments: {persona_id: scout, task: "Find two sources on tidal power."}}]
+  - calls: [{name: finish, arguments: {outcome: verified_complete, message: "Two sources: the IEA ocean energy report and the EMEC tidal test site notes."}}]
+  - calls: [{name: finish, arguments: {outcome: verified_complete, message: "Scout found two sources: the IEA ocean energy report and the EMEC tidal test site notes."}}]
+expect:
+  # No tool evidence backs the sources, so PANINI's evidence rule reports partial, never verified.
+  outcome_in: [partial]
+  message_contains_all: ["Scout", "IEA", "EMEC"]
+  personas_ran: [panini, scout]
+  approvals_requested_max: 0

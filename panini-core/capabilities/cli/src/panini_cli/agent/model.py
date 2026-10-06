@@ -167,6 +167,9 @@ class OpenAIModel:
         )
 
 
+_SHARED = {}
+
+
 class ScriptedModel:
     """Replays scripted steps for tests and offline demos; it is never a real model.
 
@@ -181,7 +184,15 @@ class ScriptedModel:
 
     @classmethod
     def from_file(cls, path):
-        return cls(json.loads(Path(path).read_text(encoding="utf-8")))
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        if isinstance(data, dict) and data.get("shared"):
+            # {"shared": true, "steps": [...]}: one queue for every agent in the process (a lead and its
+            # delegates take their turns in call order), instead of each agent replaying from the start.
+            key = str(Path(path).resolve())
+            if key not in _SHARED:
+                _SHARED[key] = cls(data["steps"])
+            return _SHARED[key]
+        return cls(data)
 
     async def respond(
         self,

@@ -29,6 +29,7 @@ class TurnResult:
     task_status: str = ""
     route: str | None = None
     error: str | None = None
+    personas_ran: list = field(default_factory=list)  # persona ids with a run in this case
 
 
 class _Environment:
@@ -55,9 +56,15 @@ class _Environment:
             "PANINI_CLI_ENABLED": "0",
             "PANINI_CAPABILITY_ROUTER_ENABLED": "0",
         } | self.flags
+        if self.case.personas:
+            # Delegation is metered by the v2 brain, so persona cases run on it under every engine.
+            overrides |= V2RunEngine.flags | {"PANINI_PERSONAS": "true"}
         if self.mode == "offline":
             script = self.root / "script.json"
-            script.write_text(json.dumps(expand(list(self.case.script), self.work)), encoding="utf-8")
+            steps = expand(list(self.case.script), self.work)
+            # With specialists, the lead and its delegates share one scripted queue, in call order.
+            body = {"shared": True, "steps": steps} if self.case.personas else steps
+            script.write_text(json.dumps(body), encoding="utf-8")
             # No provider can be reached: the agent replays the case's scripted model.
             overrides |= {
                 "PANINI_CLI_SCRIPTED_MODEL": str(script),
@@ -113,6 +120,9 @@ class V1CoordinatorEngine:
         before = usage_log.summary()["total"]
         started = time.monotonic()
         text = expand(case.turn, env.work)
+        for persona in case.personas:
+            values = {k: v for k, v in persona.items() if k != "id"}
+            harness.personas.create(persona["id"], **values)
         try:
             if case.kind == "background":
                 harness.start = lambda: None
@@ -129,6 +139,9 @@ class V1CoordinatorEngine:
             result.error = f"{type(exc).__name__}: {exc}"[:300]
         finally:
             result.seconds = round(time.monotonic() - started, 2)
+            if case.personas and harness:
+                rows = harness.store.all("SELECT DISTINCT persona_id FROM runs")
+                result.personas_ran = sorted(row["persona_id"] for row in rows)
             after = usage_log.summary()["total"]
             result.tokens = after["input_tokens"] - before["input_tokens"]
             result.cost = round(after["cost"] - before["cost"], 5)

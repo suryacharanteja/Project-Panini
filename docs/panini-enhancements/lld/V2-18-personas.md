@@ -173,9 +173,8 @@ Verification: `backend/tests/personas/test_personas.py` covers isolation, contex
 
 Remaining before LLD completion:
 
-- Full multi-speaker voice handoff and live research-to-writing team qualification. Explicit avatar voice selection/reconnect is implemented; WebRTC probes are recorded separately from real SIP qualification.
+- Live research-to-writing team qualification, and a live listening check of spoken handoff (built and unit-tested; see below). WebRTC probes are recorded separately from real SIP qualification.
 - Spaces access/default-destination integration (V2-19), and channel permission integration when V2-17 exists.
-- Persona cases in the evaluation scorecard and a live research-to-writing team qualification.
 
 Continuation evidence: `backend/tests/agui/test_persona_resume.py` exercises the real HTTP/SSE, policy, ledger and SQLite checkpoint paths with scripted models and a local test hand. Teams, direct delegates and reviewers each pause twice on identical writes; completed research is not repeated, each approved write happens once, and every model turn is charged once. The stream runner is recreated between requests. Additional cases cover decline, flag rollback, archive, grant revocation and exhausted cost/time budgets. This qualifies the local continuation path, not a live-provider or remote-device deployment.
 
@@ -203,3 +202,30 @@ metered child runs. The prompt now tells team members to perform only their conf
 run produced overlapping roles despite correct facts. The latest run produced distinct research facts and
 a two-sentence writing result. Evidence retains earlier attempts, including a probe setup error. This is
 one bounded notebook team scenario, not broad team, web research, multi-speaker or scorecard qualification.
+
+## Multi-speaker voice handoff and scorecard cases — 2026-10-06
+
+- **Handoff:** a whole utterance asking for another persona ("hand me to Scout", "let me talk to the writer",
+  "back to PANINI") is not a task. `personas.routing.handoff_target` matches it only when it names an existing,
+  unarchived persona exactly, so "switch to dark mode" or "tell Scout to hand me the report" stay ordinary
+  requests. The current persona says "Handing you to Scout.", and the server publishes `voice.handoff`.
+- **Context:** the next persona's voice history gets a short recap of the owner's own recent words (at most four
+  utterances, 1,200 characters), marked as context. The previous persona's replies are never copied, so persona
+  isolation holds.
+- **Voice:** a live voice cannot change mid-session, so each speaker is its own media connection. On
+  `voice.handoff` the shell selects that persona and, after the goodbye line (about 1.8 s), reconnects audio in its
+  voice through the same path as the Voice specialist picker.
+- **Run attribution fix:** a delegate's run row now records its persona (`runs.persona_id`); before, every run was
+  stored as `panini`.
+- **Scorecard:** `evals/cases/personas/` adds two cases:
+  - `offline-delegation`: PANINI delegates to Scout and reports Scout's result. Unbacked sources stay `partial`.
+  - `offline-isolation`: Scout has no computer grant, so `write_file` is not even offered and no file is written.
+
+  Cases declare their specialists (`personas:`, only id/name/role/instructions/colour/voice, so a case file cannot
+  widen grants) and can expect `personas_ran` / `personas_not_ran`. Persona cases run on the v2 brain under every
+  engine, and the lead and its delegates share one scripted queue (`{"shared": true, "steps": [...]}`). Both cases
+  run in `npm test` (18/18 offline).
+- **Tests:** `backend/tests/panini/test_voice_adapter.py` (handoff matching, goodbye line, event, owner-only recap,
+  next voice, archived persona), `backend/tests/brain/test_brain.py` (attribution), and `evals/tests/test_cases.py`.
+- **Not yet qualified:** an audible handoff on a live provider (OpenAI credits were exhausted during this work) and
+  the live research-to-writing team benchmark.

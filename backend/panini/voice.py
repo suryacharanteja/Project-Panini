@@ -179,6 +179,10 @@ class VoiceMedia:
             self.owner.authorize(self.session, self.principal, self.epoch)
             # Revalidate archive/rollback before each delegated turn; never escalate a stale specialist.
             voice_profile(self.owner, self.profile["id"])
+            handoff = self.handoff(text)
+            if handoff:
+                await self.hand_off(handoff, identifier)
+                return
             control = control_intent(text)
             if control == "end":
                 asyncio.get_running_loop().call_soon(
@@ -210,6 +214,47 @@ class VoiceMedia:
             await self.connection.speak(
                 "That request could not start. Please repeat the instruction.", delegation_id=identifier
             )
+
+    def handoff(self, text):
+        from .. import v2flags
+
+        harness = getattr(getattr(self.owner, "adapters", {}).get("agent"), "harness", None)
+        if not v2flags.enabled("PANINI_PERSONAS") or harness is None:
+            return None
+        from ..personas.routing import handoff_target
+
+        return handoff_target(harness.personas, text)
+
+    async def hand_off(self, persona_id, identifier=None):
+        """Multi-speaker handoff: this persona says who is next, the next persona gets a short recap of the
+        owner's own recent words (never this persona's replies), and the client reconnects audio in its voice.
+        A live voice cannot change mid-session, so each speaker is its own media connection."""
+        if persona_id == self.profile["id"]:
+            await self.connection.speak(
+                f"You are already talking to {self.profile['name']}.", delegation_id=identifier
+            )
+            return
+        target = voice_profile(self.owner, persona_id)
+        histories = getattr(self.session, "voice_history", None)
+        if histories is not None:
+            said = [r["text"] for r in histories.get(self.profile["id"], []) if r["role"] == "user"][-4:]
+            recap = " / ".join(text.strip() for text in said if text.strip())[-1200:]
+            if recap:
+                rows = histories.setdefault(target["id"], [])
+                rows.append(
+                    {
+                        "role": "user",
+                        "text": f"(Handed over from {self.profile['name']}. What I said just before, as context: "
+                        f"{recap})",
+                    }
+                )
+                while len(rows) > 32 or sum(len(row["text"]) for row in rows) > 6000:
+                    rows.pop(0)
+        await self.connection.speak(f"Handing you to {target['name']}.", delegation_id=identifier)
+        self.session.hub.publish(
+            "voice.handoff",
+            {"from": self.profile["id"], "persona": {key: target[key] for key in ("id", "name", "color")}},
+        )
 
     async def feedback(self, task):
         if not self.closed:
