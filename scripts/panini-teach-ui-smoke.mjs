@@ -124,6 +124,15 @@ try {
       data = { review: { id: 'fixture' } };
     } else if (path.endsWith('/teach/skills/windows-demo'))
       data = { name: 'windows-demo', version: 1, replay: draft };
+    else if (path.endsWith('/spaces/save-source')) {
+      assert.deepEqual(body, {
+        space_id: 'fixture-space',
+        kind: 'skill',
+        source_id: 'windows-demo',
+      });
+      data = { id: 'saved-skill-page' };
+    } else if (path.endsWith('/spaces'))
+      data = { spaces: [{ id: 'fixture-space', name: 'Fixture notebook' }] };
     else if (path.endsWith('/teach/run')) {
       assert.deepEqual(body, {
         name: 'windows-demo',
@@ -211,6 +220,10 @@ try {
   await page.getByRole('button', { name: 'Replay skill' }).click();
   await page.getByRole('button', { name: 'Stop', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  await page.getByRole('button', { name: 'Save to Space' }).click();
+  await page.getByLabel('Save destination').selectOption('fixture-space');
+  await page.getByRole('button', { name: 'Save skill' }).click();
+  await page.getByText('Saved to your notebook.').waitFor();
   assert.deepEqual(errors, []);
   const report = {
     passed: true,
@@ -223,6 +236,7 @@ try {
     mobileNoOverflow: true,
     openInstalledApplicationRecording: true,
     launchFirstReplayNeedsNoWindowPicker: true,
+    approvedSkillSavedToSpace: true,
     requests,
   };
   await writeFile(evidence + '/ui-evidence.json', JSON.stringify(report, null, 2));

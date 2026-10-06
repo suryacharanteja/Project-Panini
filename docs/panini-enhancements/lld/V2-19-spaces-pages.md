@@ -180,6 +180,9 @@ gpt-4.1 run searched and cited a synthetic page correctly. The PDF and responsiv
 visually inspected. Evidence and limits: [qualification](../qualification-spaces-2026-10-04.md).
 
 Phone notebook actions, conflict recovery, stored-source saving and export downloads are now verified
-through the real fabric browser preview. Still open: channel/teach-by-demo integrations, additional
+through the real fabric browser preview. Approved Teach skills can now be saved from Admin as a
+versioned, validated page source; retries preserve owner edits and pending or integrity-failed
+versions are refused. Focused backend tests, an authenticated owner API test and a built-Admin fixture
+API smoke cover this path. Still open: channel integrations, a real-service Teach-to-Spaces browser qualification, additional
 crash-window and live-provider qualification, installed-runtime and production release gates.
 This is a local development increment; V2-19 and the full LLD program remain in progress.

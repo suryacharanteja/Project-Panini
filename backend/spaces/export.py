@@ -17,6 +17,7 @@ def save_source(h, *, space_id, kind, source_id, title=None, parent_id=None):
         h.spaces.authorize(space_id)
         cache_source_id = source_id
         conversation_run = None
+        skill = None
         if kind == "conversation":
             binding = h.store.one(
                 "SELECT thread_id FROM thread_bindings WHERE surface='agui' AND external_id=?", (source_id,)
@@ -28,13 +29,31 @@ def save_source(h, *, space_id, kind, source_id, title=None, parent_id=None):
             conversation_run = runs[0] if runs else None
             if conversation_run:
                 cache_source_id += ":" + conversation_run["id"]
+        elif kind == "skill":
+            try:
+                skill = h.teach.bundles.current(source_id)
+            except ValueError:
+                raise SpacesError("SOURCE_UNAVAILABLE", "No approved skill with that name.", 409) from None
+            cache_source_id += ":" + str(skill[0]["version"])
         prior = h.store.one(
             "SELECT page_id FROM page_sources WHERE space_id=? AND kind=? AND source_id=?",
             (space_id, kind, cache_source_id),
         )
         if prior:
             return h.spaces.read(prior["page_id"], deleted=True)
-        if kind == "task":
+        if kind == "skill":
+            row, replay = skill
+            name = "Skill: " + source_id
+            thread = None
+            inputs = ", ".join(replay.inputs) or "none"
+            content = (
+                f"# {name}\n\n{row['description']}\n\n"
+                f"Reviewed version: {row['version']} · kind: {replay.kind}\n\n"
+                f"Inputs: {inputs}\n\n"
+                f"This page describes an approved demonstration. Replay remains in Teach and follows current permissions.\n\n"
+                f"[Source skill](/build/skills?skill={source_id})\n"
+            )
+        elif kind == "task":
             try:
                 task = h.tasks.get(source_id)
             except KeyError:

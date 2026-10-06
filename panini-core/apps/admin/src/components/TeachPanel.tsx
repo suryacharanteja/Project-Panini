@@ -2,6 +2,7 @@ import { Circle, Square, Play, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { admin, api, harness, useResource } from '../api';
 import { Badge, Button, Card, Field, inputClass, useAction } from './ui';
+import { SaveToSpace } from '../pages/spaces/SaveToSpace';
 
 export function TeachPanel() {
   const state = useResource<any>(harness('/teach'), 2500);
@@ -387,6 +388,9 @@ export function TeachPanel() {
               >
                 <Play size={13} /> Open replay
               </Button>
+              {skill.versions.some((v: any) => v.state === 'approved') && (
+                <SaveToSpace kind="skill" sourceId={skill.name} />
+              )}
               {skill.versions.some((v: any) => v.state === 'approved') && (
                 <Button
                   tone="ghost"

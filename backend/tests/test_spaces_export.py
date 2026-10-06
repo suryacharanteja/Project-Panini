@@ -1,11 +1,14 @@
 import asyncio
 import json
+import time
 
 import pytest
+from fastapi.testclient import TestClient
 
 from backend.harness.runtime import Harness
 from backend.harness.skills import Skills
 from backend.harness.store import Store
+from backend.interrupts import digest
 from backend.spaces import SpacesError
 from backend.spaces.export import pdf, save_source
 
@@ -39,6 +42,92 @@ def test_result_retries_and_deleted_destination_keep_original(notebook):
     h.spaces.edit(page["id"], 2, trash=True)
     assert save_source(h, space_id=space, kind="result", source_id=run)["deleted_at"]
     assert h.store.one("SELECT count(*) AS n FROM pages")["n"] == 1
+
+
+def test_only_approved_integrity_checked_skill_versions_are_saved(notebook):
+    h, space = notebook
+    replay = {
+        "kind": "browser",
+        "steps": [{"id": "s1", "tool": "browser_navigate", "args": {"url": "https://example.com"}}],
+        "expect": [{"id": "s2", "tool": "browser_verify_text_visible", "args": {"text": "Done"}}],
+    }
+
+    def version(number, state, description, *, integrity=True):
+        h.store.execute(
+            "INSERT INTO teach_versions(name,version,digest,data,description,state,review_id,base_version,created,approved) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                "sample-skill",
+                number,
+                digest(replay) if integrity else "invalid",
+                json.dumps(replay),
+                description,
+                state,
+                f"review-{number}",
+                number - 1,
+                time.time(),
+                time.time() if state == "approved" else None,
+            ),
+        )
+
+    version(1, "pending", "Pending draft")
+    with pytest.raises(SpacesError, match="No approved skill"):
+        save_source(h, space_id=space, kind="skill", source_id="sample-skill")
+    assert h.spaces.pages(space) == []
+    h.store.execute("UPDATE teach_versions SET state='approved' WHERE name='sample-skill' AND version=1")
+    first = save_source(h, space_id=space, kind="skill", source_id="sample-skill")
+    assert "Pending draft" in first["content"] and "Reviewed version: 1" in first["content"]
+    h.spaces.edit(first["id"], 1, content="Owner-edited description")
+    assert (
+        save_source(h, space_id=space, kind="skill", source_id="sample-skill")["content"]
+        == "Owner-edited description"
+    )
+    version(2, "approved", "Second approved version")
+    second = save_source(h, space_id=space, kind="skill", source_id="sample-skill")
+    assert second["id"] != first["id"] and "Second approved version" in second["content"]
+    version(3, "approved", "Tampered version", integrity=False)
+    with pytest.raises(SpacesError, match="No approved skill"):
+        save_source(h, space_id=space, kind="skill", source_id="sample-skill")
+    assert len(h.spaces.pages(space)) == 2
+
+
+def test_skill_source_owner_api_requires_auth_and_preserves_retry(notebook, monkeypatch):
+    from backend.app import create_app
+
+    h, space = notebook
+    monkeypatch.setenv("PANINI_SPACES", "true")
+    replay = {
+        "kind": "browser",
+        "steps": [{"id": "s1", "tool": "browser_navigate", "args": {"url": "https://example.com"}}],
+        "expect": [{"id": "s2", "tool": "browser_verify_text_visible", "args": {"text": "Done"}}],
+    }
+    h.store.execute(
+        "INSERT INTO teach_versions(name,version,digest,data,description,state,review_id,base_version,created,approved) "
+        "VALUES (?,?,?,?,?,'approved',?,?,?,?)",
+        (
+            "api-skill",
+            1,
+            digest(replay),
+            json.dumps(replay),
+            "Reviewed API skill",
+            "approved-review",
+            0,
+            time.time(),
+            time.time(),
+        ),
+    )
+    app = create_app(harness_factory=lambda: h, console_token="t" * 32)
+    payload = {"space_id": space, "kind": "skill", "source_id": "api-skill"}
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        route = "/api/harness/spaces/save-source"
+        assert client.post(route, json=payload).status_code in {401, 403}
+        headers = {"x-panini-console": "t" * 32}
+        first = client.post(route, headers=headers, json=payload)
+        assert first.status_code == 200 and "Reviewed API skill" in first.json()["content"]
+        again = client.post(route, headers=headers, json=payload)
+        assert again.status_code == 200 and again.json()["id"] == first.json()["id"]
+        invalid = client.post(route, headers=headers, json={**payload, "source_id": "unknown"})
+        assert invalid.status_code == 409
 
 
 def test_failed_malformed_oversized_history_creates_nothing(notebook):

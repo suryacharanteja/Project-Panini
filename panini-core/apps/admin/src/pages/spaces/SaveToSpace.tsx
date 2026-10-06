@@ -7,7 +7,7 @@ export function SaveToSpace({
   kind,
   sourceId,
 }: {
-  kind: 'receipt' | 'result' | 'history' | 'task' | 'conversation';
+  kind: 'receipt' | 'result' | 'history' | 'task' | 'conversation' | 'skill';
   sourceId: string;
 }) {
   const [spaces, setSpaces] = useState<{ id: string; name: string }[] | null>(null);
