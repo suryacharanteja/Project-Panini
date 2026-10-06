@@ -96,7 +96,10 @@ async def main():
             ctx = ToolContext(view=ToolView(desktop_fine=True, ledger=True, teach=True), run_id=uuid4().hex)
 
             async def confirm(title, detail, decision):
-                assert document.stem in detail, "A review left the disposable document."
+                # Save As renames the disposable document to another disposable PANINI-SaveAs file.
+                assert any(k in detail for k in (document.stem, "PANINI-SaveAs-", "Save as")), (
+                    "A review left the disposable document."
+                )
                 approvals.append({"effect": decision.effect.value, "level": decision.level.value})
                 return True
 
@@ -131,9 +134,11 @@ async def main():
                 activation = await h.registry.call(ctx, "desktop_activate", {"window": choice})
                 assert activation.outcome == "ok" and activation.data["verified"], activation
 
-                async def worker(action):
-                    # Fetch fine-only states using a direct disposable worker for the owned test document.
-                    payload = {"op": "snapshot", "target": target}
+                async def worker(action, window=None, pick=None):
+                    # Fetch fine-only states using a direct disposable worker for the owned test document
+                    # (or, with window/pick, a dialog that document owns).
+                    window = window or target
+                    payload = {"op": "snapshot", "target": window}
 
                     def invoke(payload):
                         result = subprocess.run(
@@ -149,11 +154,11 @@ async def main():
                         return response["result"]
 
                     frame = await asyncio.to_thread(invoke, payload)
-                    row = next(r for r in frame["nodes"] if r["type"] == "ControlType.Document")
-                    assert document.stem in frame["title"]
+                    row = next(r for r in frame["nodes"] if (pick or is_document)(r))
+                    assert window is not target or document.stem in frame["title"]
                     request = {
                         "op": "action",
-                        "target": target,
+                        "target": window,
                         "observed_at": frame["observed_at"],
                         "expected_window_title": frame["title"],
                         "action": {
@@ -169,11 +174,25 @@ async def main():
                     }
                     return await asyncio.to_thread(invoke, request)
 
+                def is_document(r):
+                    return r["type"] == "ControlType.Document"
+
+                async def owned_dialog():
+                    for _ in range(40):
+                        listed = await h.adapters["desktop"].pipe.call(
+                            {"op": "targets", "task_id": ctx.run_id}
+                        )
+                        found = [w for w in listed["targets"] if w.get("owner_hwnd") == target["hwnd"]]
+                        if len(found) == 1:
+                            return found[0]
+                        await asyncio.sleep(0.25)
+                    raise AssertionError("The Save As dialog did not open.")
+
                 async def read():
                     result = await h.registry.call(ctx, "desktop_snapshot", {"window": choice})
                     assert result.outcome == "ok", result.content
                     nodes = parse(result.data["snapshot"])
-                    assert document.stem in nodes[0].name
+                    assert document.stem in nodes[0].name or "PANINI-SaveAs-" in nodes[0].name
                     return result.data["snapshot"], nodes
 
                 async def tool(name, args):
@@ -315,6 +334,97 @@ async def main():
                     r["tool"] == "desktop_press" and r["effect"] == "local_write" and r["outcome"] == "ok"
                     for r in receipts
                 )
+
+                # Save As: record the owned dialog, then replay it to a different disposable file name.
+                def file_name(r):
+                    return r["type"] == "ControlType.Edit" and r["name"].startswith("File name")
+
+                async def save_as(name):
+                    await worker({"kind": "fine_type", "text": expected, "replace": True})
+                    await asyncio.sleep(0.5)
+                    await worker({"kind": "keypress", "key": "Ctrl+Shift+S"})
+                    dialog = await owned_dialog()
+                    await asyncio.sleep(0.5)
+                    await worker(
+                        {"kind": "fine_type", "text": str(evidence / name), "replace": True},
+                        dialog,
+                        file_name,
+                    )
+                    await asyncio.sleep(0.3)
+                    await worker({"kind": "keypress", "key": "Enter"}, dialog, file_name)
+
+                await tool("desktop_activate", {"window": choice})
+                await worker({"kind": "focus"})
+                recorded_name = "PANINI-SaveAs-" + uuid4().hex[:8] + ".txt"
+                started = await h.teach.recorder.start_desktop(ctx, choice)
+                assert started["state"] == "recording"
+                await save_as(recorded_name)
+                for _ in range(30):
+                    if (evidence / recorded_name).exists():
+                        break
+                    await asyncio.sleep(0.2)
+                await asyncio.sleep(0.5)
+                stopped = await h.teach.recorder.stop()
+                assert stopped["state"] == "draft", stopped
+                saving = stopped["replay"]
+                (evidence / "notepad-saveas-recording.json").write_text(
+                    json.dumps(saving, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+                assert (evidence / recorded_name).read_text(encoding="utf-8-sig") == expected
+                # The driver's select-all before each replace-typed field is ungrounded; the review removes it
+                # (replay types with replace=True), as an owner would.
+                manual = [s for s in saving["steps"] if s["tool"] == "manual"]
+                assert len(manual) <= 2, saving
+                saving["steps"] = [s for s in saving["steps"] if s["tool"] != "manual"]
+                in_dialog = [s for s in saving["steps"] if (s.get("target") or {}).get("dialog")]
+                assert in_dialog, saving
+                assert any(
+                    s["tool"] == "desktop_press" and s["args"]["key"] == "Ctrl+Shift+S"
+                    for s in saving["steps"]
+                ), saving
+                named = [s for s in in_dialog if s["tool"] == "desktop_type"][-1]
+                path_input = named["args"]["text"].strip(
+                    "{}"
+                )  # The recorder parameterized the typed file name.
+                body = [
+                    s
+                    for s in saving["steps"]
+                    if s["tool"] == "desktop_type" and not s["target"].get("dialog")
+                ][-1]
+                saving["expect"] = [
+                    {
+                        "id": "s999",
+                        "tool": "desktop_verify_value",
+                        "target": body["target"],
+                        "args": {"value": body["args"]["text"]},
+                    }
+                ]
+                review = h.teach.bundles.propose(
+                    "notepad-save-as", "Save the document under a new name", saving
+                )["review"]
+                h.interrupts.resolve(
+                    review["id"],
+                    nonce=review["nonce"],
+                    action_digest=review["action_digest"],
+                    status="resolved",
+                    payload={"approved": True},
+                    decided_by=decided_by("avatar", "local"),
+                )
+                replayed_name = "PANINI-SaveAs-" + uuid4().hex[:8] + ".txt"
+                replay_listed = await h.registry.call(ctx, "desktop_windows", {})
+                current = next(
+                    r["choice_id"] for r in replay_listed.data["windows"] if recorded_name[:-4] in r["label"]
+                )
+                result = await h.teach.replayer.run(
+                    ctx, "notepad-save-as", {path_input: str(evidence / replayed_name)}, window=current
+                )
+                assert result.outcome == "ok" and result.data["state"] == "passed", result
+                for _ in range(30):
+                    if (evidence / replayed_name).exists():
+                        break
+                    await asyncio.sleep(0.2)
+                assert (evidence / replayed_name).read_text(encoding="utf-8-sig") == expected
+                choice = current
                 report = {
                     "passed": True,
                     "task": "real Notepad record / approve / parameterized replay / save",
@@ -331,7 +441,8 @@ async def main():
                     "receipts": receipts,
                     "liveHealerQualified": False,
                     "desktopLldComplete": False,
-                    "saveAsDialogQualified": False,
+                    "saveAsDialogQualified": True,
+                    "saveAsDialogSteps": len(in_dialog),
                     "physicalAndroidQualified": False,
                     "coarseComparisonQualified": False,
                 }

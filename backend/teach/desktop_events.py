@@ -10,7 +10,10 @@ from .schema import SENSITIVE
 
 
 def target(value):
-    if not isinstance(value, dict) or value.keys() - {"type", "name", "ancestors"}:
+    if not isinstance(value, dict) or value.keys() - {"type", "name", "ancestors", "dialog"}:
+        return None
+    dialog = value.get("dialog", "")
+    if not isinstance(dialog, str) or len(dialog) > 200:
         return None
     name = value.get("name")
     ancestors = value.get("ancestors", [])
@@ -27,6 +30,8 @@ def target(value):
         return None
     result = {"role": role(str(value.get("type", "")).removeprefix("ControlType.")), "name": name}
     result["ancestors"] = []
+    if dialog:
+        result["dialog"] = dialog  # The control lives in a dialog owned by the window (Save As, Open, …).
     for parent in ancestors:
         if not isinstance(parent, dict) or parent.keys() != {"type", "name"}:
             return None

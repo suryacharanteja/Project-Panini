@@ -109,7 +109,11 @@ class Replayer:
         result = await self.h.registry.call(ctx, tool, args)
         if result.outcome != "ok":
             raise ReplayFailure(result)
-        if tool == "desktop_snapshot" and getattr(parent, "teach_window_title", None) is not None:
+        if (
+            tool == "desktop_snapshot"
+            and getattr(parent, "teach_window_title", None) is not None
+            and not getattr(parent, "teach_dialog", "")
+        ):
             title = result.data.get("title", "")
             if parent.teach_window_application.casefold() == "notepad":
                 title = title.removeprefix("*")
@@ -121,6 +125,35 @@ class Replayer:
                     ToolResult("blocked", "The selected window changed documents during replay.")
                 )
         return result
+
+    async def follow_dialog(self, ctx, dialog):
+        """Bind the window a desktop step belongs to: the owned dialog it was recorded in, or the document again.
+        A dialog has up to 5 s to open after the previous step; returning from one re-pins the document title,
+        because a reviewed Save As legitimately renames it."""
+        main = getattr(ctx, "teach_main_window", None)
+        current = getattr(ctx, "teach_dialog", "")
+        if main is None or dialog == current:
+            return
+        if not dialog:
+            ctx.teach_dialog = ""
+            ctx.teach_window_title = None  # Re-pinned below from the document's (possibly renamed) title.
+            back = await self.call(ctx, "desktop_snapshot", {"window": main})
+            title = back.data["title"]
+            if ctx.teach_window_application.casefold() == "notepad":
+                title = title.removeprefix("*")
+            ctx.teach_window_title, ctx.teach_window_selection = title, back.data["selection"]
+            return
+        for _ in range(20):
+            windows = (await self.call(ctx, "desktop_windows", {})).data["windows"]
+            owned = [w for w in windows if w.get("owner") == main and w["label"] == dialog]
+            if len(owned) == 1:
+                ctx.teach_dialog = dialog
+                await self.call(ctx, "desktop_snapshot", {"window": owned[0]["choice_id"]})
+                return
+            if len(owned) > 1:
+                raise ValueError("Several matching dialogs are open; the replay target is ambiguous.")
+            await asyncio.sleep(0.25)
+        raise ValueError(f"The '{dialog}' dialog did not open.")
 
     async def run(self, ctx, name, supplied, browser="managed", window=""):
         if self.lock.locked() or self.h.teach.recorder.current or self.h.teach.recorder.starting:
@@ -155,6 +188,8 @@ class Replayer:
             snapshot_tool = "desktop_snapshot" if desktop else "browser_snapshot"
 
             async def bind_desktop(choice):
+                ctx.teach_main_window = choice
+                ctx.teach_dialog = ""
                 await self.call(ctx, "desktop_activate", {"window": choice})
                 selected = await self.call(ctx, "desktop_snapshot", {})
                 ctx.teach_window_application = replay.desktop_application
@@ -203,6 +238,8 @@ class Replayer:
                         evidence.extend(result.evidence)
                         await bind_desktop(result.data["window"])
                         continue
+                    if desktop and step.target:
+                        await self.follow_dialog(ctx, step.target.dialog)
                     if step.target:
                         target = Target.model_validate(substitute(step.target.model_dump(), values))
                         fresh = await self.call(ctx, snapshot_tool, {})
@@ -264,6 +301,8 @@ class Replayer:
                 for expectation in replay.expect:
                     ctx.teach_frame_selector = ""
                     args = substitute(expectation.args, values)
+                    if desktop and expectation.target:
+                        await self.follow_dialog(ctx, expectation.target.dialog)  # Back from Save As, Open, …
                     if expectation.target:
                         target = Target.model_validate(substitute(expectation.target.model_dump(), values))
                         fresh = await self.call(ctx, snapshot_tool, {})

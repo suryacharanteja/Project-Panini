@@ -395,7 +395,11 @@ class DesktopFine:
             try:
                 session = self.ready(ctx)
                 if spec.name == "desktop_windows":
-                    return ToolResult(data={"windows": await self.adapter.targets()})
+                    windows = await self.adapter.targets()
+                    owners = self.adapter.owners() if hasattr(self.adapter, "owners") else {}
+                    for window in windows:
+                        window["owner"] = owners.get(window["choice_id"])
+                    return ToolResult(data={"windows": windows})
                 if spec.name == "desktop_draw":
                     return await self.draw(ctx, session, args)
                 if spec.name == "desktop_applications":
@@ -574,10 +578,16 @@ class DesktopFine:
                         else "click"
                     }
                 elif spec.name == "desktop_type":
+                    # Owned dialogs (Save As, Open) only notice real keystrokes; a ValuePattern write is ignored.
+                    dialog = bool(session["target"].get("owner_hwnd"))
                     action = {
-                        "kind": "set_value" if "ValuePatternIdentifiers.Pattern" in patterns else "fine_type",
+                        "kind": "set_value"
+                        if "ValuePatternIdentifiers.Pattern" in patterns and not dialog
+                        else "fine_type",
                         "text": args["text"],
                     }
+                    if dialog:
+                        args = {**args, "replace": True}
                     if action["kind"] == "fine_type":
                         action["replace"] = args.get("replace", False)
                 elif spec.name == "desktop_select":

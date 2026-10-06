@@ -22,7 +22,7 @@ internal static partial class Program
     [StructLayout(LayoutKind.Sequential)] private struct RecordingMessage { public IntPtr Window; public uint Message; public UIntPtr W; public IntPtr L; public uint Time; public RecordingPoint Point; public uint Private; }
     [StructLayout(LayoutKind.Sequential)] private struct RecordingMouse { public RecordingPoint Point; public uint Data, Flags, Time; public UIntPtr Extra; }
     // Events never contain printable key codes or raw keyboard text.
-    private sealed record RecordingEvent(string Kind, int X = 0, int Y = 0, string Key = "");
+    private sealed record RecordingEvent(string Kind, int X = 0, int Y = 0, string Key = "", long Dialog = 0);
 
     private static JsonObject RecordingSnapshot(JsonObject request)
     {
@@ -72,9 +72,10 @@ internal static partial class Program
             {
                 if (item.Kind == "text") { if (Interlocked.Exchange(ref textQueued, 1) != 0) return; }
                 else Interlocked.Exchange(ref textQueued, 0);
-                if (!queue.TryAdd(item)) Interlocked.Exchange(ref overflow, 1);
+                // The owned dialog at input time: UIA processing lags, and Enter may close the dialog first.
+                if (!queue.TryAdd(item with { Dialog = OwnedDialog(hwnd).ToInt64() })) Interlocked.Exchange(ref overflow, 1);
             }
-            bool Scoped() => TargetForeground(hwnd);
+            bool Scoped() => TargetForeground(hwnd) || OwnedDialog(hwnd) != IntPtr.Zero;
             RecordingHook mouse = (code, message, data) =>
             {
                 if (code >= 0 && Scoped())
@@ -105,10 +106,10 @@ internal static partial class Program
                     {
                         named ??= key is >= 65 and <= 90 ? ((char)key).ToString() : null;
                         if (named is not null) Add(new("key", Key: (control ? "Ctrl+" : "") + (alt ? "Alt+" : "") + (shift ? "Shift+" : "") + (win ? "Win+" : "") + named));
-                        else if (key is not (16 or 17 or 18 or 91 or 92)) Add(new("manual"));
+                        else if (key is not (16 or 17 or 18 or 91 or 92 or (>= 160 and <= 165))) Add(new("manual"));
                     }
                     else if (named is not null) Add(new("key", Key: (shift ? "Shift+" : "") + named));
-                    else if (key is not (16 or 17 or 18 or 91 or 92)) Add(new("text"));
+                    else if (key is not (16 or 17 or 18 or 91 or 92 or (>= 160 and <= 165))) Add(new("text"));
                 }
                 return CallNextHookEx(IntPtr.Zero, code, message, data);
             };
@@ -132,15 +133,36 @@ internal static partial class Program
         (int X, int Y)? pressed = null;
         JsonObject? pendingTarget = null;
         string? lastValue = null;
+        string? pendingValue = null; // A dialog field's last value, read while the dialog was still open.
         string? failure = null;
+        AutomationElement? dialogRoot = null;
+        string? dialogTitle = null;
+        AutomationElement Scope() => dialogRoot ?? root;
+        var dialogHandle = IntPtr.Zero;
+        void FollowDialog(IntPtr dialog)
+        {
+            // The scope is the target window, or the dialog it owned when the input happened (Save As, Open, …).
+            if (dialog == dialogHandle) return;
+            dialogHandle = dialog; dialogRoot = null; dialogTitle = null;
+            if (dialog == IntPtr.Zero) return;
+            try
+            {
+                var element = AutomationElement.FromHandle(dialog);
+                var name = element.Current.Name;
+                // An unnamed dialog cannot be found again at replay.
+                if (!string.IsNullOrWhiteSpace(name)) { dialogRoot = element; dialogTitle = name[..Math.Min(name.Length, 200)]; }
+            }
+            catch (ElementNotAvailableException) { } // Already closed: its input is reviewed manually.
+        }
         bool Belongs(AutomationElement element)
         {
             var walker = TreeWalker.ControlViewWalker;
+            var scope = Scope();
             for (var depth = 0; element is not null && depth <= 30; depth++)
             {
                 var c = element.Current;
                 if (c.IsPassword || Credential(c.Name, c.AutomationId)) return false;
-                if (Automation.Compare(element, root)) return true;
+                if (Automation.Compare(element, scope)) return true;
                 element = walker.GetParent(element)!;
             }
             return false;
@@ -152,13 +174,15 @@ internal static partial class Program
             if (!c.IsEnabled || c.IsOffscreen || string.IsNullOrEmpty(c.Name)) return null;
             var ancestry = new JsonArray();
             var parent = TreeWalker.ControlViewWalker.GetParent(element);
-            for (var i = 0; i < 30 && ancestry.Count < 8 && parent is not null && !Automation.Compare(parent, root); i++)
+            for (var i = 0; i < 30 && ancestry.Count < 8 && parent is not null && !Automation.Compare(parent, Scope()); i++)
             {
                 var p = parent.Current;
                 if (p.Name.Length > 0) ancestry.Insert(0, new JsonObject { ["type"] = p.ControlType.ProgrammaticName, ["name"] = p.Name[..Math.Min(p.Name.Length, 500)] });
                 parent = TreeWalker.ControlViewWalker.GetParent(parent);
             }
-            return new JsonObject { ["type"] = c.ControlType.ProgrammaticName, ["name"] = c.Name[..Math.Min(c.Name.Length, 500)], ["ancestors"] = ancestry };
+            var selector = new JsonObject { ["type"] = c.ControlType.ProgrammaticName, ["name"] = c.Name[..Math.Min(c.Name.Length, 500)], ["ancestors"] = ancestry };
+            if (dialogTitle is not null) selector["dialog"] = dialogTitle; // Replay finds this owned dialog again.
+            return selector;
         }
         void Append(string kind, JsonObject? target, string? value = null, string? crop = null, JsonObject? drop = null)
         {
@@ -182,18 +206,20 @@ internal static partial class Program
         {
             if (pendingField is not null)
             {
-                var value = FieldValue(pendingField);
+                string? value = null;
+                try { value = FieldValue(pendingField); } catch (ElementNotAvailableException) { }
+                if (value is null && pendingTarget?["dialog"] is not null) value = pendingValue; // The dialog closed.
                 if (value is not null && value != lastValue) Append("type", pendingTarget, value);
                 else if (value is null) Append("manual", null);
             }
-            pendingField = null; pendingTarget = null; lastValue = null;
+            pendingField = null; pendingTarget = null; lastValue = null; pendingValue = null;
         }
         AutomationElement? At(int x, int y)
         {
             // WinUI FromPoint is unreliable. Search bounded ControlView geometry instead.
             AutomationElement? found = null;
             var deepest = -1; var visited = 0;
-            var stack = new Stack<(AutomationElement Element, int Depth)>(); stack.Push((root, 0));
+            var stack = new Stack<(AutomationElement Element, int Depth)>(); stack.Push((Scope(), 0));
             while (stack.Count > 0)
             {
                 var (element, depth) = stack.Pop();
@@ -215,7 +241,10 @@ internal static partial class Program
                 Interactive(); Target(request);
                 if (overflow != 0) throw new InvalidOperationException("RECORDING_EVENT_LIMIT");
                 if (!queue.TryTake(out var item, 100)) continue;
-                if (!TargetForeground(hwnd)) { Flush(); continue; }
+                var inDialog = dialogRoot is not null;
+                FollowDialog(new IntPtr(item.Dialog));
+                if (inDialog != (dialogRoot is not null)) Flush(); // Typing never spans the dialog boundary.
+                // Scope was checked in the hook when the input happened; the foreground may have moved since.
                 if (item.Kind == "down") { pressed = (item.X, item.Y); continue; }
                 if (item.Kind == "click" && pressed is { } start
                     && Math.Abs(item.X - start.X) + Math.Abs(item.Y - start.Y) > 12)
@@ -240,19 +269,28 @@ internal static partial class Program
                         // Capture the final UIA value, rather than logging printable key codes.
                         lastValue = null;
                     }
+                    if (dialogRoot is not null)
+                    {
+                        try { pendingValue = FieldValue(field) ?? pendingValue; } catch (ElementNotAvailableException) { }
+                    }
                 }
                 else
                 {
                     // A text aggregate preserves the pre-key control even when Tab/Enter moves focus.
                     var keyboardField = pendingField;
+                    var keyboardTarget = pendingTarget; // Selected while the field existed (a dialog may be gone).
                     Flush();
-                    var element = item.Kind == "key" ? keyboardField ?? AutomationElement.FocusedElement : At(item.X, item.Y);
+                    AutomationElement? element = null;
+                    try { element = item.Kind == "key" ? keyboardField ?? AutomationElement.FocusedElement : At(item.X, item.Y); }
+                    catch (ElementNotAvailableException) { } // The dialog closed before its input was processed.
                     if (item.Kind == "key" && keyboardField is null && item.Key.Split('+')[^1] is not ("ArrowLeft" or "ArrowRight" or "ArrowUp" or "ArrowDown" or "Home" or "End" or "PageUp" or "PageDown"))
                     {
                         Append("manual", null); // Post-key focus alone cannot identify the original receiver.
                         continue;
                     }
-                    var selector = Selector(element);
+                    JsonObject? selector = null;
+                    if (item.Kind == "key" && keyboardTarget is not null) selector = keyboardTarget;
+                    else try { selector = Selector(element); } catch (ElementNotAvailableException) { }
                     var crop = item.Kind == "click" && selector is not null ? WindowCapture.CropWithin(hwnd, item.X, item.Y, 500) : null;
                     Append(item.Kind, selector, item.Kind == "key" ? item.Key : null, crop);
                 }

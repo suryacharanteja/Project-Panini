@@ -137,7 +137,8 @@ internal static partial class Program
                     }, IntPtr.Zero);
                     if (hostedPid is null) return true;
                 }
-                windows.Add(new { hwnd = hwnd.ToInt64(), pid, created = process.StartTime.ToUniversalTime().Ticks.ToString(), label = title.ToString(), application = name, hosted_hwnd = hostedHwnd, hosted_pid = hostedPid, hosted_created = hostedCreated });
+                var ownerWindow = GetWindow(hwnd, 4); // GW_OWNER
+                windows.Add(new { hwnd = hwnd.ToInt64(), pid, created = process.StartTime.ToUniversalTime().Ticks.ToString(), label = title.ToString(), application = name, hosted_hwnd = hostedHwnd, hosted_pid = hostedPid, hosted_created = hostedCreated, owner_hwnd = ownerWindow == IntPtr.Zero ? (long?)null : ownerWindow.ToInt64() });
             }
             catch (Exception) { /* A vanished/inaccessible window is not a target. */ }
             return true;
@@ -165,6 +166,18 @@ internal static partial class Program
         {
             return new { ready = false, interactive = false, input_desktop = "unknown", session = -1, reason = ex.Message, recovery = "Unlock the Windows desktop and return to the Default input desktop." };
         }
+    }
+
+    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hwnd, uint command);
+
+    /// <summary>The foreground window when it is a visible dialog owned by the target and in its process, else zero.</summary>
+    private static IntPtr OwnedDialog(IntPtr hwnd)
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero || foreground == hwnd || GetWindow(foreground, 4) != hwnd) return IntPtr.Zero;
+        GetWindowThreadProcessId(foreground, out var dialogPid);
+        GetWindowThreadProcessId(hwnd, out var ownerPid);
+        return dialogPid == ownerPid && IsWindowVisible(foreground) && !IsCloaked(foreground) ? foreground : IntPtr.Zero;
     }
 
     private static bool IsCloaked(IntPtr hwnd) => DwmGetWindowAttribute(hwnd, 14, out var value, 4) == 0 && value != 0;

@@ -602,3 +602,55 @@ def test_drop_targets_are_required_for_drags_only_and_never_sensitive(step):
 
     with pytest.raises(ValidationError):
         Replay.model_validate({"kind": "desktop", "desktop_application": "explorer", "steps": [step]})
+
+
+def test_dialog_controls_keep_their_dialog_and_follow_the_rules():
+    from pydantic import ValidationError
+
+    from backend.teach.desktop_events import normalize
+    from backend.teach.schema import Replay
+
+    data = normalize(
+        [{"kind": "click", "target": {"type": "Button", "name": "Save", "dialog": "Save as"}}], "notepad"
+    )
+    assert data["steps"][0]["target"]["dialog"] == "Save as"
+    Replay.model_validate(data)
+    with pytest.raises(ValidationError):
+        Replay.model_validate({"steps": [{"id": "s1", "tool": "browser_click",
+                                          "target": {"role": "button", "name": "Save", "dialog": "Save as"}}]})  # fmt: skip
+    with pytest.raises(ValidationError):
+        Replay.model_validate({"kind": "desktop", "desktop_application": "explorer", "steps": [
+            {"id": "s1", "tool": "desktop_drag", "target": {"role": "listitem", "name": "A"},
+             "drop": {"role": "listitem", "name": "B", "dialog": "Open"}}]})  # fmt: skip
+
+
+@pytest.mark.anyio
+async def test_replay_waits_for_the_owned_dialog_then_returns_to_the_document():
+    from types import SimpleNamespace
+
+    from backend.core_contracts import ToolResult
+    from backend.teach.replay import Replayer
+
+    calls, opened = [], {"n": 0}
+
+    async def call(ctx, tool, args):
+        calls.append((tool, args))
+        if tool == "desktop_windows":
+            opened["n"] += 1
+            windows = [{"choice_id": "main", "label": "notes.txt - Notepad", "owner": None}]
+            if opened["n"] >= 2:  # The dialog appears a moment after the step that opened it.
+                windows.append({"choice_id": "dlg", "label": "Save as", "owner": "main"})
+                windows.append({"choice_id": "other", "label": "Save as", "owner": "someone-else"})
+            return ToolResult(data={"windows": windows})
+        return ToolResult(data={"title": "*report.txt - Notepad", "selection": []})
+
+    ctx = SimpleNamespace(teach_main_window="main", teach_dialog="", teach_window_application="notepad",
+                          teach_window_title="notes.txt - Notepad", teach_window_selection=[])  # fmt: skip
+    fake = SimpleNamespace(call=call)
+    await Replayer.follow_dialog(fake, ctx, "Save as")
+    assert ctx.teach_dialog == "Save as" and calls[-1] == ("desktop_snapshot", {"window": "dlg"})
+    await Replayer.follow_dialog(fake, ctx, "")
+    assert calls[-1] == ("desktop_snapshot", {"window": "main"})
+    assert (
+        ctx.teach_dialog == "" and ctx.teach_window_title == "report.txt - Notepad"
+    )  # Re-pinned after Save As.

@@ -592,3 +592,25 @@ async def test_drag_goes_from_one_reviewed_control_to_another(world):
     assert (action["from_x"], action["from_y"]) != (action["to_x"], action["to_y"])
     assert h.ctx.desktop_policy[1]["drop_element"] == "Apply draft"
     assert reviews == ["Apply draft"]  # The review names where the drag ends.
+
+
+@pytest.mark.anyio
+async def test_typing_in_an_owned_dialog_sends_real_keystrokes_replacing_the_field(world):
+    # Save As / Open dialogs ignore ValuePattern writes: the typed name must arrive as keystrokes.
+    h = world
+    adapter = h.adapters["desktop"]
+    plain = adapter.select
+
+    async def dialog(choice):
+        return {**await plain(choice), "owner_hwnd": 99}
+
+    adapter.select = dialog
+    session = await snapshot(h)
+    typed = await h.registry.call(
+        h.ctx, "desktop_type", {"ref": ref(session, "Draft text"), "text": "report.txt"}
+    )
+    assert typed.outcome == "ok"
+    sent = [p["action"] for p in h.pipe.calls if p["op"] == "fine_action" and "text" in p["action"]]
+    assert (
+        sent[-1]["kind"] == "fine_type" and sent[-1]["replace"] is True and sent[-1]["text"] == "report.txt"
+    )

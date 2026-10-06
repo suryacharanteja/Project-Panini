@@ -65,6 +65,7 @@ class Target(Strict):
     locator: str = Field(default="", max_length=1500)
     frame: str = Field(default="", max_length=500)
     ancestors: list[Ancestor] = Field(default_factory=list, max_length=8)
+    dialog: str = Field(default="", max_length=200)  # Desktop: the owned dialog's title (Save As, Open, …).
 
     @model_validator(mode="after")
     def bounded(self):
@@ -144,6 +145,10 @@ class Replay(Strict):
                 or not re.fullmatch(r"[a-z][a-z0-9-]{1,39}", step.args["application_id"])
             ):
                 raise ValueError("App launch needs one reviewed installed application ID.")
+            if self.kind == "browser" and any(t and t.dialog for t in (step.target, step.drop)):
+                raise ValueError("Dialog targets are for Windows replays.")
+            if step.drop and step.target and step.drop.dialog != step.target.dialog:
+                raise ValueError("A drag starts and ends in the same window.")
             if self.kind == "desktop" and step.target and (step.target.frame or step.target.locator):
                 raise ValueError("Desktop targets use roles, names and ancestry, not browser locators.")
             if step.target and not (step.target.name or step.target.name_regex):

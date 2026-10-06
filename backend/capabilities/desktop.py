@@ -246,6 +246,12 @@ class DesktopAdapter(UnavailableAdapter):
             for key, target in self.choices.items()
         ]
 
+    def owners(self):
+        """choice_id -> the owning window's choice_id from the last listing (a Save As dialog is owned by its
+        document window). Raw window handles never leave the adapter."""
+        by_hwnd = {target["hwnd"]: key for key, target in self.choices.items()}
+        return {key: by_hwnd.get(target.get("owner_hwnd")) for key, target in self.choices.items()}
+
     async def applications(self):
         if not self.enabled:
             return []

@@ -209,7 +209,7 @@ Windows recordings keep a 160×160 PNG crop around each grounded click:
 - Live: `scripts/panini-teach-desktop-smoke.py` with real hooks on the WPF fixture asserts every recorded click
   has a stored PNG crop (`artifacts/teach-desktop/click-crop.png`) and still passes all its existing checks.
 
-Still open: Save As dialogs (owned dialog windows during recording and replay) and live healer qualification
+Still open: live healer qualification
 with a real model.
 
 
@@ -225,3 +225,23 @@ with a real model.
 - **Replay:** the drop target is resolved in the same fresh snapshot and must differ from the source.
 - **Tests:** normalisation, schema rules, and a reviewed fine drag. Live: `scripts/panini-teach-desktop-smoke.py`
   now records a real drag on the WPF fixture and asserts a `desktop_drag` step from "Draft text" to "Apply draft".
+
+## Save As and other owned dialogs — 2026-10-06
+
+- **Native window list:** each window carries `owner_hwnd` (GW_OWNER). The desktop adapter maps it to the owning
+  window's choice id (`owner` in `desktop_windows`), never a raw handle.
+- **Recorder (native):** input in a visible, uncloaked dialog owned by the target window and in its process is in
+  scope. The hook stamps each event with the dialog that owned the input *when it happened*, because UIA processing
+  lags and Enter can close the dialog first. Selectors from a dialog carry `dialog` (its title); a dialog field's
+  value and selector are kept from while it was open. Typing never spans the dialog boundary. Side-specific modifier
+  keys (VK_LSHIFT…VK_RMENU) are modifiers, not text, so `Ctrl+Shift+S` records as one chord.
+- **Steps:** `Target.dialog` (≤200 chars), Windows only; a drag's drop is in the same dialog as its source.
+- **Replay:** before each step and expectation, `follow_dialog` binds the window the step was recorded in. It waits
+  up to 5 s for exactly one window owned by the document with that title (several are ambiguous, none fails "did
+  not open"). Returning to the document re-pins its title, since a reviewed Save As legitimately renames it.
+- **Typing in dialogs:** common dialogs ignore UIA ValuePattern writes, so `desktop_type` in an owned dialog types
+  real keystrokes and replaces the field.
+- **Tests:** dialog selector and schema rules, replay waiting for the owned dialog and returning, and owned-dialog
+  typing in the fine hand. Live: `scripts/panini-teach-notepad-smoke.py` records `Ctrl+Shift+S`, the file name in
+  Notepad's "Save as" dialog and Enter, then replays it with a different disposable file name and checks that file
+  on disk (`saveAsDialogQualified: true`). Owner review removes the driver's two ungrounded select-all steps.
