@@ -191,6 +191,10 @@ class DesktopFine:
             effect = raise_effect(effect, EffectClass.ACCOUNT)
         if word := classify_words(n.name):
             effect = raise_effect(effect, word)
+        if spec.name == "desktop_drag":
+            drop = session["nodes"].get(args.get("to_ref"))
+            if drop and (word := classify_words(drop[0].name)):
+                effect = raise_effect(effect, word)
         if spec.name == "desktop_type" and args.get("submit"):
             # Type-and-submit is one reviewed step with the submit effect (V2-26 combined action).
             effect = raise_effect(effect, EffectClass.SUBMIT)
@@ -229,6 +233,8 @@ class DesktopFine:
             "window": session["page"].get("title", session["target"]["label"]),
             "application": session["target"]["application"],
         }
+        if spec.name == "desktop_drag" and session["nodes"].get(args.get("to_ref")):
+            real["drop_element"] = session["nodes"][args["to_ref"]][0].name
         if terminal and spec.name == "desktop_type":
             real["command"] = args["text"]
         decision = self.h.policy.decide(
@@ -517,6 +523,14 @@ class DesktopFine:
                     )
                 target = self.target(session, args, spec.name)
                 identity = target[1]["identity"]
+                drop_identity = None
+                if spec.name == "desktop_drag":
+                    drop = session["nodes"].get(args.get("to_ref"))
+                    if drop is None or args.get("to_ref") == args.get("ref"):
+                        raise ValueError("Stale or identical drop ref. Take desktop_snapshot again.")
+                    if "password" in drop[0].states or "disabled" in drop[0].states:
+                        raise ValueError("PANINI never drags onto credential or disabled controls.")
+                    drop_identity = drop[1]["identity"]
                 page, found, _ = await self.snapshot(ctx, session, publish=False)
                 title = session["page"].get("title")
                 matching = [(n, row) for n, row in found.values() if row["identity"] == identity]
@@ -537,6 +551,12 @@ class DesktopFine:
                 ):
                     raise ValueError("The target changed or lost focus during review. Take a new snapshot.")
                 target = matching[0]
+                drop_node = None
+                if drop_identity is not None:
+                    drops = [n2 for n2, r2 in found.values() if r2["identity"] == drop_identity]
+                    if len(drops) != 1:
+                        raise ValueError("The drop target changed during review. Take a new snapshot.")
+                    drop_node = drops[0]
                 await self.authorize(ctx, spec, args, session, target, reviewed=reviewed)
                 takeover().gate("desktop", session["choice"], observe=False)
                 n, row = target
@@ -574,6 +594,11 @@ class DesktopFine:
                     action = {"kind": "scroll", "direction": args["direction"]}
                 elif spec.name == "desktop_press":
                     action = {"kind": "keypress", "key": args["key"]}
+                elif spec.name == "desktop_drag":
+                    fx, fy, fw, fh = n.box
+                    tx, ty, tw, th = drop_node.box
+                    action = {"kind": "drag", "from_x": fx + fw // 2, "from_y": fy + fh // 2,
+                              "to_x": tx + tw // 2, "to_y": ty + th // 2}  # fmt: skip
                 else:
                     raise ValueError("Unknown fine desktop operation.")
                 attempted = True

@@ -209,5 +209,19 @@ Windows recordings keep a 160×160 PNG crop around each grounded click:
 - Live: `scripts/panini-teach-desktop-smoke.py` with real hooks on the WPF fixture asserts every recorded click
   has a stored PNG crop (`artifacts/teach-desktop/click-crop.png`) and still passes all its existing checks.
 
-Still open: Save As dialogs (owned dialog windows during recording and replay), gestures, and live healer
-qualification with a real model.
+Still open: Save As dialogs (owned dialog windows during recording and replay) and live healer qualification
+with a real model.
+
+
+## Drag gestures — 2026-10-06
+
+- **Recorder (native):** a left press followed by a release more than 12 px away is a `drag` from the named control
+  under the press to the named control under the release. Unnamed or private ends make it a manual step.
+- **Steps:** `desktop_drag` with `target` (source) and `drop`, a second reviewed target with the same rules: an
+  accessible name, no browser locators, never sensitive. The schema requires `drop` for drags only.
+- **Tool:** `desktop_drag(ref, to_ref)` in the fine vocabulary. Both controls are re-found after review, and the
+  drag runs between their box centres through the worker's paced `drag`. The drop control's name is in the
+  review and can raise the effect (dropping on "Delete" is destroy).
+- **Replay:** the drop target is resolved in the same fresh snapshot and must differ from the source.
+- **Tests:** normalisation, schema rules, and a reviewed fine drag. Live: `scripts/panini-teach-desktop-smoke.py`
+  now records a real drag on the WPF fixture and asserts a `desktop_drag` step from "Draft text" to "Apply draft".

@@ -80,7 +80,12 @@ internal static partial class Program
                 if (code >= 0 && Scoped())
                 {
                     var id = message.ToInt32();
-                    if (id is 0x202 or 0x205 or 0x20a)
+                    if (id == 0x201)
+                    {
+                        var down = Marshal.PtrToStructure<RecordingMouse>(data);
+                        Add(new("down", down.Point.X, down.Point.Y)); // A press: a drag if the release is elsewhere.
+                    }
+                    else if (id is 0x202 or 0x205 or 0x20a)
                     {
                         var value = Marshal.PtrToStructure<RecordingMouse>(data);
                         Add(new(id == 0x202 ? "click" : id == 0x205 ? "manual" : ((short)(value.Data >> 16) > 0 ? "scroll_up" : "scroll_down"), value.Point.X, value.Point.Y));
@@ -124,6 +129,7 @@ internal static partial class Program
         Console.Out.Flush();
         _ = Task.Run(() => { Console.ReadLine(); cancel.Cancel(); });
         AutomationElement? pendingField = null;
+        (int X, int Y)? pressed = null;
         JsonObject? pendingTarget = null;
         string? lastValue = null;
         string? failure = null;
@@ -154,12 +160,13 @@ internal static partial class Program
             }
             return new JsonObject { ["type"] = c.ControlType.ProgrammaticName, ["name"] = c.Name[..Math.Min(c.Name.Length, 500)], ["ancestors"] = ancestry };
         }
-        void Append(string kind, JsonObject? target, string? value = null, string? crop = null)
+        void Append(string kind, JsonObject? target, string? value = null, string? crop = null, JsonObject? drop = null)
         {
             if (events.Count >= 100) throw new InvalidOperationException("RECORDING_STEP_LIMIT");
-            if (target is null) { kind = "manual"; value = null; crop = null; }
+            if (target is null || (kind == "drag" && drop is null)) { kind = "manual"; value = null; crop = null; drop = null; }
             var entry = new JsonObject { ["kind"] = kind, ["target"] = target?.DeepClone(), ["value"] = value };
             if (crop is not null) entry["crop"] = crop; // Only for grounded, non-credential targets.
+            if (drop is not null) entry["drop"] = drop.DeepClone();
             events.Add(entry);
         }
         string? FieldValue(AutomationElement field)
@@ -209,6 +216,17 @@ internal static partial class Program
                 if (overflow != 0) throw new InvalidOperationException("RECORDING_EVENT_LIMIT");
                 if (!queue.TryTake(out var item, 100)) continue;
                 if (!TargetForeground(hwnd)) { Flush(); continue; }
+                if (item.Kind == "down") { pressed = (item.X, item.Y); continue; }
+                if (item.Kind == "click" && pressed is { } start
+                    && Math.Abs(item.X - start.X) + Math.Abs(item.Y - start.Y) > 12)
+                {
+                    // Press here, release there: a drag from one named control to another.
+                    pressed = null;
+                    Flush();
+                    Append("drag", Selector(At(start.X, start.Y)), drop: Selector(At(item.X, item.Y)));
+                    continue;
+                }
+                if (item.Kind == "click") pressed = null;
                 if (item.Kind == "text")
                 {
                     Interlocked.Exchange(ref textQueued, 0);

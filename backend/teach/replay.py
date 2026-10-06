@@ -253,6 +253,12 @@ class Replayer:
                             await self.call(ctx, "browser_click", grounded)
                         elif step.tool not in {"desktop_press", "desktop_type"}:
                             args.update(grounded)
+                        if step.tool == "desktop_drag":
+                            drop = Target.model_validate(substitute(step.drop.model_dump(), values))
+                            landing = resolve(drop, candidates)
+                            if landing is None or landing["ref"] == node["ref"]:
+                                raise ValueError("The reviewed drop target is missing or ambiguous.")
+                            args["to_ref"] = landing["ref"]
                     result = await self.call(ctx, step.tool, args)
                     evidence.extend(result.evidence)
                 for expectation in replay.expect:

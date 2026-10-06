@@ -525,6 +525,43 @@
    "strict": false,
    "order": 189,
    "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_drag",
+   "hand": "desktop_fine",
+   "title": "Drag on Windows",
+   "description": "Drag from one control to another in the selected window (reorder an item, move a slider, drop a file onto a folder). Both refs come from the latest desktop_snapshot. Reviewed as one action; snapshot and verify afterward.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "ref": {
+      "type": "string",
+      "pattern": "^w[0-9]+$",
+      "maxLength": 24
+     },
+     "to_ref": {
+      "type": "string",
+      "pattern": "^w[0-9]+$",
+      "maxLength": 24
+     }
+    },
+    "required": [
+     "ref",
+     "to_ref"
+    ]
+   },
+   "effect": "submit",
+   "dynamic_effect": true,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 188,
+   "concurrency": "desktop_fine"
   }
  ],
  "prompt": {

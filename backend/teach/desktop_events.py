@@ -63,7 +63,11 @@ def normalize(events, application):
                 "key": "desktop_press",
                 "scroll_up": "desktop_scroll",
                 "scroll_down": "desktop_scroll",
+                "drag": "desktop_drag",
             }.get(kind)
+            drop = target(event.get("drop")) if kind == "drag" else None
+            if kind == "drag" and not drop:
+                tool = None  # A drag that does not end on a named control is reviewed manually.
             if kind == "type":
                 if not isinstance(value, str) or len(value) > 2000 or _SECRET.search(value):
                     tool = None
@@ -85,6 +89,8 @@ def normalize(events, application):
                 args = {"direction": kind.removeprefix("scroll_")}
             if tool:
                 item = {"id": item["id"], "tool": tool, "target": grounded, "args": args}
+                if drop:
+                    item["drop"] = drop
                 crop = event.get("crop")
                 if kind == "click" and isinstance(crop, str) and 0 < len(crop) <= 110_000:
                     item["_crop"] = crop  # Stored as an artifact by the recorder, never inside the skill.

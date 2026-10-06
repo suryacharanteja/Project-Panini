@@ -567,3 +567,28 @@ async def test_draw_macro_hands_the_subject_to_the_visual_planner_for_the_select
     assert drawn.outcome == "ok" and drawn.data["outcome"] == "partial"
     assert asked == [("desktop", f"In {session['target']['label']}, draw a simple elephant.")]
     assert not session["nodes"]  # Canvas refs are stale after drawing.
+
+
+@pytest.mark.anyio
+async def test_drag_goes_from_one_reviewed_control_to_another(world):
+    h = world
+    session = await snapshot(h)
+    source, destination = ref(session, "Draft text"), ref(session, "Apply draft")
+    same = await h.registry.call(h.ctx, "desktop_drag", {"ref": source, "to_ref": source})
+    assert same.outcome == "blocked"
+    reviews = []
+
+    async def confirm(title, detail, decision):
+        reviews.append(json.loads(detail[detail.index("{") :])["drop_element"])
+        return True
+
+    h.ctx.confirm_decision = confirm
+    session = await snapshot(h)
+    source, destination = ref(session, "Draft text"), ref(session, "Apply draft")
+    result = await h.registry.call(h.ctx, "desktop_drag", {"ref": source, "to_ref": destination})
+    assert result.outcome == "ok", result.content
+    action = next(c for c in reversed(h.pipe.calls) if c["op"] == "fine_action")["action"]
+    assert action["kind"] == "drag" and {"from_x", "from_y", "to_x", "to_y"} <= set(action)
+    assert (action["from_x"], action["from_y"]) != (action["to_x"], action["to_y"])
+    assert h.ctx.desktop_policy[1]["drop_element"] == "Apply draft"
+    assert reviews == ["Apply draft"]  # The review names where the drag ends.

@@ -43,6 +43,7 @@ DESKTOP_ACTIONS = {
     "desktop_toggle",
     "desktop_scroll",
     "desktop_press",
+    "desktop_drag",
     "manual",
 }
 DESKTOP_ASSERTIONS = {"desktop_verify_text", "desktop_verify_value", "desktop_verify_element"}
@@ -86,6 +87,7 @@ class Step(Strict):
     crop_artifact: str | None = Field(
         default=None, pattern=r"^[A-Za-z0-9_-]{6,64}$"
     )  # Recorded visual context.
+    drop: Target | None = None  # desktop_drag only: the reviewed control the drag ends on.
 
 
 class Input(Strict):
@@ -148,6 +150,15 @@ class Replay(Strict):
                 raise ValueError("Targets need an accessible name, not a raw selector alone.")
             if step.target and SENSITIVE.search(str(step.target.model_dump())):
                 raise ValueError("Sensitive controls cannot be replay targets.")
+            if (step.tool == "desktop_drag") != (step.drop is not None):
+                raise ValueError("A drag needs exactly one reviewed drop target, and only drags have one.")
+            if step.drop and (
+                not (step.drop.name or step.drop.name_regex)
+                or step.drop.frame
+                or step.drop.locator
+                or SENSITIVE.search(str(step.drop.model_dump()))
+            ):
+                raise ValueError("Drop targets need an accessible name and cannot be sensitive controls.")
             if step.checked is not None and (
                 step.tool not in {"browser_click", "desktop_toggle", "desktop_click"}
                 or not step.target

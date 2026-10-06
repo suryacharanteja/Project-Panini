@@ -554,3 +554,51 @@ async def test_recorded_clicks_keep_a_small_png_crop_as_an_artifact_and_drop_any
     assert "crop_artifact" not in steps[1]  # Not a PNG: dropped.
     assert "crop_artifact" not in steps[2]  # Only clicks carry crops.
     assert all("_crop" not in step and "crop" not in step for step in steps)  # Never inside the skill itself.
+
+
+def test_recorded_drags_become_reviewed_drag_steps_with_a_drop_target():
+    from backend.teach.desktop_events import normalize
+    from backend.teach.schema import Replay
+
+    data = normalize(
+        [
+            {
+                "kind": "drag",
+                "target": {"type": "ListItem", "name": "Report.docx"},
+                "drop": {"type": "TreeItem", "name": "Archive"},
+            },  # fmt: skip
+            {"kind": "drag", "target": {"type": "ListItem", "name": "Report.docx"}},  # No named drop.
+        ],
+        "explorer",
+    )
+    first, second = data["steps"]
+    assert first["tool"] == "desktop_drag" and first["drop"]["name"] == "Archive"
+    assert second["tool"] == "manual"
+    Replay.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        {"id": "s1", "tool": "desktop_drag", "target": {"role": "listitem", "name": "A"}},
+        {
+            "id": "s1",
+            "tool": "desktop_click",
+            "target": {"role": "button", "name": "A"},
+            "drop": {"role": "button", "name": "B"},
+        },
+        {
+            "id": "s1",
+            "tool": "desktop_drag",
+            "target": {"role": "listitem", "name": "A"},
+            "drop": {"role": "edit", "name": "Password"},
+        },
+    ],
+)
+def test_drop_targets_are_required_for_drags_only_and_never_sensitive(step):
+    from pydantic import ValidationError
+
+    from backend.teach.schema import Replay
+
+    with pytest.raises(ValidationError):
+        Replay.model_validate({"kind": "desktop", "desktop_application": "explorer", "steps": [step]})

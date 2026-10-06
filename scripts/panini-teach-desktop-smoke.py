@@ -324,6 +324,7 @@ async def main():
                     assert "private-fixture-typed-text" not in artifact[1].decode("utf-8")
                     assert "fixture-secret" not in artifact[1].decode("utf-8")
                 await h.desktop_fine.stop(ctx)
+                await h.desktop_fine.stop(ctx)
                 # Stop is a durable fence, including a start racing with a cancellation.
                 for index in range(3):
                     task = "record-cancel-" + uuid4().hex
@@ -337,13 +338,28 @@ async def main():
                     try:
                         await pending
                     except Fault as error:
-                        assert error.code == "RECORDING_STOPPED"
+                        assert error.code == "RECORDING_STOPPED", error.code
                     assert (await pipe.call({"op": "record_stop", "task_id": task, "recording_id": "wrong"}))[
                         "state"
                     ] == "idle"
                 # A fresh recording remains available after each fenced cancellation.
                 await h.teach.recorder.start_desktop(ctx, "fixture")
                 assert (await h.teach.recorder.stop(discard=True))["state"] == "discarded"
+                # A real drag between two named controls is recorded as one reviewed drag step (V2-22 gestures).
+                drag_frame = await worker("snapshot")
+                source = next(r["bounds"] for r in drag_frame["nodes"] if r["name"] == "Draft text")
+                landing = next(r["bounds"] for r in drag_frame["nodes"] if r["name"] == "Apply draft")
+                await h.teach.recorder.start_desktop(ctx, "fixture")
+                await worker("action", {
+                    "name": "Draft text", "kind": "drag",
+                    "from_x": round(source["x"] + source["width"] / 2), "from_y": round(source["y"] + source["height"] / 2),
+                    "to_x": round(landing["x"] + landing["width"] / 2), "to_y": round(landing["y"] + landing["height"] / 2),
+                })  # fmt: skip
+                await asyncio.sleep(0.5)
+                dragged = await h.teach.recorder.stop()
+                drags = [step for step in dragged["replay"]["steps"] if step["tool"] == "desktop_drag"]
+                assert drags and drags[0]["drop"]["name"] == "Apply draft", dragged["replay"]["steps"]
+                assert drags[0]["target"]["name"] == "Draft text"
                 # Suspend only our fixture's UIA provider, then kill only our broker.
                 # Its recording child must exit even if a provider call cannot complete.
                 frame = await worker("snapshot")
