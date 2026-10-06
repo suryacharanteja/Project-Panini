@@ -266,6 +266,7 @@ def runtime(app) -> "Fabric":
         h = app.state.harness
         fabric = Fabric(app, h.store, SecretStore(data_directory() / "fabric-secrets.bin"))
         fabric.watch_interrupts(h.interrupts)
+        h.fabric = fabric  # Channels (WhatsApp) register their webhooks with its ingress.
         if hasattr(h, "continuity"):
             h.continuity.fabric = fabric
         if hasattr(h, "triggers"):

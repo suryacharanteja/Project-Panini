@@ -135,9 +135,9 @@ conversation; members speak only through delegations or when addressed directly.
 
 ## 8. Acceptance criteria
 
-- [ ] Two personas with different grants proven isolated (tools, memories, computers).
-- [ ] A group thread shows attributed messages and receipts from a lead and a member.
-- [ ] Revoking a persona grant mid-run stops that persona's next effect.
+- [x] Two personas with different grants proven isolated (tools, memories, computers). Evidence: `test_memory_read_write_and_delete_are_scoped`, `test_policy_does_not_inherit_owner_or_surface_grants`, `test_member_receipts_computers_and_resume_keep_identity` (2026-10-06).
+- [x] A group thread shows attributed messages and receipts from a lead and a member. Evidence: `test_team_attribution_depth_and_budget`, `test_avatar_finish_message_has_public_identity_and_durable_attribution`, `test_persona_resume.py` (2026-10-06).
+- [x] Revoking a persona grant mid-run stops that persona's next effect. Evidence: `test_revocation_cancels_in_flight_persona_in_shadow_mode`, grant-revocation case in `test_persona_resume.py` (2026-10-06).
 
 ## 9. Rollout and rollback
 

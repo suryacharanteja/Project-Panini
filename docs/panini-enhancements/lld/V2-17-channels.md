@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 3 · P1 · L (1.5 weeks; channels can ship one at a time) |
 | Depends on | V2-06 (run engine), V2-13 (guardian gate), V2-14 (WhatsApp ingress only) |
 | Flag | `PANINI_CHANNELS` = comma list of `slack`, `telegram`, `whatsapp`, `email` (default empty) |
-| Status | In progress: Telegram text workflow and shared manager built; live-provider qualification and other channels pending |
+| Status | In progress: Telegram, Slack, WhatsApp and email built and tested with fakes; live accounts pending |
 | Decision | Register D5 (WhatsApp Cloud API only) |
 
 ## 1. Outcome
@@ -174,9 +174,9 @@ CREATE TABLE IF NOT EXISTS channel_messages(channel TEXT NOT NULL, message_id TE
 
 - [ ] Telegram and Slack live with allow-lists; WhatsApp and email pass their integration tests (live when
       accounts exist).
-- [ ] Ported OpenDots Slack tests green.
-- [ ] Provider errors never appear in replies or logs (safe-failure test).
-- [ ] A conversation started in Telegram continues on the avatar (thread binding).
+- [x] Ported OpenDots Slack tests green (`backend/tests/channels/test_providers.py`, 2026-10-06).
+- [x] Provider errors never appear in replies or logs (safe-failure tests for Telegram and Slack, 2026-10-06).
+- [x] A conversation started in Telegram (or any owner channel) continues on the avatar (thread binding, 2026-10-06).
 
 ## 9. Rollout and rollback
 
@@ -211,3 +211,38 @@ The browser check uses real Admin APIs, a real durable worker and a fake Telegra
 isolated loopback preview. It does not qualify a live bot. Telegram attachment/voice input, proactive
 notices, automatic avatar handoff, persona selection, Slack Socket Mode, WhatsApp and email remain open.
 Remote desktop/code hands are not enabled by this increment. Red-team work remains disabled/deferred.
+
+
+## 12. Slack, WhatsApp and email — 2026-10-06
+
+All four channels share the manager, dedupe, outbox, jobs, policy and guard. No new SDKs.
+
+- **Accounts** (`accounts.py`): per-channel validation of owner IDs, groups, settings and write-only secrets
+  (Slack bot + app tokens and workspace ID; WhatsApp access token, app secret, verify token, phone number ID;
+  email mailbox settings and password). An account cannot change channel.
+- **Identity** (`identity.py`): Telegram unchanged; Slack needs the exact workspace and member IDs, and a DM or an
+  allow-listed channel; WhatsApp needs the owner's number in a 1:1 thread; email needs an allow-listed address
+  **and** aligned DKIM or SPF in the receiving server's Authentication-Results.
+- **Slack** (`slack.py`): Socket Mode over a plain WebSocket (`apps.connections.open`), every envelope acknowledged
+  before work, replies in thread via `chat.postMessage`. OpenDots behaviour ported: mentions subscribe their
+  thread (not while paused; a failed subscribe still answers), follow-ups only in subscribed threads and never on
+  unreadable state, bots/apps/edits/deletes ignored.
+- **WhatsApp** (`whatsapp.py`): inbound through V2-14 ingress (challenge and X-Hub-Signature-256 verified on the
+  PC), one thread per number, replies through the Graph API. It needs remote access for its public webhook.
+- **Email** (`mail.py`): IMAP polling with the last UID stored after durable delivery, threads by
+  References/In-Reply-To root, quoted history removed, SMTP replies in thread marked `Auto-Submitted`; mailing
+  lists, auto-generated mail and PANINI's own address are never answered.
+- **Avatar handoff** (`brain/threads.py`): the avatar's continue-recent now includes owner channel threads.
+- **Admin** → Channels: one page for all four channels.
+
+Tests: `backend/tests/channels/test_providers.py` (14), on top of the existing 26 Telegram tests. Covered:
+- the seven OpenDots Slack cases;
+- Socket Mode acks before work;
+- WhatsApp through real ingress (forged signature refused);
+- email authentication alignment, auto-mail suppression, threading and UID bookkeeping;
+- channel text can never resolve an approval (I4);
+- write-only routes;
+- avatar handoff.
+
+Not done: live qualification with a real Telegram bot, Slack workspace, WhatsApp number and mailbox (they need
+your accounts and tokens); attachments and proactive notices.

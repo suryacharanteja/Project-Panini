@@ -470,7 +470,7 @@ def test_admin_boundary_refuses_unauthenticated_channel_configuration(setup):
         assert client.get("/api/admin/v1/channels").status_code == 401
         response = client.get("/api/admin/v1/channels", headers={"x-panini-console": "owner-console-token"})
         assert response.status_code == 200 and TOKEN not in response.text
-        assert response.json()["implemented"] == ["telegram"]
+        assert response.json()["implemented"] == ["telegram", "slack", "whatsapp", "email"]
         rejected_token = TOKEN * 20
         rejected = client.post(
             "/api/admin/v1/channels/telegram",

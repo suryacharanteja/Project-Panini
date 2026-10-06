@@ -9,14 +9,27 @@ from .accounts import Accounts
 from .base import OutboundMessage, safe_failure
 from .format import chunks
 from .identity import owner
-from .telegram import Telegram
+from .identity import permitted as allowed_for
+
+
+def provider_for(account, accounts):
+    """The adapter for an account's channel."""
+    from .mail import Email
+    from .slack import Slack
+    from .telegram import Telegram
+    from .whatsapp import WhatsApp
+
+    return {"telegram": Telegram, "slack": Slack, "whatsapp": WhatsApp, "email": Email}[account["channel"]](
+        account, accounts
+    )
+
 
 FAILURE = "I couldn't complete that. Check PANINI and try again."
 APPROVAL = "Approval needed: check PANINI on your PC or phone. Channel messages cannot approve actions."
 
 
 class ChannelManager:
-    def __init__(self, harness, secrets, *, provider_factory=Telegram, clock=time.time):
+    def __init__(self, harness, secrets, *, provider_factory=provider_for, clock=time.time):
         self.h, self.store, self.clock = harness, harness.store, clock
         self.accounts = Accounts(self.store, secrets, clock)
         self.provider_factory = provider_factory
@@ -34,12 +47,7 @@ class ChannelManager:
             account = self.accounts.get(job["account_id"])
         except KeyError:
             return False
-        chat = job["thread_key"].split(":", 1)[0]
-        return (
-            self.enabled(account)
-            and job["sender_id"] in account["config"]["owner_ids"]
-            and (not chat.startswith("-") or chat in account["config"]["group_ids"])
-        )
+        return self.enabled(account) and allowed_for(account, job)
 
     async def apply(self):
         async with self._apply_lock:
@@ -50,6 +58,12 @@ class ChannelManager:
             for account in self.accounts.list():
                 if self.enabled(account):
                     provider = self.provider_factory(account, self.accounts)
+                    provider.paused = self.h.policy.paused  # Slack does not subscribe threads while paused.
+                    fabric = getattr(self.h, "fabric", None)
+                    if getattr(provider, "ingress", "absent") is None and fabric is not None:
+                        provider.ingress = (
+                            fabric.ingress
+                        )  # WhatsApp arrives through the verified webhook ingress.
                     self.providers[account["id"]] = provider
                     await provider.start(self.deliver)
 
@@ -150,7 +164,7 @@ class ChannelManager:
                     self.enqueue(
                         message.account,
                         message.thread_key,
-                        "Send a text request. Telegram attachment input is not available yet.",
+                        "Send a text request. Attachments are not available on channels yet.",
                     )
                 elif not message.text.strip() or len(message.text) > 4000:
                     self.enqueue(
@@ -290,7 +304,7 @@ class ChannelManager:
     def status(self):
         return {
             "enabled_channels": sorted(v2flags.listed("PANINI_CHANNELS")),
-            "implemented": ["telegram"],
+            "implemented": ["telegram", "slack", "whatsapp", "email"],
             "accounts": [
                 {
                     **account,

@@ -41,12 +41,14 @@ class Threads:
         return thread_id
 
     def _continue(self, surface):
-        """The avatar resumes its latest recent thread after a restart (PANINI_AVATAR_THREAD=continue)."""
+        """The avatar resumes the latest recent owner conversation (PANINI_AVATAR_THREAD=continue): its own, or one
+        you started on a messaging channel (V2-17 handoff: channel threads exist only for verified owners)."""
         if surface != "avatar" or os.getenv("PANINI_AVATAR_THREAD", "continue").strip().lower() == "new":
             return None
         row = self.store.one(
             "SELECT s.id FROM thread_bindings b JOIN sessions s ON s.id=b.thread_id "
-            "WHERE b.surface='avatar' AND s.updated >= ? ORDER BY s.updated DESC LIMIT 1",
+            "WHERE b.surface IN ('avatar','telegram','slack','whatsapp','email') AND s.updated >= ? "
+            "ORDER BY s.updated DESC LIMIT 1",
             (self.clock() - CONTINUE_WINDOW_S,),
         )
         return row["id"] if row else None
