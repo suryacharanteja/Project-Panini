@@ -83,6 +83,9 @@ class Step(Strict):
     target: Target | None = None
     checked: bool | None = None
     note: str = Field(default="", max_length=500)
+    crop_artifact: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9_-]{6,64}$"
+    )  # Recorded visual context.
 
 
 class Input(Strict):

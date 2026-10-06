@@ -250,6 +250,11 @@ async def main():
                     s["tool"] == "manual" for s in replay["steps"]
                 ), replay
                 assert any(s["tool"] == "desktop_type" for s in replay["steps"])
+                clicks = [s for s in replay["steps"] if s["tool"] == "desktop_click"]
+                assert clicks and all(s.get("crop_artifact") for s in clicks), clicks
+                crop_row, crop = h.artifacts.get(clicks[-1]["crop_artifact"])
+                assert crop_row["mime"] == "image/png" and crop.startswith(bytes.fromhex("89504e470d0a1a0a"))
+                (evidence / "click-crop.png").write_bytes(crop)
                 encoded = json.dumps(replay)
                 assert (
                     "fixture-secret" not in encoded

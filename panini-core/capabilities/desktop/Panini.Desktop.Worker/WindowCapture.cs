@@ -55,6 +55,60 @@ internal static class WindowCapture
         return right - left < 4 && bottom - top < 50 && left >= (rect.X - sourceX) * sx
             && right < (rect.Right - sourceX) * sx && top >= (rect.Y - sourceY) * sy && bottom < (rect.Bottom - sourceY) * sy;
     }
+    /// <summary>
+    /// Crop, but never block the recorder: PrintWindow waits for the target to paint, so a hung or suspended app
+    /// would stall recording. Hung windows are skipped and a slow capture is abandoned after the timeout.
+    /// </summary>
+    public static string? CropWithin(IntPtr window, int screenX, int screenY, int timeoutMs)
+    {
+        if (IsHungAppWindow(window)) return null;
+        var work = Task.Run(() => Crop(window, screenX, screenY));
+        return work.Wait(timeoutMs) ? work.Result : null;
+    }
+
+    [DllImport("user32.dll")] private static extern bool IsHungAppWindow(IntPtr window);
+
+    /// <summary>A small PNG around a screen point in the window (a recorded step's visual context), or null.</summary>
+    public static string? Crop(IntPtr window, int screenX, int screenY, int size = 160)
+    {
+        if (IsIconic(window) || !GetWindowRect(window, out var rect)) return null;
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+        if (width <= 0 || height <= 0 || width > 8192 || height > 8192) return null;
+        int x = screenX - rect.Left, y = screenY - rect.Top;
+        if (x < 0 || y < 0 || x >= width || y >= height) return null;
+        var dc = GetWindowDC(window);
+        if (dc == IntPtr.Zero) return null;
+        IntPtr memory = IntPtr.Zero, bitmap = IntPtr.Zero, previous = IntPtr.Zero;
+        try
+        {
+            memory = CreateCompatibleDC(dc);
+            bitmap = CreateCompatibleBitmap(dc, width, height);
+            if (memory == IntPtr.Zero || bitmap == IntPtr.Zero) return null;
+            previous = SelectObject(memory, bitmap);
+            if (previous == IntPtr.Zero || previous == new IntPtr(-1) || !PrintWindow(window, memory, 2)) return null;
+            var source = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(bitmap, IntPtr.Zero, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+            var half = size / 2;
+            var left = Math.Clamp(x - half, 0, Math.Max(0, width - size));
+            var top = Math.Clamp(y - half, 0, Math.Max(0, height - size));
+            var region = new System.Windows.Int32Rect(left, top, Math.Min(size, width - left), Math.Min(size, height - top));
+            var cropped = new FormatConvertedBitmap(new CroppedBitmap(source, region), PixelFormats.Bgr24, null, 0);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(cropped));
+            using var stream = new System.IO.MemoryStream();
+            encoder.Save(stream);
+            return stream.Length <= 80000 ? Convert.ToBase64String(stream.ToArray()) : null;
+        }
+        catch (Exception) { return null; } // A crop is optional context; recording never fails because of it.
+        finally
+        {
+            if (previous != IntPtr.Zero && previous != new IntPtr(-1)) SelectObject(memory, previous);
+            if (bitmap != IntPtr.Zero) DeleteObject(bitmap);
+            if (memory != IntPtr.Zero) DeleteDC(memory);
+            ReleaseDC(window, dc);
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential)] private struct Rect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);

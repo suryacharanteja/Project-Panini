@@ -154,11 +154,13 @@ internal static partial class Program
             }
             return new JsonObject { ["type"] = c.ControlType.ProgrammaticName, ["name"] = c.Name[..Math.Min(c.Name.Length, 500)], ["ancestors"] = ancestry };
         }
-        void Append(string kind, JsonObject? target, string? value = null)
+        void Append(string kind, JsonObject? target, string? value = null, string? crop = null)
         {
             if (events.Count >= 100) throw new InvalidOperationException("RECORDING_STEP_LIMIT");
-            if (target is null) { kind = "manual"; value = null; }
-            events.Add(new JsonObject { ["kind"] = kind, ["target"] = target?.DeepClone(), ["value"] = value });
+            if (target is null) { kind = "manual"; value = null; crop = null; }
+            var entry = new JsonObject { ["kind"] = kind, ["target"] = target?.DeepClone(), ["value"] = value };
+            if (crop is not null) entry["crop"] = crop; // Only for grounded, non-credential targets.
+            events.Add(entry);
         }
         string? FieldValue(AutomationElement field)
         {
@@ -232,7 +234,9 @@ internal static partial class Program
                         Append("manual", null); // Post-key focus alone cannot identify the original receiver.
                         continue;
                     }
-                    Append(item.Kind, Selector(element), item.Kind == "key" ? item.Key : null);
+                    var selector = Selector(element);
+                    var crop = item.Kind == "click" && selector is not null ? WindowCapture.CropWithin(hwnd, item.X, item.Y, 500) : null;
+                    Append(item.Kind, selector, item.Kind == "key" ? item.Key : null, crop);
                 }
             }
             // UIA processing may be behind the hook queue; replayability needs a complete sequence.

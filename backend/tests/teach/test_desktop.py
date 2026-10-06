@@ -523,3 +523,34 @@ async def test_run_database_failure_does_not_leave_teach_locked(world, monkeypat
     assert not any(p["op"] == "fine_action" for p in h.pipe.calls)
     monkeypatch.setattr(h.store, "execute", original)
     assert (await h.teach.replayer.run(h.ctx, "desktop-demo", {})).outcome == "ok"
+
+
+@pytest.mark.anyio
+async def test_recorded_clicks_keep_a_small_png_crop_as_an_artifact_and_drop_anything_else(world):
+    import base64
+
+    h = world
+    png = base64.b64encode(
+        bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c63"
+            "f8cfc0f01f0005000201e5274b3f0000000049454e44ae426082"
+        )  # fmt: skip
+    ).decode()
+    h.record_events = [
+        {"kind": "click", "target": {"type": "Button", "name": "Apply draft"}, "crop": png},
+        {
+            "kind": "click",
+            "target": {"type": "Button", "name": "Apply draft"},
+            "crop": base64.b64encode(b"GIF89a").decode(),
+        },
+        {"kind": "type", "target": {"type": "Edit", "name": "Draft text"}, "value": "after", "crop": png},
+    ]
+    await h.teach.recorder.start_desktop(h.ctx, "fixture")
+    result = await h.teach.recorder.stop()
+    steps = result["replay"]["steps"]
+    assert steps[0]["tool"] == "desktop_click" and steps[0]["crop_artifact"]
+    row, data = h.artifacts.get(steps[0]["crop_artifact"])
+    assert row["mime"] == "image/png" and data.startswith(bytes.fromhex("89504e470d0a1a0a"))
+    assert "crop_artifact" not in steps[1]  # Not a PNG: dropped.
+    assert "crop_artifact" not in steps[2]  # Only clicks carry crops.
+    assert all("_crop" not in step and "crop" not in step for step in steps)  # Never inside the skill itself.

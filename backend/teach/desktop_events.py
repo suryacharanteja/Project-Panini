@@ -85,6 +85,9 @@ def normalize(events, application):
                 args = {"direction": kind.removeprefix("scroll_")}
             if tool:
                 item = {"id": item["id"], "tool": tool, "target": grounded, "args": args}
+                crop = event.get("crop")
+                if kind == "click" and isinstance(crop, str) and 0 < len(crop) <= 110_000:
+                    item["_crop"] = crop  # Stored as an artifact by the recorder, never inside the skill.
         steps.append(item)
     if not steps:
         steps = [{"id": "s1", "tool": "manual", "note": "No replayable Windows interaction was recorded."}]

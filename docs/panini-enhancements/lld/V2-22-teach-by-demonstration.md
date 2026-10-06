@@ -194,3 +194,20 @@ Flag on after step 4 for browsers; desktop recording follows. Rollback: flag off
 
 - Share skills between PANINI installations (export/import with signatures)? Recommendation: later; skills
   can contain sensitive URLs and steps.
+
+
+## Per-step crops — 2026-10-06
+
+Windows recordings keep a 160×160 PNG crop around each grounded click:
+- The worker (`WindowCapture.Crop`/`CropWithin`) captures the target window with PrintWindow. Hung windows are
+  skipped and a capture is abandoned after 500 ms, so a hung or suspended app never stalls recording (found and
+  fixed with the smoke's suspended-provider case).
+- Password and ungrounded targets get no crop.
+- The recorder checks each crop is a small PNG, stores it as a `screenshot` artifact, and the step carries only
+  `crop_artifact`; images never live inside the skill.
+- Tests: `backend/tests/teach/test_desktop.py` (PNG kept, non-PNG dropped, clicks only).
+- Live: `scripts/panini-teach-desktop-smoke.py` with real hooks on the WPF fixture asserts every recorded click
+  has a stored PNG crop (`artifacts/teach-desktop/click-crop.png`) and still passes all its existing checks.
+
+Still open: Save As dialogs (owned dialog windows during recording and replay), gestures, and live healer
+qualification with a real model.

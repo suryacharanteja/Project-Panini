@@ -30,6 +30,19 @@ class Recorder:
             (time.time(),),
         )
 
+    def _crop(self, encoded, run_id):
+        """A recorded click's PNG crop, kept as an artifact. Anything that is not a small PNG is dropped."""
+        import base64
+        import binascii
+
+        try:
+            data = base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError):
+            return None
+        if not data.startswith(bytes.fromhex("89504e470d0a1a0a")) or len(data) > 80_000:
+            return None
+        return self.h.artifacts.put("screenshot", data, "image/png", run_id=run_id)
+
     async def start(self, ctx, browser):
         if self.starting:
             raise ValueError("A recording is already starting.")
@@ -194,6 +207,12 @@ class Recorder:
         if result["state"] != "stopped":
             return "interrupted", {}
         data = desktop_events.normalize(result["events"], current["application"])
+        for step in data["steps"]:
+            crop = step.pop("_crop", None)
+            if crop:
+                step_crop = self._crop(crop, current["id"])
+                if step_crop:
+                    step["crop_artifact"] = step_crop
         if current["application_id"]:
             if len(data["steps"]) >= 100:
                 raise ValueError("The recording has no room for its application launch step.")
