@@ -25,6 +25,7 @@ def provider_for(account, accounts):
 
 
 FAILURE = "I couldn't complete that. Check PANINI and try again."
+LONG_RESULT = 3000  # Longer verified results become a Space page (V2-19) with a short reply.
 APPROVAL = "Approval needed: check PANINI on your PC or phone. Channel messages cannot approve actions."
 
 
@@ -222,15 +223,18 @@ class ChannelManager:
             if self.accounts.state(job["account_id"], marker, False):
                 continue
             result = task.get("result") or {}
+            verified = task["status"] == "completed" and result.get("outcome") == "verified_complete"
             text = (
                 APPROVAL
                 if task["status"] == "waiting_input"
                 else (
                     result.get("message") or "The task finished. Check PANINI for the result."
-                    if task["status"] == "completed" and result.get("outcome") == "verified_complete"
+                    if verified
                     else FAILURE
                 )
             )
+            if verified and len(text) > LONG_RESULT:
+                text = self.long_result(job, text)
             with self.store.lock:
                 self.store.execute("BEGIN IMMEDIATE")
                 try:
@@ -244,6 +248,38 @@ class ChannelManager:
                 except BaseException:
                     self.store.execute("ROLLBACK")
                     raise
+
+    def long_result(self, job, text):
+        """Save a long verified result as a page in the owner's default Space and reply with a summary of it.
+        Without Spaces or a default Space, the full text is sent in chunks as before."""
+        if not v2flags.enabled("PANINI_SPACES") or not hasattr(self.h, "spaces"):
+            return text
+        try:
+            persona = self.h.personas.get("panini") if hasattr(self.h, "personas") else {}
+            space_id = (persona or {}).get("default_space_id")
+            if not space_id:
+                return text
+            # Idempotent: a retried reconcile reuses the page saved for this task.
+            key = f"page:{job['task_id']}"
+            saved = self.accounts.state(job["account_id"], key, None)
+            if saved:
+                page = self.h.spaces.read(saved)
+            else:
+                task = self.h.tasks.get(job["task_id"])
+                body = f"{text}\n\nSource: channel task `{job['task_id']}` ({task.get('title', '')})"
+                page = self.h.spaces.create(
+                    space_id,
+                    (task.get("title") or "Channel result")[:240],
+                    body,
+                    source_thread_id=job["thread_id"],
+                )
+                self.accounts.set_state(job["account_id"], key, page["id"])
+        except Exception as error:  # noqa: BLE001 -- the reply still goes out in full.
+            safe_failure(error)
+            return text
+        summary = text[:600].rsplit(" ", 1)[0]
+        title = page.get("title", "Result")
+        return "\n\n".join([summary + "…", f'The full result is saved in PANINI as the page "{title}".'])
 
     async def flush(self):
         # One delivery per account/thread per tick; a bounded durable queue survives restart.

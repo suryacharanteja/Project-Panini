@@ -186,3 +186,9 @@ versions are refused. Focused backend tests, an authenticated owner API test and
 API smoke cover this path. Still open: channel integrations, a real-service Teach-to-Spaces browser qualification, additional
 crash-window and live-provider qualification, installed-runtime and production release gates.
 This is a local development increment; V2-19 and the full LLD program remain in progress.
+
+
+## Channel integration — 2026-10-06
+
+Long verified channel results (Telegram, Slack, WhatsApp, email) become pages in the owner's default Space, with
+a short reply naming the page (`backend/channels/manager.py`, `test_a_long_channel_result_is_saved_as_a_space_page_with_a_short_reply`).

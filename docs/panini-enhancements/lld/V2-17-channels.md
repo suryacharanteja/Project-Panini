@@ -245,4 +245,14 @@ Tests: `backend/tests/channels/test_providers.py` (14), on top of the existing 2
 - avatar handoff.
 
 Not done: live qualification with a real Telegram bot, Slack workspace, WhatsApp number and mailbox (they need
-your accounts and tokens); attachments and proactive notices.
+your accounts and tokens); channel attachments.
+
+### Proactive notices and long results — 2026-10-06
+
+- **Proactive notices:** V2-24 presence routing already delivers notices to a preferred channel. It now accepts
+  any owner's private conversation, not only chats whose thread key equals the sender: Telegram and WhatsApp
+  1:1 chats, Slack direct messages, and email threads. Groups and Slack channel threads are never notice
+  destinations (`identity.private_conversation`).
+- **Long results (with V2-19):** a verified channel result longer than 3,000 characters is saved as a page in
+  the owner's default Space (when Spaces are on and a default Space is set). The reply is a short summary
+  naming the page. Retries reuse the same page; without a Space the full text is sent in chunks as before.

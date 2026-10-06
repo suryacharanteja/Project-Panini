@@ -456,3 +456,40 @@ def test_a_conversation_started_on_a_channel_continues_on_the_avatar(world):
     channel_thread = h.store.one("SELECT thread_id FROM channel_jobs")["thread_id"]
     assert h.threads.bind("avatar", "pc-session-1") == channel_thread  # Handoff: same conversation.
     assert h.threads.bind("avatar", "pc-session-2", continue_recent=False) != channel_thread
+
+
+def test_proactive_notices_go_only_to_the_owners_private_conversation():
+    from backend.channels.identity import private_conversation
+
+    def job(key, sender):
+        return {"thread_key": key, "sender_id": sender}
+
+    assert private_conversation({"channel": "telegram"}, job("42", "42"))
+    assert not private_conversation({"channel": "telegram"}, job("-100", "42"))  # A group.
+    assert private_conversation({"channel": "whatsapp"}, job("447700900001", "447700900001"))
+    assert private_conversation({"channel": "slack"}, job("TTEAM001:DOWNER01:", "UOWNER01"))
+    assert not private_conversation({"channel": "slack"}, job("TTEAM001:CTEAM001:1.1", "UOWNER01"))
+    assert private_conversation({"channel": "email"}, job("<m1@example.com>", "owner@example.com"))
+
+
+def test_a_long_channel_result_is_saved_as_a_space_page_with_a_short_reply(world, monkeypatch):
+    h, manager = world
+    monkeypatch.setenv("PANINI_SPACES", "true")
+    space = h.spaces.create_space("Results")
+    h.personas.update("panini", default_space_id=space["id"])
+    account = slack_account(manager)
+    long_answer = "Findings. " + "Detail sentence about the market. " * 150
+    h.model_factory().steps[:] = [{"text": long_answer}]
+
+    async def scenario():
+        await manager.deliver(adapter(manager, account).normalize(slack_event(text="<@UBOT0001> research")))
+        task = h.tasks.claim()
+        outcome, text, evidence = await h.run_background(task, h.tasks)
+        h.tasks.finish(task["id"], task["lease_id"], outcome, text, evidence)
+        manager.reconcile()
+
+    asyncio.run(scenario())
+    reply = h.store.one("SELECT text FROM channel_outbox")["text"]
+    assert len(reply) < 1000 and "saved in PANINI as the page" in reply
+    pages = h.spaces.pages(space["id"])
+    assert len(pages) == 1 and "Detail sentence about the market." in h.spaces.read(pages[0]["id"])["content"]

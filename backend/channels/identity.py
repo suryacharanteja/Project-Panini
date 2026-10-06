@@ -56,3 +56,16 @@ def permitted(account, job):
         is_dm = conversation.startswith("D")
         return team == config.get("team_id") and (is_dm or conversation in config.get("group_ids", []))
     return channel in {"whatsapp", "email"}
+
+
+def private_conversation(account, job):
+    """Whether a past owner job is the owner's own private conversation (a safe place for proactive notices)."""
+    channel, key, sender = account["channel"], job["thread_key"], job["sender_id"]
+    if channel in {"telegram", "whatsapp"}:
+        return key == sender
+    if channel == "slack":
+        _, conversation, thread_ts = (key.split(":", 2) + ["", ""])[:3]
+        return conversation.startswith("D") and not thread_ts  # A direct message with PANINI.
+    if channel == "email":
+        return True  # Mail threads are 1:1 with the authenticated owner address.
+    return False

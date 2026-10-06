@@ -157,7 +157,7 @@ class Continuity:
         destinations = []
         if self.enabled:
             for row in self.store.all(
-                "SELECT DISTINCT account_id,thread_key,sender_id FROM channel_jobs WHERE thread_key=sender_id ORDER BY created DESC LIMIT 50"
+                "SELECT DISTINCT account_id,thread_key,sender_id FROM channel_jobs ORDER BY created DESC LIMIT 50"
             ):
                 try:
                     job = self.channel({"account_id": row["account_id"], "thread_key": row["thread_key"]})
@@ -190,9 +190,18 @@ class Continuity:
             (choice["account_id"], choice["thread_key"]),
         )
         # Only a previously authenticated owner's private conversation is a notification destination.
-        if not job or not self.h.channels.permitted(job) or job["thread_key"] != job["sender_id"]:
+        if not job or not self.h.channels.permitted(job) or not self._private(job):
             raise ValueError("Preferred channel must be an enabled owner's private conversation.")
         return job
+
+    def _private(self, job):
+        from ..channels.identity import private_conversation
+
+        try:
+            account = self.h.channels.accounts.get(job["account_id"])
+        except KeyError:
+            return False
+        return private_conversation(account, job)
 
     def configure(self, value):
         validate_settings(value)
