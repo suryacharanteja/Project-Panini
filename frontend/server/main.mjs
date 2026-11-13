@@ -14,7 +14,7 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createConsoleAuth } from './console-auth.mjs';
+import { createSigninGate } from './signin-gate.mjs';
 import { createGateway } from './gateway.mjs';
 import { readConfig } from './config.mjs';
 import { snapshotRelease } from './release.mjs';
@@ -59,7 +59,10 @@ const release = production
   ? snapshotRelease(root, { immutable: Boolean(backendExecutable) })
   : undefined;
 const searchFetch = release ? (await import(release.entry)).default.fetch : undefined;
-const consoleAuth = createConsoleAuth({ secret: launch.PANINI_CONSOLE_SECRET });
+// PANINI-SIGNIN runs as a supervised child; without it PANINI stays locked (fail closed).
+const signinDir = (process.env.PANINI_SIGNIN_DIR || '').trim();
+const signinPort = Number(process.env.PANINI_SIGNIN_PORT || 3240);
+const signin = createSigninGate({ url: signinDir ? `http://127.0.0.1:${signinPort}` : '' });
 const gateway = createGateway({
   backendUrl,
   searchUrl,
@@ -69,7 +72,7 @@ const gateway = createGateway({
   production,
   searchConfigured,
   allowedOrigins,
-  consoleAuth,
+  signin,
   consoleToken: launch.PANINI_CONSOLE_TOKEN,
 });
 const children = [];
@@ -145,6 +148,15 @@ await new Promise((resolve, reject) => {
   gateway.server.once('error', reject);
   gateway.server.listen(port, '127.0.0.1', resolve);
 });
+if (signinDir && existsSync(join(signinDir, 'server.mjs'))) {
+  run('signin', process.execPath, ['--env-file-if-exists=.env', 'server.mjs'], signinDir, {
+    ...withoutSecrets(process.env),
+    PORT: String(signinPort),
+    PANINI_PUBLIC_ORIGIN: `http://localhost:${port}`,
+  });
+} else {
+  console.error('[signin] PANINI_SIGNIN_DIR is missing or invalid. PANINI stays locked until it is set.');
+}
 run('backend', backendCommand, backendArgs, root, {
   ...withoutSecrets(process.env),
   BACKEND_PORT: String(backendPort),
@@ -169,12 +181,11 @@ if (!production) {
   );
 }
 discovery.write({ pid: process.pid, port, console_secret: launch.PANINI_CONSOLE_SECRET });
-const link = `http://localhost:${port}/auth/login?ticket=${consoleAuth.ticket(30 * 60 * 1000)}`;
+const link = `http://localhost:${port}/signin`;
 console.log(
   `PANINI runtime on http://localhost:${port} (${production ? 'production' : 'development'})`,
 );
 if (!managed) {
-  console.log(`Web console (one-time sign-in link, 30 minutes): ${link}`);
-  console.log('Need a new link later? Run: npm run console');
+  console.log(`Web console (sign in with your face and voice): ${link}`);
 }
 console.log('Service readiness: /api/health');

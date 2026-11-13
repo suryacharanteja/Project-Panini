@@ -18,6 +18,7 @@ import {
 import { proxy } from './proxy.mjs';
 import { attachComparisonSocket } from './comparison-socket.mjs';
 import { attachExtensionSocket } from './extension-socket.mjs';
+import { forwardToSignin } from './signin-gate.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BACKEND_ROUTES = new Set([
@@ -64,6 +65,9 @@ const OPEN_API = new Set([
 ]);
 // Pages anyone on this computer may open: the sign-in help and a sample site for the agent.
 const OPEN_PAGES = new Set(['/auth-required.html', '/browser-demo.html']);
+// Sign-in page, its assets and its APIs (PANINI-SIGNIN owns these routes).
+const SIGNIN_ROUTE =
+  /^\/(signin$|auth\.js$|auth-style\.css$|learning\.(js|css)$|vendor\/webauthn\.js$|api\/(auth|enroll|privacy|profile|learning)\/)/;
 
 function wantsDocument(req) {
   const destination = req.headers['sec-fetch-dest'];
@@ -87,8 +91,8 @@ export function createGateway({
   allowedOrigins = [],
   rateLimit = 60,
   searchLimit = 4,
-  // createConsoleAuth(...) from console-auth.mjs. null disables sign-in (unit tests only).
-  consoleAuth = null,
+  // createSigninGate(...) from signin-gate.mjs: the face-and-voice gate. null disables it (unit tests only).
+  signin = null,
   // Per-launch service token; the backend refuses console routes without it.
   consoleToken = '',
 }) {
@@ -126,37 +130,41 @@ export function createGateway({
     ),
   );
 
-  app.get('/auth/login', (req, res) => {
-    if (!consoleAuth) return res.redirect(303, safeNext(req.query.next));
-    const session = consoleAuth.redeem(req.query.ticket);
-    if (!session) return res.redirect(303, '/auth-required.html?expired=1');
-    res.setHeader('Set-Cookie', consoleAuth.cookie(session));
-    return res.redirect(303, safeNext(req.query.next));
-  });
-  app.post('/auth/logout', (req, res) => {
-    if (consoleAuth) {
-      consoleAuth.signOut(req);
-      res.setHeader('Set-Cookie', consoleAuth.expiredCookie);
-    }
-    res.json({ status: 'signed_out' });
-  });
-
-  if (consoleAuth)
+  if (signin) {
+    // PANINI-SIGNIN owns sign-in: its page and APIs are relayed unchanged.
     app.use((req, res, next) => {
-      if (OPEN_PAGES.has(req.path) || OPEN_API.has(req.path) || consoleAuth.authenticated(req))
+      if (!SIGNIN_ROUTE.test(req.path)) return next();
+      return forwardToSignin(signin, req, res, req.originalUrl.replace(/^\/signin(?=\?|$)/, '/'));
+    });
+    // Shell tickets only lead to the sign-in page; they never open the console on their own.
+    app.get('/auth/login', (req, res) =>
+      res.redirect(303, `/signin?next=${encodeURIComponent(safeNext(req.query.next))}`),
+    );
+    app.post('/auth/logout', async (req, res) => {
+      for (const cookie of await signin.lock(req.headers.cookie || '')) res.append('Set-Cookie', cookie);
+      res.json({ status: 'signed_out' });
+    });
+    app.use(async (req, res, next) => {
+      if (
+        OPEN_PAGES.has(req.path) ||
+        OPEN_API.has(req.path) ||
+        (await signin.unlocked(req.headers.cookie || ''))
+      )
         return next();
       const api =
         req.path.startsWith('/api/') ||
         req.path.startsWith('/search/api/') ||
         (req.path.startsWith('/search') && !['GET', 'HEAD'].includes(req.method));
       if (api)
-        return res
-          .status(401)
-          .json({ error: 'Sign in to the PANINI console.', code: 'CONSOLE_SIGN_IN_REQUIRED' });
+        return res.status(401).json({
+          error: 'Sign in to PANINI with your face and voice.',
+          code: 'CONSOLE_SIGN_IN_REQUIRED',
+        });
       if (req.method === 'GET' && wantsDocument(req))
-        return res.redirect(302, '/auth-required.html');
+        return res.redirect(302, `/signin?next=${encodeURIComponent(req.originalUrl)}`);
       return next(); // Static assets carry no user data.
     });
+  }
 
   app.use(limitRequests(limiter));
 
@@ -279,7 +287,7 @@ export function createGateway({
     backendUrl,
     allowedOrigins,
     limiter,
-    consoleAuth,
+    authorize: signin ? (req) => signin.unlocked(req.headers.cookie || '') : null,
     consoleToken,
   });
   // Registered after the comparison socket so it can 404 unclaimed paths.
