@@ -1,30 +1,18 @@
-"""Optional, bounded Jev reranker for code locations in a PANINI source checkout.
+"""Optional, bounded Jev reranker for code locations (needs AI_GATEWAY_API_KEY and `panini-cli jev setup`).
 
 The CLI model still chooses edits. Jev only changes which matching location is
 shown first; all lexical matches remain available through narrower searches.
 """
 
 import os
-import sys
-from pathlib import Path
 
 
 def enabled():
     return os.getenv("PANINI_CLI_JEV", "").casefold() in ("1", "true", "yes")
 
 
-def source_root():
-    for parent in Path(__file__).resolve().parents:
-        if (parent / "backend" / "jev_client.py").is_file():
-            return parent
-    raise RuntimeError("Jev requires a PANINI source checkout")
-
-
 def select(query, candidates):
-    root = source_root()
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-    from backend import jev_client
+    from ..jev import client as jev_client
 
     state = {
         "user_query": query[:500],

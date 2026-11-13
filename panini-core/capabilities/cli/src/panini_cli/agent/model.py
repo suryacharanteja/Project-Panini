@@ -1,20 +1,17 @@
-"""Model clients: OpenAI's Responses API in stateless mode, and a scripted model for tests."""
+"""Model clients: OpenAI's Responses API (stateless), local Ollama models, a router over both, and a scripted model for tests."""
 
 import asyncio
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import model_router
+from . import config, model_router
 
 
 class ModelError(Exception):
     """The model could not respond; the message is safe to show the user."""
-
-
-class TransientModelError(ModelError):
-    """A connection, timeout or provider outage that permits local fallback."""
 
 
 @dataclass
@@ -45,11 +42,11 @@ class OpenAIModel:
     """Nothing is stored at OpenAI (store=False). Encrypted reasoning is carried forward so a
     reasoning model keeps its chain of thought across tool calls within the conversation."""
 
-    def __init__(self, model, reasoning_effort=None, timeout=180.0, max_retries=3):
+    def __init__(self, model, reasoning_effort=None, timeout=180.0):
         from openai import AsyncOpenAI
 
         self.model, self.effort = model, reasoning_effort
-        self.client = AsyncOpenAI(timeout=timeout, max_retries=max_retries)
+        self.client = AsyncOpenAI(timeout=timeout, max_retries=3)
         self.reasoning = True
 
     def switch_model(self, model):
@@ -57,16 +54,7 @@ class OpenAIModel:
             self.model = model
             self.reasoning = True
 
-    async def respond(
-        self,
-        instructions,
-        items,
-        tools,
-        on_text=None,
-        output_schema=None,
-        cache_key=None,
-        max_output_tokens=None,
-    ):
+    async def respond(self, instructions, items, tools, on_text=None, output_schema=None, cache_key=None):
         import openai
 
         params = {
@@ -80,8 +68,6 @@ class OpenAIModel:
         }
         if cache_key:
             params["prompt_cache_key"] = cache_key
-        if max_output_tokens is not None:
-            params["max_output_tokens"] = max_output_tokens
         if output_schema:
             params["text"] = {
                 "format": {
@@ -116,14 +102,11 @@ class OpenAIModel:
             except openai.RateLimitError:
                 raise ModelError("OpenAI's rate limit or quota was reached. Try again later.") from None
             except openai.APITimeoutError:
-                raise TransientModelError("The model request timed out.") from None
+                raise ModelError("The model request timed out.") from None
             except openai.APIConnectionError:
-                raise TransientModelError("Could not reach OpenAI. Check the network connection.") from None
+                raise ModelError("Could not reach OpenAI. Check the network connection.") from None
             except openai.APIStatusError as exc:
-                error = f"OpenAI error {exc.status_code}: {_detail(exc)}"
-                if exc.status_code >= 500:
-                    raise TransientModelError(error) from None
-                raise ModelError(error) from None
+                raise ModelError(f"OpenAI error {exc.status_code}: {_detail(exc)}") from None
 
     async def _stream(self, request, on_text):
         stream = await self.client.responses.create(**request)
@@ -167,9 +150,6 @@ class OpenAIModel:
         )
 
 
-_SHARED = {}
-
-
 class ScriptedModel:
     """Replays scripted steps for tests and offline demos; it is never a real model.
 
@@ -184,26 +164,9 @@ class ScriptedModel:
 
     @classmethod
     def from_file(cls, path):
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-        if isinstance(data, dict) and data.get("shared"):
-            # {"shared": true, "steps": [...]}: one queue for every agent in the process (a lead and its
-            # delegates take their turns in call order), instead of each agent replaying from the start.
-            key = str(Path(path).resolve())
-            if key not in _SHARED:
-                _SHARED[key] = cls(data["steps"])
-            return _SHARED[key]
-        return cls(data)
+        return cls(json.loads(Path(path).read_text(encoding="utf-8")))
 
-    async def respond(
-        self,
-        instructions,
-        items,
-        tools,
-        on_text=None,
-        output_schema=None,
-        cache_key=None,
-        max_output_tokens=None,
-    ):
+    async def respond(self, instructions, items, tools, on_text=None, output_schema=None, cache_key=None):
         self.requests.append({"instructions": instructions, "items": json.loads(json.dumps(items))})
         step = self.steps.pop(0) if self.steps else {"text": "Done."}
         if step.get("delay"):
@@ -245,39 +208,105 @@ class ScriptedModel:
         return ModelTurn(output, text, calls, {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0})
 
 
+class RoutedModel:
+    """One model object for the whole session; the router decides which backend answers.
+
+    A model id starting with "ollama/" runs locally through Ollama, anything else on OpenAI.
+    Backends are created on first use, so a local-only setup never needs an OpenAI key.
+    When the local model errors or produces an unusable turn, and the model was chosen by the
+    router (not pinned by the user), the same request is retried once on the cloud fallback
+    and local backend errors open a short session cooldown.
+    """
+
+    def __init__(self, model, reasoning_effort=None, timeout=180.0, *, escalate=True):
+        self.model, self.effort, self.timeout, self.escalate = model, reasoning_effort, timeout, escalate
+        self.local_blocked = False
+        self._local_retry_at = 0.0
+        self.escalation = None  # Set to a reason each time a local turn moves to the cloud.
+        self.escalation_model = model_router.fallback_model()
+        self._cloud = None
+        self._local = None
+
+    def refresh_local_health(self):
+        """A failed local attempt opens a bounded circuit, rather than disabling the whole session."""
+        if self.local_blocked and time.monotonic() >= self._local_retry_at:
+            self.local_blocked = False
+
+    def switch_model(self, model):
+        self.model = model
+
+    def force_escalate(self, reason):
+        """Move this session from the local model to the cloud fallback (the loop found a bad answer)."""
+        if not (self.escalate and config.is_local(self.model)):
+            return False
+        self.escalation = f"{self.model}: {reason}"
+        # A task-quality failure does not disqualify local for unrelated next turns.
+        self.model = getattr(self, "escalation_model", None) or model_router.fallback_model()
+        return True
+
+    def _cloud_backend(self):
+        if self._cloud is None:
+            try:
+                self._cloud = OpenAIModel(self.model, self.effort, self.timeout)
+            except Exception as exc:  # noqa: BLE001 -- the client raises when no key is configured.
+                raise ModelError(f"OpenAI is not available: {str(exc)[:200]}") from None
+        self._cloud.switch_model(self.model)
+        return self._cloud
+
+    def _local_backend(self):
+        from .ollama import OllamaModel
+
+        if self._local is None:
+            self._local = OllamaModel(self.model)
+        self._local.switch_model(self.model)
+        return self._local
+
+    async def respond(self, instructions, items, tools, on_text=None, output_schema=None, cache_key=None):
+        if not config.is_local(self.model):
+            return await self._cloud_backend().respond(instructions, items, tools, on_text, output_schema, cache_key)
+        from . import ollama
+        # Provider transport capabilities determine tool support, not the task's subject.
+        local_tools = [tool for tool in tools if tool.get("type") == "function"]
+        while True:
+            streamed = []
+            problem = None
+
+            async def watch(item_id, delta, streamed=streamed):
+                streamed.append(delta)
+                if on_text:
+                    await on_text(item_id, delta)
+
+            try:
+                turn = await self._local_backend().respond(
+                    instructions, items, local_tools, watch, output_schema, cache_key
+                )
+                problem = ollama.invalid_turn(turn, local_tools)
+                if problem:
+                    raise ModelError(f"the local model gave an unusable turn ({problem})")
+                return turn
+            except ModelError as exc:
+                # Anything already streamed stays on screen; the retry's answer follows it. Failing the
+                # whole task over a visible "I need to search…" line would be worse.
+                if not self.escalate:
+                    raise
+                strong = config.local_strong_model()
+                self.escalation = f"{self.model}: {str(exc)[:140]}"
+                if strong and self.model != strong and ollama.has_model(strong):
+                    self.model = strong  # One step up on this machine before paying for the cloud.
+                    continue
+                self.local_blocked = problem is None
+                self._local_retry_at = time.monotonic() + 60
+                self.model = self.escalation_model
+                return await self._cloud_backend().respond(instructions, items, tools, on_text, output_schema, cache_key)
+
+
 def create_model(settings):
     script = os.getenv("PANINI_CLI_SCRIPTED_MODEL")
     if script:
         return ScriptedModel.from_file(script)
-    mode = os.getenv("PANINI_LOCAL_MODE", "off").strip().lower()
-    if mode == "private":
-        from .local_model import LocalModel
-
-        return LocalModel(timeout=settings.request_timeout)
-    if mode == "fallback":
-        from .config import configured_key
-        from .local_model import FallbackModel, LocalModel
-        from .local_quality import qualified
-
-        local_ready, reason = qualified("agent")
-        if not configured_key():
-            if not local_ready:
-                raise ModelError(reason)
-            return LocalModel(timeout=settings.request_timeout)
-        cloud = OpenAIModel(
-            model_router.actual_model(settings.model),
-            settings.reasoning_effort,
-            min(settings.request_timeout, 12.0),
-            max_retries=0,
-        )
-        return (
-            FallbackModel(cloud, lambda: LocalModel(timeout=settings.request_timeout))
-            if local_ready
-            else cloud
-        )
-    cloud = OpenAIModel(
+    return RoutedModel(
         model_router.actual_model(settings.model),
         settings.reasoning_effort,
         settings.request_timeout,
+        escalate=model_router.enabled(settings.model),
     )
-    return cloud

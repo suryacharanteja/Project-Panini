@@ -14,7 +14,7 @@ from .progress import EventJournal
 
 
 def data_path():
-    data_root = os.getenv("PANINI_CLI_DATA") or os.getenv("PANINI_CLI_DATA")
+    data_root = os.getenv("PANINI_CLI_DATA") or os.getenv("JEV_REV_CODE_DATA")
     return Path(data_root or Path.home() / ".panini-cli") / "events.sqlite3"
 
 
