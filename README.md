@@ -1,4 +1,30 @@
-# PANINI
+<p align="center">
+  <img src="assets/panini-genesis-banner.svg" alt="PANINI Genesis: the algorithmic P emblem, a network that derives outward from its root" width="100%">
+</p>
+
+<h1 align="center">PANINI</h1>
+
+<p align="center">
+  <strong>A voice-first assistant that thinks, acts, asks and verifies.</strong>
+</p>
+
+<p align="center">
+  <img alt="Windows 11" src="https://img.shields.io/badge/Windows-11-0078D4?logo=windows11&logoColor=white">
+  <img alt="Node.js 22.19+" src="https://img.shields.io/badge/Node.js-22.19%2B-339933?logo=nodedotjs&logoColor=white">
+  <img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white">
+  <img alt="Electron" src="https://img.shields.io/badge/Electron-avatar-47848F?logo=electron&logoColor=white">
+  <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-d98a52">
+</p>
+
+<p align="center">
+  <a href="#genesis">Genesis</a> ·
+  <a href="#quick-start-windows">Quick start</a> ·
+  <a href="#how-it-behaves">How it behaves</a> ·
+  <a href="#security-model">Security</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="docs/PANINI-HOW-IT-WORKS.md">Docs</a> ·
+  <a href="#licenses">License</a>
+</p>
 
 PANINI is a voice-first assistant for Windows. Its Electron avatar stays on your
 desktop, takes spoken or typed instructions, delegates them to capabilities, and
@@ -25,6 +51,27 @@ stays usable while PANINI works. See [architecture](docs/ARCHITECTURE.md).
  JevRev Claw (extension) ───┘   gateway+backend  ├─ Desktop ─► Windows companion (named pipe)
                                                  └─ PANINI-CLI ─► terminal/system agent in approved workspaces
 ```
+
+## Genesis
+
+<p align="center">
+  <img src="assets/panini-genesis-banner.svg" alt="PANINI Genesis emblem" width="70%">
+</p>
+
+**Genesis** is PANINI's emblem and its home page. The algorithmic **P** is a
+network, not a logo stamped on a page, and each part has a meaning:
+
+- **Root (Dhatu):** the user's intent. Every derivation starts here.
+- **Ring (Sutras):** the derivation network. Rules apply outward from the root,
+  breadth first, so each step is traceable.
+- **Stem:** the gateways to the capabilities (Search, Browser, Desktop, CLI).
+- **Hub:** where the stem leaves the bowl. Requests pass through it.
+
+On the web console the Genesis P breathes at 12 beats per minute and fires
+threads to the capability nodes while work runs. Its live health board lists
+what needs attention, what is due today, and quick actions. The same geometry is
+used by the avatar, so PANINI looks the same wherever you meet it. Source:
+[`panini-core/apps/admin/src/genesis/`](panini-core/apps/admin/src/genesis/).
 
 ## Quick start (Windows)
 

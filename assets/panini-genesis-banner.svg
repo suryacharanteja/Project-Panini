@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 420" role="img" aria-labelledby="t d">
+  <title id="t">PANINI Genesis</title>
+  <desc id="d">The Genesis emblem: an algorithmic P whose network derives outward from its root.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#171a21"/><stop offset="1" stop-color="#0c0e12"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f2b07a" stop-opacity="0.55"/><stop offset="1" stop-color="#f2b07a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="copper" cx="0.35" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#ffd2a6"/><stop offset="0.6" stop-color="#d98a52"/><stop offset="1" stop-color="#8f4f2a"/>
+    </radialGradient>
+  </defs>
+  <style>
+    .edge { stroke: #d98a52; stroke-width: 1.6; stroke-opacity: 0.55; }
+    .node { fill: url(#copper); }
+    .root { fill: #ffe2c2; }
+    .title { font: 700 84px "Segoe UI", system-ui, sans-serif; fill: #f4efe9; letter-spacing: 6px; }
+    .sub { font: 600 26px "Segoe UI", system-ui, sans-serif; fill: #d98a52; letter-spacing: 8px; }
+    .tag { font: 400 24px "Segoe UI", system-ui, sans-serif; fill: #a9a39b; }
+  </style>
+  <rect width="1280" height="420" fill="url(#bg)"/>
+  <circle cx="300" cy="210" r="230" fill="url(#glow)"/>
+  <g>
+    <line x1="171.4" y1="136.2" x2="193.9" y2="90.5" class="edge"/>
+    <line x1="193.9" y1="90.5" x2="232.0" y2="56.8" class="edge"/>
+    <line x1="232.0" y1="56.8" x2="280.0" y2="40.0" class="edge"/>
+    <line x1="280.0" y1="40.0" x2="330.8" y2="42.7" class="edge"/>
+    <line x1="330.8" y1="42.7" x2="376.8" y2="64.5" class="edge"/>
+    <line x1="376.8" y1="64.5" x2="411.1" y2="102.1" class="edge"/>
+    <line x1="411.1" y1="102.1" x2="428.6" y2="149.9" class="edge"/>
+    <line x1="428.6" y1="149.9" x2="426.6" y2="200.8" class="edge"/>
+    <line x1="426.6" y1="200.8" x2="405.4" y2="247.1" class="edge"/>
+    <line x1="405.4" y1="247.1" x2="368.3" y2="281.9" class="edge"/>
+    <line x1="368.3" y1="281.9" x2="320.7" y2="300.0" class="edge"/>
+    <line x1="320.7" y1="300.0" x2="269.8" y2="298.7" class="edge"/>
+    <line x1="269.8" y1="298.7" x2="223.3" y2="278.2" class="edge"/>
+    <line x1="236.5" y1="116.3" x2="275.2" y2="91.4" class="edge"/>
+    <line x1="275.2" y1="91.4" x2="321.2" y2="91.2" class="edge"/>
+    <line x1="321.2" y1="91.2" x2="360.1" y2="115.8" class="edge"/>
+    <line x1="360.1" y1="115.8" x2="379.8" y2="157.4" class="edge"/>
+    <line x1="379.8" y1="157.4" x2="374.0" y2="203.1" class="edge"/>
+    <line x1="374.0" y1="203.1" x2="344.5" y2="238.5" class="edge"/>
+    <line x1="344.5" y1="238.5" x2="300.7" y2="252.5" class="edge"/>
+    <line x1="300.7" y1="252.5" x2="256.2" y2="240.8" class="edge"/>
+    <line x1="171.4" y1="136.2" x2="236.5" y2="116.3" class="edge"/>
+    <line x1="171.4" y1="136.2" x2="275.2" y2="91.4" class="edge"/>
+    <line x1="193.9" y1="90.5" x2="236.5" y2="116.3" class="edge"/>
+    <line x1="193.9" y1="90.5" x2="275.2" y2="91.4" class="edge"/>
+    <line x1="232.0" y1="56.8" x2="275.2" y2="91.4" class="edge"/>
+    <line x1="232.0" y1="56.8" x2="236.5" y2="116.3" class="edge"/>
+    <line x1="280.0" y1="40.0" x2="275.2" y2="91.4" class="edge"/>
+    <line x1="280.0" y1="40.0" x2="321.2" y2="91.2" class="edge"/>
+    <line x1="330.8" y1="42.7" x2="321.2" y2="91.2" class="edge"/>
+    <line x1="330.8" y1="42.7" x2="275.2" y2="91.4" class="edge"/>
+    <line x1="376.8" y1="64.5" x2="360.1" y2="115.8" class="edge"/>
+    <line x1="376.8" y1="64.5" x2="321.2" y2="91.2" class="edge"/>
+    <line x1="411.1" y1="102.1" x2="360.1" y2="115.8" class="edge"/>
+    <line x1="411.1" y1="102.1" x2="379.8" y2="157.4" class="edge"/>
+    <line x1="428.6" y1="149.9" x2="379.8" y2="157.4" class="edge"/>
+    <line x1="428.6" y1="149.9" x2="374.0" y2="203.1" class="edge"/>
+    <line x1="426.6" y1="200.8" x2="374.0" y2="203.1" class="edge"/>
+    <line x1="426.6" y1="200.8" x2="379.8" y2="157.4" class="edge"/>
+    <line x1="405.4" y1="247.1" x2="374.0" y2="203.1" class="edge"/>
+    <line x1="405.4" y1="247.1" x2="344.5" y2="238.5" class="edge"/>
+    <line x1="368.3" y1="281.9" x2="344.5" y2="238.5" class="edge"/>
+    <line x1="368.3" y1="281.9" x2="300.7" y2="252.5" class="edge"/>
+    <line x1="320.7" y1="300.0" x2="300.7" y2="252.5" class="edge"/>
+    <line x1="320.7" y1="300.0" x2="344.5" y2="238.5" class="edge"/>
+    <line x1="269.8" y1="298.7" x2="300.7" y2="252.5" class="edge"/>
+    <line x1="269.8" y1="298.7" x2="256.2" y2="240.8" class="edge"/>
+    <line x1="223.3" y1="278.2" x2="256.2" y2="240.8" class="edge"/>
+    <line x1="223.3" y1="278.2" x2="300.7" y2="252.5" class="edge"/>
+    <line x1="236.5" y1="116.3" x2="266.1" y2="184.3" class="edge"/>
+    <line x1="275.2" y1="91.4" x2="325.3" y2="134.7" class="edge"/>
+    <line x1="321.2" y1="91.2" x2="325.3" y2="134.7" class="edge"/>
+    <line x1="360.1" y1="115.8" x2="325.3" y2="134.7" class="edge"/>
+    <line x1="379.8" y1="157.4" x2="345.7" y2="166.7" class="edge"/>
+    <line x1="374.0" y1="203.1" x2="331.2" y2="201.8" class="edge"/>
+    <line x1="344.5" y1="238.5" x2="331.2" y2="201.8" class="edge"/>
+    <line x1="300.7" y1="252.5" x2="294.1" y2="210.0" class="edge"/>
+    <line x1="256.2" y1="240.8" x2="294.1" y2="210.0" class="edge"/>
+    <line x1="294.4" y1="174.4" x2="325.3" y2="134.7" class="edge"/>
+    <line x1="294.4" y1="174.4" x2="345.7" y2="166.7" class="edge"/>
+    <line x1="294.4" y1="174.4" x2="331.2" y2="201.8" class="edge"/>
+    <line x1="294.4" y1="174.4" x2="294.1" y2="210.0" class="edge"/>
+    <line x1="294.4" y1="174.4" x2="266.1" y2="184.3" class="edge"/>
+    <line x1="294.4" y1="174.4" x2="236.9" y2="223.7" class="edge"/>
+    <line x1="256.2" y1="240.8" x2="236.9" y2="223.7" class="edge"/>
+    <line x1="236.9" y1="223.7" x2="210.1" y2="293.6" class="edge"/>
+    <line x1="236.9" y1="223.7" x2="257.4" y2="306.0" class="edge"/>
+    <line x1="210.1" y1="293.6" x2="257.4" y2="306.0" class="edge"/>
+    <line x1="210.1" y1="293.6" x2="230.7" y2="347.1" class="edge"/>
+    <line x1="257.4" y1="306.0" x2="230.7" y2="347.1" class="edge"/>
+    <line x1="230.7" y1="347.1" x2="191.6" y2="380.0" class="edge"/>
+    <line x1="230.7" y1="347.1" x2="265.7" y2="380.0" class="edge"/>
+    <line x1="210.1" y1="293.6" x2="191.6" y2="380.0" class="edge"/>
+    <line x1="191.6" y1="380.0" x2="265.7" y2="380.0" class="edge"/>
+    <circle cx="294.4" cy="174.4" r="8" class="root"/>
+    <circle cx="171.4" cy="136.2" r="4.5" class="node"/>
+    <circle cx="193.9" cy="90.5" r="4.5" class="node"/>
+    <circle cx="232.0" cy="56.8" r="4.5" class="node"/>
+    <circle cx="280.0" cy="40.0" r="4.5" class="node"/>
+    <circle cx="330.8" cy="42.7" r="4.5" class="node"/>
+    <circle cx="376.8" cy="64.5" r="4.5" class="node"/>
+    <circle cx="411.1" cy="102.1" r="4.5" class="node"/>
+    <circle cx="428.6" cy="149.9" r="4.5" class="node"/>
+    <circle cx="426.6" cy="200.8" r="4.5" class="node"/>
+    <circle cx="405.4" cy="247.1" r="4.5" class="node"/>
+    <circle cx="368.3" cy="281.9" r="4.5" class="node"/>
+    <circle cx="320.7" cy="300.0" r="4.5" class="node"/>
+    <circle cx="269.8" cy="298.7" r="4.5" class="node"/>
+    <circle cx="223.3" cy="278.2" r="4.5" class="node"/>
+    <circle cx="236.5" cy="116.3" r="4.5" class="node"/>
+    <circle cx="275.2" cy="91.4" r="4.5" class="node"/>
+    <circle cx="321.2" cy="91.2" r="4.5" class="node"/>
+    <circle cx="360.1" cy="115.8" r="4.5" class="node"/>
+    <circle cx="379.8" cy="157.4" r="4.5" class="node"/>
+    <circle cx="374.0" cy="203.1" r="4.5" class="node"/>
+    <circle cx="344.5" cy="238.5" r="4.5" class="node"/>
+    <circle cx="300.7" cy="252.5" r="4.5" class="node"/>
+    <circle cx="256.2" cy="240.8" r="4.5" class="node"/>
+    <circle cx="325.3" cy="134.7" r="4.5" class="node"/>
+    <circle cx="345.7" cy="166.7" r="4.5" class="node"/>
+    <circle cx="331.2" cy="201.8" r="4.5" class="node"/>
+    <circle cx="294.1" cy="210.0" r="4.5" class="node"/>
+    <circle cx="266.1" cy="184.3" r="4.5" class="node"/>
+    <circle cx="236.9" cy="223.7" r="9" class="node"/>
+    <circle cx="210.1" cy="293.6" r="4.5" class="node"/>
+    <circle cx="257.4" cy="306.0" r="4.5" class="node"/>
+    <circle cx="230.7" cy="347.1" r="4.5" class="node"/>
+    <circle cx="191.6" cy="380.0" r="4.5" class="node"/>
+    <circle cx="265.7" cy="380.0" r="4.5" class="node"/>
+  </g>
+  <text x="560" y="180" class="title">PANINI</text>
+  <text x="564" y="232" class="sub">GENESIS</text>
+  <text x="564" y="290" class="tag">A voice-first assistant that thinks, acts, asks and verifies.</text>
+</svg>
