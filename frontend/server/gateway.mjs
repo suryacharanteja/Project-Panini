@@ -134,7 +134,8 @@ export function createGateway({
     // PANINI-SIGNIN owns sign-in: its page and APIs are relayed unchanged.
     app.use((req, res, next) => {
       if (!SIGNIN_ROUTE.test(req.path)) return next();
-      return forwardToSignin(signin, req, res, req.originalUrl.replace(/^\/signin(?=\?|$)/, '/'));
+      // The page reads ?next= from the browser's own address, so the service gets plain /.
+      return forwardToSignin(signin, req, res, req.path === '/signin' ? '/' : req.originalUrl);
     });
     // Shell tickets only lead to the sign-in page; they never open the console on their own.
     app.get('/auth/login', (req, res) =>

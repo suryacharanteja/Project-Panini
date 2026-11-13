@@ -184,7 +184,7 @@ test('sign-in pages and APIs are relayed to PANINI-SIGNIN, and only a passing ch
     const page = await fetch(base + '/signin?next=%2Factivity');
     assert.equal(page.status, 200);
     assert.match(await page.text(), /PANINI-SIGNIN/);
-    assert.equal(signin.received.at(-1).url, '/?next=%2Factivity');
+    assert.equal(signin.received.at(-1).url, '/');
     assert.equal((await fetch(base + '/auth.js')).status, 200);
 
     // A failed check stays locked and returns the service's message.
