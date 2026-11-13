@@ -1,7 +1,7 @@
 """Developer preview of the phone app (V2-15) on this PC only. Not the product path.
 
 It runs the real fabric (pairing, sessions, remote API, real interrupts) against a throwaway database, on loopback
-only, outside PANINI_REMOTE_MODE (which stays off until the V2-13 red-team gate passes). Open the printed pairing
+only, outside PANINI_REMOTE_MODE. Red-team work remains disabled and deferred. Open the printed pairing
 link in a phone-sized browser; the control port confirms pairing and opens sample approvals:
 
     POST http://127.0.0.1:3212/confirm         confirm the newest pending device (as if on the PC)
@@ -24,6 +24,9 @@ sys.path.insert(0, str(ROOT))
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--phone-port", type=int, default=3211)
 parser.add_argument("--control-port", type=int, default=3212)
+parser.add_argument(
+    "--personas", action="store_true", help="Show scripted specialist presentation in the isolated preview."
+)
 args = parser.parse_args()
 PHONE_PORT, CONTROL_PORT = args.phone_port, args.control_port
 if not (1024 <= PHONE_PORT <= 65535 and 1024 <= CONTROL_PORT <= 65535) or PHONE_PORT == CONTROL_PORT:
@@ -37,6 +40,10 @@ class MemorySecrets(dict):
 
 async def main():
     import os
+
+    os.environ["PANINI_PERSONAS"] = "true" if args.personas else "false"
+    os.environ["PANINI_SPACES"] = "true"
+    os.environ["PANINI_PRESENCE"] = "true"
 
     os.environ.setdefault(
         "PANINI_LIVE_VIEW", "true"
@@ -57,16 +64,32 @@ async def main():
     from backend.harness.tasks import Tasks
 
     tasks = Tasks(store)
+    from backend.personas import Personas
+
+    persona_policy = policy.Policy(store)
+    personas = Personas(
+        store, persona_policy, identity_read=lambda: "Preview identity", identity_write=lambda _: None
+    )
+    if args.personas:
+        personas.create("scout", name="Scout", color="cyan")
     asks = []
 
     def submit(goal, **kw):
         asks.append({"goal": goal, **{k: v for k, v in kw.items() if k in ("origin", "title")}})
-        return tasks.submit(goal, **kw)
+        task = tasks.submit(goal, **kw)
+        if args.personas and goal.startswith("@scout "):
+            store.execute(
+                "INSERT INTO persona_messages(thread_id,persona_id,kind,text,created) VALUES (?,?,?,?,?)",
+                (task["id"], "scout", "assistant", "Scripted preview: Scout received this request.", 1),
+            )
+        return task
 
     app = FastAPI()
     app.include_router(remote_router)
     app.include_router(live_routes.remote_router)
     app.state.harness = SimpleNamespace(
+        store=store,
+        personas=personas,
         interrupts=interrupts,
         status=lambda: {"running": 0, "queued": len(asks)},
         notices=SimpleNamespace(
@@ -76,12 +99,79 @@ async def main():
             submit=submit, list=tasks.list, get=tasks.get, events=tasks.events, cancel=tasks.cancel
         ),
     )
-    policy.install(policy.Policy())
+    policy.install(persona_policy)
     fabric = Fabric(app, store, MemorySecrets(), settings_path=Path(tempfile.mkdtemp()) / "fabric.json")
+    fabric.state["origin"] = f"http://localhost:{PHONE_PORT}"
+    app.state.fabric_runtime = fabric
+    from unittest.mock import AsyncMock
+
+    from backend.brain.threads import Threads
+    from backend.harness.sessions import Sessions
+    from backend.ledger.artifacts import Artifacts
+    from backend.ledger.receipts import Ledger
+    from backend.telephony.inbound import CallService
+
+    h = app.state.harness
+    from backend.harness.proactive import Notices
+
+    h.policy = persona_policy
+    h.connectors = SimpleNamespace(servers={})
+    h.notices = Notices(store)
+    h.notices.add("welcome", "Welcome", "This is the phone app preview.", dedupe="welcome")
+    h.sessions = Sessions(store)
+    h.threads = Threads(store, h.sessions)
+    from backend.brain.runs import Runs
+    from backend.spaces import Spaces
+
+    h.spaces = Spaces(store, h.threads, personas)
+    h.runs = Runs(store)
+    h.artifacts = Artifacts(store, store.path.parent / "artifacts")
+    h.ledger = Ledger(store)
+
+    def fake_connection(*args, **kwargs):
+        return SimpleNamespace(
+            attach=AsyncMock(), close=AsyncMock(), speak=AsyncMock(), send=AsyncMock(), usage={"seconds": 1}
+        )
+
+    calls = CallService(h, provider=AsyncMock(), connection_factory=fake_connection)
+    from backend.telephony.outbound import OutboundCalls
+
+    h.outbound = OutboundCalls(
+        h, provider=AsyncMock(), connection_factory=fake_connection, secrets=MemorySecrets()
+    )
+    from backend.fabric.routing import Continuity
+
+    h.continuity = Continuity(h)
+    h.continuity.app, h.continuity.fabric = app, fabric
+    config = h.continuity.settings()
+    config["quiet"]["enabled"] = False
+    h.continuity.configure(config)
+    h.continuity.start()
+    app.state.phone_line = calls
     live.hub().publish(None, "sandbox", "panini", (ROOT / "panini-core/apps/phone/icons/icon-512.png").read_bytes(),
                        {"url": "https://example.com/", "title": "Sample frame"})  # fmt: skip
 
     control = FastAPI()
+
+    @control.post("/conversation")
+    async def sample_conversation():
+        thread_id = h.sessions.create("Preview continuity conversation")
+        h.sessions.save(thread_id, [{"role": "user", "content": "Continue the original conversation"}])
+        h.threads.attach(
+            "avatar", f"preview-{thread_id}", thread_id
+        )  # An owner conversation, as on the avatar.
+        return {"thread_id": thread_id}
+
+    @control.get("/continuity")
+    async def continuity_state():
+        return {**h.continuity.status(), "commands": h.continuity.commands()}
+
+    @control.post("/call")
+    async def sample_call():
+        os.environ["PANINI_PHONE_LINE"] = "true"
+        calls.callers.put("+14155550123", "Preview owner", "123456")
+        await calls.incoming("preview_call", [{"name": "From", "value": "<sip:+14155550123@preview>"}])
+        return {"id": calls.active.id}
 
     @control.post("/confirm")
     async def confirm():
@@ -98,28 +188,60 @@ async def main():
         return {"revoked": True}
 
     @control.post("/interrupt")
-    async def sample():
+    async def sample(level: str = "tap"):
         card = interrupts.open(
             InterruptSpec("approval", "tool_call", "Send the weekly report to Asha",
                           "PANINI wants to send report.pdf to asha@example.com.",
                           preview={"to": "asha@example.com", "attachment": "report.pdf"},
-                          action={"tool": "email_send", "to": "asha@example.com"}, level="tap", ttl_s=3600),
+                          action={"tool": "email_send", "to": "asha@example.com"}, level=level, ttl_s=3600),
             run_id="dev",
         )  # fmt: skip
         return {"id": card["id"]}
 
+    @control.post("/mcp-interrupt")
+    async def mcp_interrupt():
+        permission = {"client_id": "preview-fixture", "tool": "browser_navigate", "seconds": 3600}
+        return h.interrupts.open(
+            InterruptSpec(
+                "approval",
+                "mcp_effect",
+                "Preview agent wants to navigate",
+                "Developer sample approval.",
+                preview={"detail": "https://example.com", "mcp_permission": permission},
+                action={"mcp_permission": permission},
+                response_schema={
+                    "type": "object",
+                    "properties": {"approved": {"type": "boolean"}, "allow_for_session": {"type": "boolean"}},
+                    "required": ["approved"],
+                    "additionalProperties": False,
+                },
+                ttl_s=120,
+            ),
+            run_id="dev-mcp",
+        )
+
     @control.get("/state")
     async def state():
-        return {"devices": fabric.devices.list(), "interrupts": interrupts.list(status=None), "asks": asks}
+        return {"devices": fabric.devices.list(), "interrupts": interrupts.list(status=None), "asks": asks,
+                "task_threads": store.all("SELECT task_id, thread_id FROM task_threads")}  # fmt: skip
+
+    @control.post("/notebook/concurrent-edit")
+    async def concurrent_edit():
+        row = store.one("SELECT id FROM pages WHERE title='Mobile plan' AND deleted_at IS NULL")
+        page = h.spaces.read(row["id"])
+        return h.spaces.edit(page["id"], expected_revision=page["revision"], content="Concurrent PC edit")
 
     code = fabric.devices.new_code()
-    origin = f"http://127.0.0.1:{PHONE_PORT}"
+    origin = f"http://localhost:{PHONE_PORT}"
     print("Pairing link (valid 5 minutes):", fabric.devices.qr_url(origin, code), flush=True)
     phone = uvicorn.Server(
         uvicorn.Config(build(fabric, "lan"), host="127.0.0.1", port=PHONE_PORT, log_level="warning")
     )
     admin = uvicorn.Server(uvicorn.Config(control, host="127.0.0.1", port=CONTROL_PORT, log_level="warning"))
-    await asyncio.gather(phone.serve(), admin.serve())
+    try:
+        await asyncio.gather(phone.serve(), admin.serve())
+    finally:
+        await h.continuity.close()
 
 
 if __name__ == "__main__":

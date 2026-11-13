@@ -19,8 +19,10 @@ KINDS = {
     "page_export",
     "call_audio",
     "file",
+    "phone-upload",  # V2-15: photos and files sent from the paired phone (untrusted content).
 }
 EXTENSIONS = {
+    "image/webp": ".webp",
     "image/jpeg": ".jpg",
     "image/png": ".png",
     "text/plain": ".txt",

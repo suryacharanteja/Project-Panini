@@ -147,7 +147,7 @@ accessibility hands (V2-21 phase b). Keys move to the platform keystore; passkey
 ## 8. Acceptance criteria
 
 - [ ] A `tap` approval completes from an Android notification without opening the app.
-- [ ] A `verify` approval requires biometrics and fails if the action changes after the prompt was shown.
+- [x] A `verify` approval requires WebAuthn user verification and fails if the action changes after the prompt was shown (cryptographic vectors and virtual authenticator; physical biometrics pending).
 - [ ] Sharing a link from another app starts a PANINI thread.
 - [ ] Stop on the phone stops a desktop task within 1 s.
 
@@ -159,3 +159,45 @@ Ships with the fabric. Rollback: remote mode `off`; `lan` mode can still serve t
 
 - Allow `verify` approvals on the PC through Windows Hello as well? Recommendation: yes, as a later small item
   (WebAuthn in the shell's renderer with the same challenge binding).
+
+## 11. Passkeys and notebook delivery — 2026-10-04
+
+WebAuthn 3.0.1 is pinned. Migration 0024 stores only public credentials and short-lived single-use
+ceremonies. Decisions require both the paired device signature and the passkey assertion. The challenge
+hash includes a fresh ceremony ID plus the exact decision statement (interrupt, nonce, digest, status and
+payload digest). Registration/assertion origin and RP ID are checked against PC configuration; user
+verification is required, signature counters validated, and revoke/remove clear pending challenges.
+Local approvals never gain phone authority. No biometric data is received or stored.
+
+Settings enrolls/removes passkeys; Admin Remote sets the stable HTTPS origin. Service-worker cache v7
+includes the new modules. The phone notebook supports page editing with CAS/local drafts, explicit conflict
+review, trash/restore, stored-source saving and Markdown/PDF download. Large binary exports are refused
+with an Admin-export explanation instead of corrupting the fabric response.
+
+Real fabric browser smoke passes WebAuthn enrollment/approval using a virtual authenticator, notebook
+draft recovery/conflict review and export downloads, saved call receipts and existing pairing/work/live/
+share/offline/revocation checks. This does not establish hardware biometric or lock-screen behavior.
+Photo/file input, voice dictation and cross-surface conversation continuation were added on 2026-10-06 (below).
+
+
+## Photo, dictation and continuation — 2026-10-06
+
+- **Photos and files:** Ask has "Attach photo or file" (JPEG, PNG, WebP, PDF, text; up to 700 KB so one envelope
+  carries it). `POST /attachments` stores the file as a `phone-upload` artifact. The next `/ask` references it
+  inside an `<untrusted source="shared">` envelope, so its content is data, not instructions.
+- **Dictation:** Android Chrome's speech recognition fills the box. Without it, the phone records 5 s and
+  `POST /dictation` transcribes on the PC with the existing speech service (private mode uses local STT).
+- **Continuation from any surface:** migration `0035_task_threads.sql` binds a task to an existing owner
+  conversation. `GET /conversations` lists recent owner threads from the avatar, phone, console and channels.
+  "Continue here" in Conversations makes the next Ask join that thread, and the background run resumes its
+  history (`session_id`). New phone requests start their own resumable thread. Non-owner or unknown threads are
+  refused.
+
+Tests: `backend/tests/fabric/test_phone_continuation.py`:
+- untrusted artifact references; refused types and missing attachments;
+- PC transcription;
+- an avatar conversation continued from the phone, with the run seeing the earlier turns.
+
+`npm run phone:smoke` now also, in Android-sized Chromium: continues the preview conversation, attaches a real
+PNG through the file picker, sends, and checks that the PC received it quarantined and bound to the original
+thread. Screenshot: `artifacts/phone/android-continue-attach.png`.

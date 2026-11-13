@@ -1,13 +1,15 @@
 """The remote fabric runtime (V2-14): one object that owns identity, devices, sessions, push and ingress, and starts
 the transport chosen by PANINI_REMOTE_MODE (off | lan | tailscale | relay).
 
-Remote modes refuse to start until the V2-13 red-team gate passes (v2flags reads gated flags as off until then).
+Red-team qualification is deferred by default; explicit future enforcement uses the V2-13 gate.
 `off` closes listeners and the relay socket; devices stay registered.
 """
 
 import asyncio
+import base64
 import json
 import logging
+import secrets
 
 from .. import v2flags
 from .devices import Devices, PcIdentity
@@ -25,10 +27,26 @@ class Fabric:
         self.identity = PcIdentity.load(secrets_store)
         self.devices = Devices(store, self.identity)
         self.server = FabricServer(app, self.identity, self.devices).install()
+        from .passkeys import Passkeys
+
+        self.server.passkeys = Passkeys(
+            store,
+            self.devices,
+            lambda: self.settings().get("passkey_origin") or self.state.get("origin", ""),
+        )
         self.push = Push(store, secrets_store)
         self.server.push_key = self.push.public_key
         self.settings_path = settings_path
-        self.ingress = Ingress(store, self.settings().get("hooks", {}))
+        hooks = self.settings().get("hooks", {})
+        self.ingress = Ingress(
+            store,
+            {
+                key: {**hook, "secret": self.secrets.get(hook["secret_ref"]) or ""}
+                if hook.get("secret_ref")
+                else hook
+                for key, hook in hooks.items()
+            },
+        )
         self._tailscale = tailscale
         self.listener = None
         self.listener_job = None
@@ -48,7 +66,7 @@ class Fabric:
 
     @property
     def mode(self) -> str:
-        return v2flags.value("PANINI_REMOTE_MODE")  # "off" until the red-team gate passes.
+        return v2flags.value("PANINI_REMOTE_MODE")
 
     @property
     def tailscale(self):
@@ -151,22 +169,70 @@ class Fabric:
         self.state = {**self.state, "state": "off"}
 
     def save_settings(self, patch: dict) -> dict:
-        allowed = {"relay_url", "port", "funnel"}
+        allowed = {"relay_url", "port", "funnel", "passkey_origin"}
         if set(patch) - allowed:
-            raise ValueError("Settings are relay_url, port and funnel.")
+            raise ValueError("Settings are relay_url, port, funnel and passkey_origin.")
+        if patch.get("passkey_origin"):
+            from .passkeys import Passkeys
+
+            origin = str(patch["passkey_origin"]).rstrip("/")
+            Passkeys(self.store, self.devices, lambda: origin).configuration(origin)
+            patch = {**patch, "passkey_origin": origin}
         value = {**self.settings(), **patch}
         self.settings_path.parent.mkdir(parents=True, exist_ok=True)
         self.settings_path.write_text(json.dumps(value), encoding="utf-8")
         return value
 
+    def configure_phone_webhook(self, secret):
+        if not isinstance(secret, str) or not secret.startswith("whsec_"):
+            raise ValueError("Enter the OpenAI webhook signing secret.")
+        try:
+            if len(base64.b64decode(secret[6:], validate=True)) < 16:
+                raise ValueError()
+        except ValueError:
+            raise ValueError("Invalid webhook signing secret.") from None
+        settings = self.settings()
+        hooks = settings.setdefault("hooks", {})
+        path_secret = hooks.get("phone", {}).get("path_secret") or secrets.token_urlsafe(24)
+        self.secrets.set("phone_webhook", secret)
+        hooks["phone"] = {"kind": "openai", "path_secret": path_secret, "secret_ref": "phone_webhook"}
+        self.settings_path.parent.mkdir(parents=True, exist_ok=True)
+        self.settings_path.write_text(json.dumps(settings), encoding="utf-8")
+        self.ingress.hooks["phone"] = {**hooks["phone"], "secret": secret}
+        return {"path": f"/hooks/phone/{path_secret}"}
+
+    def configure_trigger_hook(self, name):
+        from ..triggers.rules import SLUG
+
+        if not isinstance(name, str) or not SLUG.fullmatch(name):
+            raise ValueError("Choose a short webhook name with letters, numbers or hyphens.")
+        hook_id = "generic:" + name
+        hooks = self.settings().get("hooks", {})
+        if hook_id in hooks:
+            raise ValueError("This webhook already exists; its signing secret cannot be shown again.")
+        secret, path_secret = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
+        hooks[hook_id] = {"kind": "generic", "path_secret": path_secret, "secret_ref": "trigger:" + name}
+        self.secrets.set("trigger:" + name, secret)
+        self.settings_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.settings_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps({**self.settings(), "hooks": hooks}), encoding="utf-8")
+        temporary.replace(self.settings_path)
+        self.ingress.hooks[hook_id] = {**hooks[hook_id], "secret": secret}
+        return {"path": f"/hooks/{hook_id}/{path_secret}", "signing_secret": secret}
+
     def watch_interrupts(self, interrupts) -> None:
         """Push each new approval or question to paired phones (title and level only; details over the fabric)."""
 
         def opened(event, view):
-            if event != "interrupt.opened" or not self.devices.any_active():
+            if (
+                event not in {"interrupt.opened", "interrupt.resolved", "interrupt.expired"}
+                or not self.devices.any_active()
+            ):
+                return
+            if v2flags.enabled("PANINI_PRESENCE"):
                 return
             message = {
-                "type": "interrupt",
+                "type": "interrupt" if event == "interrupt.opened" else "interrupt_resolved",
                 "id": view["id"],
                 "title": view.get("title", ""),
                 "level": view.get("level"),
@@ -186,6 +252,7 @@ class Fabric:
             "devices": self.devices.list(),
             "push_public_key": self.push.public_key,
             "hooks": sorted(self.ingress.hooks),
+            "passkey_origin": self.settings().get("passkey_origin") or self.state.get("origin", ""),
         }
 
 
@@ -199,5 +266,12 @@ def runtime(app) -> "Fabric":
         h = app.state.harness
         fabric = Fabric(app, h.store, SecretStore(data_directory() / "fabric-secrets.bin"))
         fabric.watch_interrupts(h.interrupts)
+        h.fabric = fabric  # Channels (WhatsApp) register their webhooks with its ingress.
+        if hasattr(h, "continuity"):
+            h.continuity.fabric = fabric
+        if hasattr(h, "triggers"):
+            from ..triggers.sources.webhooks import handler
+
+            fabric.ingress.on("generic", handler(h.triggers))
         app.state.fabric_runtime = fabric
     return fabric

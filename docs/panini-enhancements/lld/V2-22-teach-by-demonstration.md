@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 5 · P2 · L (2 weeks) |
 | Depends on | V2-10 (browser vocabulary), V2-04 (receipts), V2-05 (reviews); desktop broker changes |
 | Flag | `PANINI_TEACH` (default `false`) |
-| Status | Not started |
+| Status | In progress |
 
 ## 1. Outcome
 
@@ -55,7 +55,7 @@ updated skill. Skills never grant permissions: every effect in a replay still go
 | `backend/teach/healer.py` | Repair loop |
 | `panini-core/capabilities/desktop/Panini.Desktop.Worker/Recorder.cs` | Low-level hooks + UIA capture |
 | Broker ops `record_start` / `record_stop` | Added to the HMAC-signed pipe protocol |
-| `backend/harness/migrations/0015_recordings.sql` | `recordings`, `skill_runs` |
+| `backend/harness/migrations/0030_teach.sql` | recordings, reviewed versions and `skill_runs` |
 
 ### 5.2 Recording
 
@@ -165,9 +165,25 @@ marked "needs attention" in Admin.
 
 ## 8. Acceptance criteria
 
-- [ ] A browser recording becomes a reviewed skill that replays with different inputs.
+- [x] A browser recording becomes a reviewed skill that replays with different inputs.
 - [ ] The healer repairs a changed label and proposes a patch; nothing changes without approval.
-- [ ] A desktop recording replays in Notepad; passwords never appear in recordings.
+- [x] A desktop recording replays in Notepad; passwords never appear in recordings.
+
+The [browser checkpoint report](../qualification-teach-browser-2026-10-05.md) records real pinned-recorder
+and registry replay evidence. The changed-label repair test uses a deterministic model; live model
+qualification remains pending. Named iframe replay resolves descendants of a uniquely selected iframe
+from each fresh snapshot; other frame selectors remain manual. A pinned-recorder run in a real managed
+browser recorded, reviewed and replayed a changed input in a named iframe. Multiple top-level iframes
+are now permitted when the current DOM and snapshot frame counts agree, the reviewed selector matches
+exactly one DOM iframe, and its label is unique. The binding is rechecked before effects. The [Windows teaching checkpoint](../qualification-teach-desktop-2026-10-05.md)
+adds selected-window recording, normalization, private-field suppression, genuine WPF replay and installed
+Notepad record/type/save replay with a different Unicode input and exact disk verification. Opening an app
+as a recorded step now has a catalog-only, owner-reviewed open-and-record path. The launch is stored as
+the first replay step; replay opens the app once and binds its newly verified window before acting.
+This path has fixture integration and built-Admin browser coverage, but has not yet passed a live
+native Teach recording/replay qualification. Save As dialogs, per-step crops, gestures and the remaining
+requirements are not qualified yet. A real managed-browser replay also passes with a reviewed iframe served from a second
+loopback origin; arbitrary external origins and nested frames remain unqualified. The LLD remains in progress.
 
 ## 9. Rollout and rollback
 
@@ -178,3 +194,54 @@ Flag on after step 4 for browsers; desktop recording follows. Rollback: flag off
 
 - Share skills between PANINI installations (export/import with signatures)? Recommendation: later; skills
   can contain sensitive URLs and steps.
+
+
+## Per-step crops — 2026-10-06
+
+Windows recordings keep a 160×160 PNG crop around each grounded click:
+- The worker (`WindowCapture.Crop`/`CropWithin`) captures the target window with PrintWindow. Hung windows are
+  skipped and a capture is abandoned after 500 ms, so a hung or suspended app never stalls recording (found and
+  fixed with the smoke's suspended-provider case).
+- Password and ungrounded targets get no crop.
+- The recorder checks each crop is a small PNG, stores it as a `screenshot` artifact, and the step carries only
+  `crop_artifact`; images never live inside the skill.
+- Tests: `backend/tests/teach/test_desktop.py` (PNG kept, non-PNG dropped, clicks only).
+- Live: `scripts/panini-teach-desktop-smoke.py` with real hooks on the WPF fixture asserts every recorded click
+  has a stored PNG crop (`artifacts/teach-desktop/click-crop.png`) and still passes all its existing checks.
+
+Still open: live healer qualification
+with a real model.
+
+
+## Drag gestures — 2026-10-06
+
+- **Recorder (native):** a left press followed by a release more than 12 px away is a `drag` from the named control
+  under the press to the named control under the release. Unnamed or private ends make it a manual step.
+- **Steps:** `desktop_drag` with `target` (source) and `drop`, a second reviewed target with the same rules: an
+  accessible name, no browser locators, never sensitive. The schema requires `drop` for drags only.
+- **Tool:** `desktop_drag(ref, to_ref)` in the fine vocabulary. Both controls are re-found after review, and the
+  drag runs between their box centres through the worker's paced `drag`. The drop control's name is in the
+  review and can raise the effect (dropping on "Delete" is destroy).
+- **Replay:** the drop target is resolved in the same fresh snapshot and must differ from the source.
+- **Tests:** normalisation, schema rules, and a reviewed fine drag. Live: `scripts/panini-teach-desktop-smoke.py`
+  now records a real drag on the WPF fixture and asserts a `desktop_drag` step from "Draft text" to "Apply draft".
+
+## Save As and other owned dialogs — 2026-10-06
+
+- **Native window list:** each window carries `owner_hwnd` (GW_OWNER). The desktop adapter maps it to the owning
+  window's choice id (`owner` in `desktop_windows`), never a raw handle.
+- **Recorder (native):** input in a visible, uncloaked dialog owned by the target window and in its process is in
+  scope. The hook stamps each event with the dialog that owned the input *when it happened*, because UIA processing
+  lags and Enter can close the dialog first. Selectors from a dialog carry `dialog` (its title); a dialog field's
+  value and selector are kept from while it was open. Typing never spans the dialog boundary. Side-specific modifier
+  keys (VK_LSHIFT…VK_RMENU) are modifiers, not text, so `Ctrl+Shift+S` records as one chord.
+- **Steps:** `Target.dialog` (≤200 chars), Windows only; a drag's drop is in the same dialog as its source.
+- **Replay:** before each step and expectation, `follow_dialog` binds the window the step was recorded in. It waits
+  up to 5 s for exactly one window owned by the document with that title (several are ambiguous, none fails "did
+  not open"). Returning to the document re-pins its title, since a reviewed Save As legitimately renames it.
+- **Typing in dialogs:** common dialogs ignore UIA ValuePattern writes, so `desktop_type` in an owned dialog types
+  real keystrokes and replaces the field.
+- **Tests:** dialog selector and schema rules, replay waiting for the owned dialog and returning, and owned-dialog
+  typing in the fine hand. Live: `scripts/panini-teach-notepad-smoke.py` records `Ctrl+Shift+S`, the file name in
+  Notepad's "Save as" dialog and Enter, then replays it with a different disposable file name and checks that file
+  on disk (`saveAsDialogQualified: true`). Owner review removes the driver's two ungrounded select-all steps.

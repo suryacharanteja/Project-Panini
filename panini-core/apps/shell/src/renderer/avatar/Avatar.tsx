@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { PALETTE } from '../../../../phone/lib/persona.mjs';
 import {
   buildP,
   CAPABILITIES,
@@ -21,6 +22,7 @@ export type AvatarState =
 
 type Props = {
   state: AvatarState;
+  personaColor?: string;
   /** search | browser | desktop | code | agent (agent fires to all four). */
   capability?: string;
   /** 0..1 live levels; read every frame. */
@@ -39,11 +41,8 @@ export type StageGeometry = {
   anchors: Record<string, { x: number; y: number }>;
 };
 
-const COPPER = [184, 115, 51];
-const GLOW = [232, 184, 154];
 const AMBER = [255, 191, 0];
 const GOLD = [212, 175, 55];
-const DIM = [120, 90, 70];
 const rgba = (c: number[], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 const mix = (a: number[], b: number[], t: number) =>
   a.map((v, i) => Math.round(v + (b[i]! - v) * t));
@@ -57,6 +56,7 @@ function anchor(index: number): Vec3 {
 
 export function Avatar({
   state,
+  personaColor = 'copper',
   capability = '',
   micLevel,
   voiceLevel,
@@ -64,13 +64,24 @@ export function Avatar({
   geometry,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const live = useRef({ state, capability, micLevel, voiceLevel, reducedMotion, geometry });
-  live.current = { state, capability, micLevel, voiceLevel, reducedMotion, geometry };
+  const live = useRef({
+    state,
+    personaColor,
+    capability,
+    micLevel,
+    voiceLevel,
+    reducedMotion,
+    geometry,
+  });
+  live.current = { state, personaColor, capability, micLevel, voiceLevel, reducedMotion, geometry };
 
   useEffect(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext('2d')!;
     const graph = buildP();
+    let COPPER = [184, 115, 51],
+      GLOW = [232, 184, 154],
+      DIM = [120, 90, 70];
     // Centre the emblem on its own bounding box (the P's geometry is not centred on 0,0).
     {
       const xs = graph.nodes.map((n) => n.x);
@@ -163,6 +174,11 @@ export function Avatar({
 
     function draw(now: number) {
       const { state: s, capability: cap } = live.current;
+      const token = live.current.personaColor as keyof typeof PALETTE;
+      const custom = Object.hasOwn(PALETTE, token) && token !== 'copper';
+      COPPER = custom ? PALETTE[token] : PALETTE.copper;
+      GLOW = custom ? mix(COPPER, [255, 255, 255], 0.45) : [232, 184, 154];
+      DIM = custom ? COPPER.map((v) => Math.round(v * 0.55)) : [120, 90, 70];
       const still = !!live.current.reducedMotion || osReduced.matches;
       const time = still ? 30 : (now - t0) / 1000;
       if (s !== previousState) {
@@ -684,6 +700,7 @@ export function Avatar({
       style={{ display: 'block', width: '100%', height: '100%' }}
       aria-hidden="true"
       data-avatar-state={state}
+      data-persona-color={personaColor}
     />
   );
 }

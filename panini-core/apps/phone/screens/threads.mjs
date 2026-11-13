@@ -1,4 +1,6 @@
 import { action, h, toast, when } from './ui.mjs';
+import { personaChip } from './persona.mjs';
+import { saveSource } from './spaces.mjs';
 
 export async function threads(app) {
   const reply = await app.fabric.request('GET', '/threads');
@@ -17,6 +19,17 @@ export async function threads(app) {
         h('p.eyebrow', { text: task.status.replaceAll('_', ' ') }),
         h('p', { text: task.goal }),
         task.result ? h('pre', { text: JSON.stringify(task.result, null, 2) }) : null,
+        task.status === 'completed' && task.result?.outcome === 'verified_complete'
+          ? saveSource(app, 'task', task.id)
+          : null,
+        ...(detail.body.messages || []).map((message) =>
+          h(
+            'div.persona-message',
+            {},
+            personaChip(message.persona),
+            h('p', { text: message.text }),
+          ),
+        ),
         h('h3', { text: 'Activity' }),
         h(
           'ol',
@@ -67,6 +80,7 @@ export async function threads(app) {
     'section.screen',
     {},
     h('h2', { text: 'Work' }),
+    h('button.wide', { onclick: () => app.show('conversation') }, 'Conversations · continue on PC'),
     h('p.muted', {
       text: 'Recent background tasks on your PC. Completion status and verified results are shown separately.',
     }),

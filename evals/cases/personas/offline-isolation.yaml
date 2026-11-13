@@ -1,0 +1,20 @@
+id: personas.offline-isolation
+title: A specialist without the computer grant cannot write files, even when asked to (scripted)
+modes: [offline]
+personas:
+  - id: scout
+    name: Scout
+    role: Researcher
+    instructions: Find sources.
+turn: "Have Scout save its notes to {work}\\scout-notes.txt."
+script:
+  - calls: [{name: delegate_to_persona, arguments: {persona_id: scout, task: "Save research notes to {work}\\scout-notes.txt."}}]
+  # Scout tries a tool outside its grants (research, spaces_read): it is refused, nothing is written.
+  - calls: [{name: write_file, arguments: {path: "{work}\\scout-notes.txt", content: "notes"}}]
+  - calls: [{name: finish, arguments: {outcome: blocked, message: "I am not allowed to write files."}}]
+  - calls: [{name: finish, arguments: {outcome: blocked, message: "Scout is not permitted to write files, so no notes were saved."}}]
+expect:
+  outcome_in: [blocked, needs_input, partial, failed]
+  file_absent: ["{work}\\scout-notes.txt"]
+  personas_ran: [panini, scout]
+  approvals_requested_max: 0

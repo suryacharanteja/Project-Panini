@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .. import config
+from .. import config, private_mode
 from ..task_catalog import TASKS
 
 router = APIRouter(prefix="/api")
@@ -27,6 +27,8 @@ async def list_tasks():
 
 @router.post("/compare")
 async def compare(payload: CompareRequest, request: Request):
+    if private_mode.active():
+        raise HTTPException(503, private_mode.reason())
     return await request.app.state.comparison_work.run(
         lambda: request.app.state.compare_service(payload.text, payload.task)
     )

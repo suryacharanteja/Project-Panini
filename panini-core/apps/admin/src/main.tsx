@@ -1,5 +1,5 @@
 import { createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { StrictMode } from 'react';
+import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Shell } from './components/Shell';
 import { ToastProvider } from './components/ui';
@@ -25,10 +25,22 @@ import {
 } from './pages/Config';
 import { Home } from './pages/Home';
 import { ProjectsPage } from './pages/Projects';
+import { PersonasPage } from './pages/Personas';
+import { PhonePage } from './pages/Phone';
+import { ChannelsPage } from './pages/Channels';
+import { AndroidPage } from './pages/Android';
 import { AutomationsPage, InboxPage, MemoryPage, RunsPage } from './pages/Work';
 import './styles.css';
 
 const root = createRootRoute({ component: Shell, notFoundComponent: NotFound });
+const SpacesPage = lazy(() =>
+  import('./pages/spaces/Spaces').then((module) => ({ default: module.SpacesPage })),
+);
+const SpacesRoute = () => (
+  <Suspense fallback={<p role="status">Loading notebook…</p>}>
+    <SpacesPage />
+  </Suspense>
+);
 const page = (path: string, component: () => React.ReactNode) =>
   createRoute({ getParentRoute: () => root, path, component });
 
@@ -39,15 +51,22 @@ const routeTree = root.addChildren([
   page('/runs', RunsPage),
   page('/receipts', ReceiptsPage),
   page('/projects', ProjectsPage),
+  page('/spaces', SpacesRoute),
+  page('/spaces/$spaceId', SpacesRoute),
+  page('/spaces/$spaceId/pages/$pageId', SpacesRoute),
   page('/build/skills', SkillsPage),
   page('/build/connectors', ConnectorsPage),
   page('/build/automations', AutomationsPage),
   page('/build/agents', AgentsPage),
+  page('/build/personas', PersonasPage),
   page('/build/capabilities', CapabilitiesPage),
   page('/build/computers', ComputersPage),
   page('/build/live', LivePage),
   page('/build/safety', SafetyPage),
   page('/build/remote', RemotePage),
+  page('/build/phone', PhonePage),
+  page('/build/channels', ChannelsPage),
+  page('/build/android', AndroidPage),
   page('/build/permissions', PermissionsPage),
   page('/memory', MemoryPage),
   page('/capabilities/$name', CapabilityPage),

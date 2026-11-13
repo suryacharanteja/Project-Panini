@@ -46,6 +46,8 @@ def missing_needs(case):
 
 
 async def run(engine_name: str, mode: str, *, only=None, report=print) -> dict:
+    if mode == "local" and not os.getenv("PANINI_LOCAL_MODEL", "").strip():
+        raise ValueError("Set PANINI_LOCAL_MODEL before a real-local scorecard run.")
     engine = ENGINES[engine_name]()
     selected = case_module.load(mode=mode, only=only)
     rows = []
@@ -68,6 +70,7 @@ async def run(engine_name: str, mode: str, *, only=None, report=print) -> dict:
         "created": time.time(),
         "engine": engine_name,
         "mode": mode,
+        "local_model": os.getenv("PANINI_LOCAL_MODEL", "").strip() if mode == "local" else None,
         "git_commit": git_commit(),
         "flags": {
             k: v for k, v in os.environ.items() if k.startswith("PANINI_V2_") or k == "PANINI_BROWSER_DRIVER"

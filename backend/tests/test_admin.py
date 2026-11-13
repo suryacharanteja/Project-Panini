@@ -17,6 +17,25 @@ from backend.harness.store import Store
 HEADERS = {"x-panini-console": "t" * 32}
 
 
+def test_persona_admin_boundary_crud_and_test_chat(client, monkeypatch):
+    root = "/api/admin/v1/personas"
+    assert client.post(root, json={"id": "scout"}).status_code in {401, 403}
+    response = client.post(root, headers=HEADERS, json={"id": "scout", "values": {"name": "Scout"}})
+    assert response.status_code == 200
+    assert response.json()["permissions"] == ["research", "spaces_read"]
+    assert client.patch(root + "/scout", headers=HEADERS, json={"archived": 1}).status_code == 422
+    assert client.put(root + "/scout/permissions", headers=HEADERS, json={"permissions": ["desktop"]}).json()[
+        "permissions"
+    ] == ["desktop"]
+    assert client.post(root + "/scout/test", headers=HEADERS, json={"text": "hi"}).status_code == 409
+    monkeypatch.setenv("PANINI_PERSONAS", "true")
+    tested = client.post(root + "/scout/test", headers=HEADERS, json={"text": "@panini hi"})
+    assert tested.status_code == 200 and tested.json()["persona_id"] == "scout"
+    assert client.delete(root + "/panini", headers=HEADERS).status_code == 422
+    assert client.delete(root + "/scout", headers=HEADERS).json()["archived"]
+    assert not client.h.policy.grants("persona:scout")
+
+
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     root = tmp_path / "root"
@@ -136,6 +155,101 @@ def test_rejected_keys_are_never_saved(client, env, monkeypatch):
     entries = client.get("/api/admin/v1/audit", headers=HEADERS).json()["entries"]
     assert entries[0]["diff"]["OPENAI_API_KEY"] == {"secret": True}
     assert "sk-new" not in json.dumps(entries)
+
+
+def test_local_model_settings_are_loopback_only_and_probe_is_authenticated(client, env, monkeypatch):
+    root = "/api/admin/v1/local-model/test"
+    assert client.post(root).status_code in {401, 403}
+    bad = client.patch(
+        "/api/admin/v1/settings",
+        json={"changes": {"PANINI_LOCAL_BASE_URL": "http://remote.example:11434/v1"}},
+        headers=HEADERS,
+    )
+    assert bad.status_code == 422 and "loopback" in bad.json()["detail"]
+    assert "PANINI_LOCAL_BASE_URL" not in envfile.read(env)
+    saved = client.patch(
+        "/api/admin/v1/settings",
+        json={
+            "changes": {
+                "PANINI_LOCAL_BASE_URL": "http://127.0.0.1:11434/v1",
+                "PANINI_LOCAL_MODEL": "small-local",
+            }
+        },
+        headers=HEADERS,
+    )
+    assert saved.status_code == 200
+
+    class FakeLocal:
+        def __init__(self, timeout):
+            assert timeout == 10.0
+
+        async def probe(self):
+            return {"model": "small-local", "tool_calls": True}
+
+        async def close(self):
+            return None
+
+    from panini_cli.agent import local_model
+
+    monkeypatch.setattr(local_model, "LocalModel", FakeLocal)
+    assert client.post(root, headers=HEADERS).json() == {
+        "ok": True,
+        "detail": "small-local answered the tool-call test.",
+    }
+
+
+def test_local_quality_status_is_authenticated_and_reports_each_class(client, monkeypatch):
+    from panini_cli.agent import local_quality
+
+    endpoint = "/api/admin/v1/local-model/qualification"
+    assert client.get(endpoint).status_code in {401, 403}
+    monkeypatch.setenv("PANINI_LOCAL_MODEL", "test-local")
+    monkeypatch.setattr(
+        local_quality,
+        "qualified",
+        lambda task_class: (
+            task_class == "planner",
+            "qualified" if task_class == "planner" else "unqualified",
+        ),
+    )
+    result = client.get(endpoint, headers=HEADERS).json()
+    assert result["model"] == "test-local"
+    assert result["classes"]["planner"]["ready"] is True
+    assert result["classes"]["desktop"]["ready"] is False
+    assert result["classes"]["agent"]["ready"] is False
+
+
+def test_private_local_model_probe_rejects_unsupported_evidence(client, monkeypatch):
+    from types import SimpleNamespace
+
+    from panini_cli.agent import local_model
+
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+    response = {"achieved": False}
+
+    class FakeLocal:
+        def __init__(self, timeout):
+            assert timeout == 10.0
+
+        async def probe(self):
+            return {"model": "small-local", "tool_calls": True}
+
+        async def respond(self, instructions, items, tools, *, output_schema, max_output_tokens):
+            assert output_schema["properties"]["achieved"]["type"] == "boolean"
+            assert "delegated_results" in items[0]["content"]
+            return SimpleNamespace(text=__import__("json").dumps(response), calls=[])
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(local_model, "LocalModel", FakeLocal)
+    url = "/api/admin/v1/local-model/test"
+    assert client.post(url, headers=HEADERS).json() == {
+        "ok": True,
+        "detail": "small-local passed tool-call and evidence-schema tests.",
+    }
+    response["achieved"] = True
+    assert "unsupported claim" in client.post(url, headers=HEADERS).json()["detail"]
 
 
 def test_connectors_agents_skills_and_hooks_without_files(client, tmp_path, monkeypatch):

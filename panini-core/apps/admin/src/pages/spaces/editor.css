@@ -1,0 +1,57 @@
+.panini-document {
+  overflow-wrap: anywhere;
+}
+.panini-document > * + * {
+  margin-top: 0.8rem;
+}
+.panini-document h1 {
+  font-size: 1.8rem;
+}
+.panini-document h2 {
+  font-size: 1.4rem;
+}
+.panini-document h3 {
+  font-size: 1.1rem;
+}
+.panini-document ul {
+  list-style: disc;
+  padding-left: 1.4rem;
+}
+.panini-document ol {
+  list-style: decimal;
+  padding-left: 1.4rem;
+}
+.panini-document ul[data-type='taskList'],
+.panini-document ul:has(> li[data-checked]) {
+  list-style: none;
+  padding-left: 0;
+}
+.panini-document li[data-type='taskItem'],
+.panini-document li[data-checked] {
+  display: flex;
+  gap: 0.7rem;
+  align-items: baseline;
+}
+.panini-document table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+}
+.panini-document td,
+.panini-document th {
+  border: 1px solid #414146;
+  padding: 0.6rem;
+  vertical-align: top;
+}
+.panini-document th {
+  background: #222226;
+}
+.panini-document pre {
+  padding: 1rem;
+  background: #111113;
+  overflow: auto;
+}
+.panini-document blockquote {
+  border-left: 2px solid #b87333;
+  padding-left: 1rem;
+}

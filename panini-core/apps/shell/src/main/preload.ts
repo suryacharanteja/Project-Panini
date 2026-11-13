@@ -6,9 +6,14 @@ const methods = [
   'targets',
   'select',
   'turn',
+  'speech-status',
+  'transcribe',
+  'synthesize-local',
+  'synthesize-handoff',
   'stop',
   'end',
   'media',
+  'voice-personas',
   'media-close',
   'dashboard',
   'admin',
@@ -20,6 +25,7 @@ const methods = [
   'execution-viewer',
   'execution-copy',
   'live',
+  'continuity',
 ];
 contextBridge.exposeInMainWorld(
   'panini',

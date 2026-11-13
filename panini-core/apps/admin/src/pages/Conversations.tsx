@@ -11,6 +11,8 @@ import {
 import '../../../shared-ui/tokens.css';
 import { connectThread, newId, runAgent, stopThread } from '../agui';
 import { Button, Card, Empty, inputClass, Page } from '../components/ui';
+import { SaveToSpace } from './spaces/SaveToSpace';
+import { api, harness } from '../api';
 
 const THREAD_KEY = 'panini.conversation.thread';
 
@@ -46,15 +48,22 @@ function reducer(state: Conversation, action: Action): Conversation {
 }
 
 /** Talk to PANINI over AG-UI from the console: tool calls, plan and approvals stream in as cards (V2-07). */
-export function ConversationsPage() {
-  const [thread, setThread] = useState(() => savedThread() || newId());
+export function ConversationsPage({
+  initialThread,
+  initialDraft,
+}: { initialThread?: string; initialDraft?: string } = {}) {
+  const [thread, setThread] = useState(() => initialThread || savedThread() || newId());
   const [state, dispatch] = useReducer(reducer, undefined, emptyConversation);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(initialDraft || '');
+  const [handoffMessage, setHandoffMessage] = useState('');
+  useEffect(() => {
+    if (initialDraft) setDraft(initialDraft);
+  }, [initialDraft]);
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    saveThread(thread);
+    if (!initialThread) saveThread(thread);
     const controller = new AbortController();
     void connectThread(
       thread,
@@ -105,19 +114,21 @@ export function ConversationsPage() {
 
   return (
     <Page
-      title="Conversations"
+      title={initialThread ? 'Page conversation' : 'Conversations'}
       deva="संवाद"
       eyebrow="AG-UI"
       actions={
-        <Button
-          onClick={() => {
-            abort.current?.abort();
-            dispatch({ type: 'reset' });
-            setThread(newId());
-          }}
-        >
-          New conversation
-        </Button>
+        !initialThread && (
+          <Button
+            onClick={() => {
+              abort.current?.abort();
+              dispatch({ type: 'reset' });
+              setThread(newId());
+            }}
+          >
+            New conversation
+          </Button>
+        )
       }
     >
       <Card
@@ -155,13 +166,31 @@ export function ConversationsPage() {
                       : 'max-w-[90%] whitespace-pre-wrap text-sm'
                   }
                 >
+                  {entry.personaId && (
+                    <span className="mb-1 block text-xs text-copper-light">{entry.personaId}</span>
+                  )}
                   {entry.text}
                 </p>
               )}
             </CardBoundary>
           ))}
           {state.interrupts.map((interrupt) => (
-            <InterruptCard key={interrupt.id} interrupt={interrupt} onDecide={decide} />
+            <InterruptCard
+              key={interrupt.id}
+              interrupt={interrupt}
+              onDecide={decide}
+              onReview={(approved, content) =>
+                go({
+                  threadId: thread,
+                  resume: state.interrupts.map((i) => ({
+                    interruptId: i.id,
+                    status: 'resolved' as const,
+                    payload: { approved, ...(i.id === interrupt.id ? { content } : {}) },
+                    metadata: { nonce: i.nonce, actionDigest: i.actionDigest },
+                  })),
+                })
+              }
+            />
           ))}
           {state.error && (
             <p role="alert" className="text-sm text-danger">
@@ -194,6 +223,34 @@ export function ConversationsPage() {
             </Button>
           )}
         </form>
+        {!state.running && state.entries.length > 0 && (
+          <div className="mt-4">
+            <Button
+              onClick={async () => {
+                try {
+                  await api(harness('/presence/handoff'), {
+                    body: { thread_id: thread, destination: 'phone' },
+                  });
+                  setHandoffMessage('Queued for your phone.');
+                } catch (error) {
+                  setHandoffMessage((error as Error).message);
+                }
+              }}
+            >
+              Send to my phone
+            </Button>
+            {handoffMessage && (
+              <p role="status" className="text-sm">
+                {handoffMessage}
+              </p>
+            )}
+            <SaveToSpace
+              key={`${thread}:${state.entries.length}`}
+              kind="conversation"
+              sourceId={thread}
+            />
+          </div>
+        )}
       </Card>
     </Page>
   );

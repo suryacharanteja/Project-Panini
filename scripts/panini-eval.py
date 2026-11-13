@@ -68,7 +68,7 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run")
     run.add_argument("--engine", default="v1", choices=sorted(runner.ENGINES))
-    run.add_argument("--mode", default="offline", choices=["offline", "live"])
+    run.add_argument("--mode", default="offline", choices=["offline", "live", "local"])
     run.add_argument("--only", help="Comma-separated case ids")
     run.add_argument("--output")
     run.add_argument("--fail-under", type=float, help="Exit 1 when success is below this fraction")

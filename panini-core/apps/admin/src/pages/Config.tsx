@@ -3,6 +3,7 @@ import { ExternalLink, Plus, RefreshCw, RotateCcw, Trash2, X } from 'lucide-reac
 import { useEffect, useState } from 'react';
 import { admin, ago, api, harness, useResource, when } from '../api';
 import { SettingsForm } from '../components/SettingsForm';
+import { PresencePanel } from './Presence';
 import {
   Badge,
   Button,
@@ -318,8 +319,60 @@ export function KeysPage() {
           deva="प्रतिरूप"
           description="Which model each part of PANINI uses. Leave a field empty to use the default."
         />
+        <LocalModelCard />
       </div>
     </Page>
+  );
+}
+
+function LocalModelCard() {
+  const [result, setResult] = useState<{ ok: boolean; detail: string } | null>(null);
+  const qualification = useResource<{
+    model: string;
+    classes: Record<string, { ready: boolean; reason: string }>;
+  }>(admin('/local-model/qualification'), 10000);
+  const { busy, run } = useAction();
+  return (
+    <Card
+      title="Local model preview"
+      actions={
+        <Button
+          busy={busy === 'probe'}
+          onClick={() =>
+            run('probe', async () =>
+              setResult(await api(admin('/local-model/test'), { method: 'POST' })),
+            )
+          }
+        >
+          Test local tool calling
+        </Button>
+      }
+    >
+      <p className="text-sm text-muted">
+        Set the loopback server and model above, then test whether it returns a tool call. Local
+        fallback and private routing are in development. A tool-call test checks connectivity only.
+        Effect-capable local task classes require a paired real cloud/local scorecard report for
+        this model and build. Full egress, speech playback and physical microphone qualification
+        remain open.
+      </p>
+      {qualification.data?.classes && (
+        <ul className="mt-3 space-y-1 text-sm" aria-label="Local task qualification">
+          {Object.entries(qualification.data.classes).map(([name, state]) => (
+            <li key={name} className={state.ready ? 'text-copper-light' : 'text-muted'}>
+              {name}: {state.ready ? 'qualified' : state.reason}
+            </li>
+          ))}
+        </ul>
+      )}
+      {result && (
+        <p
+          className={`mt-3 text-sm ${result.ok ? 'text-copper-light' : 'text-danger'}`}
+          role="status"
+        >
+          {result.detail}
+        </p>
+      )}
+    </Card>
   );
 }
 
@@ -445,6 +498,7 @@ export function SystemPage() {
               ))}
           </dl>
         </Card>
+        <PresencePanel />
       </div>
     </Page>
   );

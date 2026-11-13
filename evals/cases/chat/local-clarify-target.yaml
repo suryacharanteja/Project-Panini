@@ -1,0 +1,18 @@
+id: chat.local-clarify-target
+title: Local comparison missing target clarification
+modes:
+- live
+- local
+needs:
+- openai
+turn: Summarize the document I mean.
+files: {}
+expect:
+  outcome_in:
+  - blocked
+  - needs_input
+  - clarification
+  - reply
+  message_contains_any:
+  - '?'
+tags: []

@@ -7,7 +7,7 @@ import { toText } from './text';
  */
 
 export type Entry =
-  | { kind: 'message'; id: string; role: 'user' | 'assistant'; text: string }
+  | { kind: 'message'; id: string; role: 'user' | 'assistant'; text: string; personaId?: string }
   | { kind: 'tool'; id: string; call: ToolCall }
   | { kind: 'activity'; id: string; text: string };
 
@@ -97,6 +97,15 @@ export function applyEvent(state: Conversation, event: AnyEvent): Conversation {
         : state;
     }
     case 'CUSTOM':
+      if (event.name === 'panini.persona' && event.value?.messageId && event.value?.personaId)
+        return {
+          ...state,
+          entries: entries.map((e) =>
+            e.kind === 'message' && e.id === event.value.messageId
+              ? { ...e, personaId: toText(event.value.personaId, 41) }
+              : e,
+          ),
+        };
       if (event.name === 'panini.activity' && event.value?.message)
         return {
           ...state,

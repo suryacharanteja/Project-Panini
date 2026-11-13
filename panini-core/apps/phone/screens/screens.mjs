@@ -5,3 +5,6 @@ export { live } from './live.mjs';
 export { settings } from './settings.mjs';
 export { pairing } from './pair.mjs';
 export { threads } from './threads.mjs';
+export { calls } from './calls.mjs';
+export { spaces } from './spaces.mjs';
+export { conversation } from './conversation.mjs';

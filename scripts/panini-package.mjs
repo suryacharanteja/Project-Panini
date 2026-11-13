@@ -88,7 +88,10 @@ async function run(command, args, cwd = root, extraEnv = {}, expectedOutput = nu
     );
   });
 }
-await run(process.execPath, ['scripts/panini-build.mjs']);
+await run(process.execPath, ['scripts/panini-build.mjs'], root, {
+  PANINI_DOTNET_OUTPUT_PATH:
+    join(root, 'artifacts/dotnet-isolated/build').replaceAll('\\', '/') + '/',
+});
 await run(join(root, '.venv/Scripts/python.exe'), ['scripts/build-panini-cli-icon.py']);
 await run(join(root, '.venv/Scripts/python.exe'), [
   '-m',
@@ -103,6 +106,43 @@ await run(join(root, '.venv/Scripts/python.exe'), [
 await cp(join(root, 'artifacts/panini-frozen/Panini.Backend'), join(runtime, 'backend'), {
   recursive: true,
 });
+await run(join(root, '.venv/Scripts/python.exe'), ['scripts/panini-local-stt-model.py']);
+const sttSource = join(root, 'artifacts/model-cache/faster-whisper-base');
+const sttDestination = join(runtime, 'models/whisper');
+await mkdir(sttDestination, { recursive: true });
+for (const name of ['config.json', 'model.bin', 'README.md', 'tokenizer.json', 'vocabulary.txt'])
+  await copyFile(join(sttSource, name), join(sttDestination, name));
+// Serve the same phone application and capability manifests from the installed runtime.
+const phoneDestination = join(runtime, 'panini-core/apps/phone');
+await mkdir(phoneDestination, { recursive: true });
+for (const name of [
+  'index.html',
+  'app.css',
+  'app.js',
+  'sw.js',
+  'manifest.webmanifest',
+  'lib',
+  'screens',
+  'icons',
+])
+  await cp(join(root, 'panini-core/apps/phone', name), join(phoneDestination, name), {
+    recursive: true,
+  });
+for (const capability of await readdir(join(root, 'panini-core/capabilities'), {
+  withFileTypes: true,
+})) {
+  if (!capability.isDirectory()) continue;
+  const manifests = join(root, 'panini-core/capabilities', capability.name, 'manifests');
+  try {
+    await stat(manifests);
+  } catch (error) {
+    if (error.code === 'ENOENT') continue;
+    throw error;
+  }
+  await cp(manifests, join(runtime, 'panini-core/capabilities', capability.name, 'manifests'), {
+    recursive: true,
+  });
+}
 await run(join(root, '.venv/Scripts/python.exe'), [
   '-m',
   'PyInstaller',
@@ -117,6 +157,20 @@ await mkdir(join(runtime, 'cli'), { recursive: true });
 await copyFile(
   join(root, 'artifacts/panini-cli/PANINI-CLI.exe'),
   join(runtime, 'cli/PANINI-CLI.exe'),
+);
+await run(join(root, '.venv/Scripts/python.exe'), [
+  '-m',
+  'PyInstaller',
+  '--noconfirm',
+  '--distpath',
+  join(root, 'artifacts/panini-mcp'),
+  '--workpath',
+  join(root, 'artifacts/panini-mcp-work'),
+  'scripts/panini-mcp.spec',
+]);
+await copyFile(
+  join(root, 'artifacts/panini-mcp/panini-mcp.exe'),
+  join(runtime, 'cli/panini-mcp.exe'),
 );
 // A frozen backend must run the first-party sandbox without Docker/Codex.
 // This also catches missing dynamic Python imports such as flatbuffers.
@@ -135,8 +189,40 @@ if (process.platform === 'win32') {
     join(runtime, 'backend/Panini.Backend.exe'),
     ['--check-runtime'],
     runtime,
-    isolatedPath,
+    {
+      ...isolatedPath,
+      PANINI_DATA_DIR: join(root, 'artifacts/panini-backend-import-smoke'),
+      PANINI_RUNTIME_ROOT: runtime,
+      PANINI_HARNESS_ENABLED: '1',
+      PANINI_CAPABILITY_ROUTER_ENABLED: 'false',
+      JEV_REV_DESKTOP_ENABLED: 'false',
+      PANINI_CLI_ENABLED: 'false',
+    },
     'PANINI_BACKEND_RUNTIME_IMPORTS_OK',
+  );
+  await run(
+    join(runtime, 'backend/Panini.Backend.exe'),
+    ['--check-local-stt'],
+    runtime,
+    {
+      ...isolatedPath,
+      PANINI_RUNTIME_ROOT: runtime,
+      PANINI_DATA_DIR: join(root, 'artifacts/panini-backend-import-smoke'),
+      PANINI_LOCAL_MODE: 'private',
+    },
+    'PANINI_LOCAL_STT_SMOKE_OK',
+  );
+  await run(
+    join(runtime, 'backend/Panini.Backend.exe'),
+    ['--check-local-tts'],
+    runtime,
+    {
+      ...isolatedPath,
+      PANINI_RUNTIME_ROOT: runtime,
+      PANINI_DATA_DIR: join(root, 'artifacts/panini-backend-import-smoke'),
+      PANINI_LOCAL_MODE: 'private',
+    },
+    'PANINI_LOCAL_TTS_SMOKE_OK',
   );
   await run(
     join(runtime, 'backend/Panini.Backend.exe'),
@@ -207,6 +293,7 @@ for (const [project, folder] of [
     'win-x64',
     '--self-contained',
     'true',
+    `-p:OutputPath=${join(root, 'artifacts/dotnet-isolated', project).replaceAll('\\', '/')}/`,
     '-o',
     join(runtime, 'desktop', folder),
   ]);
@@ -259,13 +346,48 @@ await cp(
 // V2-08: the Playwright browser driver (the MCP server inside playwright-core). It drives the installed
 // Edge or Chrome, so no browser download is bundled. Capability manifests ship beside it.
 const driver = join(runtime, 'panini-core/capabilities/browser/playwright');
+await cp(
+  join(root, 'panini-core/capabilities/android/sidecar'),
+  join(runtime, 'panini-core/capabilities/android/sidecar'),
+  { recursive: true },
+);
+const androidCache = join(root, 'artifacts/playwright-android-dependencies');
+await run(process.execPath, ['node_modules/playwright-core/cli.js', 'install', 'android'], root, {
+  PLAYWRIGHT_BROWSERS_PATH: androidCache,
+});
+const browserPins = JSON.parse(
+  await readFile(join(root, 'node_modules/playwright-core/browsers.json'), 'utf8'),
+);
+const androidPin = browserPins.browsers.find((entry) => entry.name === 'android');
+if (!androidPin || !/^\d+$/.test(androidPin.revision))
+  throw new Error('Missing pinned Android driver revision.');
+for (const name of ['android-driver.apk', 'android-driver-target.apk']) {
+  const source = join(androidCache, `android-${androidPin.revision}`, name);
+  const destination = join(
+    runtime,
+    'panini-core/capabilities/android/drivers',
+    `android-${androidPin.revision}`,
+  );
+  await mkdir(destination, { recursive: true });
+  await copyFile(source, join(destination, name));
+}
 const playwrightCore = join(driver, 'node_modules/playwright-core');
 await mkdir(playwrightCore, { recursive: true });
-for (const name of ['package.json', 'init-overlay.js', 'tools-1.63.0.json'])
+for (const name of [
+  'package.json',
+  'init-overlay.js',
+  'init-live.cjs',
+  'init-teach.cjs',
+  'tools-1.63.0.json',
+  'page-pdf.mjs',
+])
   await copyFile(
     join(root, 'panini-core/capabilities/browser/playwright', name),
     join(driver, name),
   );
+await cp(join(root, 'node_modules/marked'), join(driver, 'node_modules/marked'), {
+  recursive: true,
+});
 for (const name of [
   'package.json',
   'browsers.json',
@@ -289,6 +411,9 @@ await mkdir(join(licenses, 'npm'), { recursive: true });
 for (const [source, name] of [
   ['node_modules/playwright-core/LICENSE', 'playwright-core-LICENSE.txt'],
   ['node_modules/playwright-core/NOTICE', 'playwright-core-NOTICE.txt'],
+  ['node_modules/marked/LICENSE.md', 'marked-LICENSE.txt'],
+  ['node_modules/dompurify/LICENSE', 'dompurify-LICENSE.txt'],
+  ['node_modules/dompurify/LICENSE-MPL', 'dompurify-LICENSE-MPL.txt'],
 ])
   await copyFile(join(root, source), join(licenses, 'npm', name));
 for (const [source, name] of [

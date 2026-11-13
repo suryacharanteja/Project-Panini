@@ -7,6 +7,7 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Contains("--win32")) { Win32Fixture.Run(); return; }
         var app = new Application();
         if (args.Contains("--graphical")) { app.Run(new GraphicsFixture()); return; }
         var panel = new StackPanel { Margin = new Thickness(24) };

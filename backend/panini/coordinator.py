@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import secrets
 import time
@@ -144,6 +145,8 @@ class Session:
     evidence: dict = field(default_factory=dict)
     confirmations: dict = field(default_factory=dict)
     media: object | None = None
+    voice_persona_id: str = "panini"
+    voice_history: dict = field(default_factory=dict)
     media_generation: int = 0
     media_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     stop_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -243,12 +246,14 @@ class TaskContext:
         self.emit("verifying", summary, evidence_id=record["evidence_id"])
         return record["evidence_id"]
 
-    async def confirm(self, action, application, effect, data):
+    async def confirm(self, action, application, effect, data, *, level="tap"):
         self.check()
         from ..policy import note_v1_confirmation, preapproved
 
         note_v1_confirmation()
         fingerprint = digest(action)
+        if level not in {"tap", "verify", "local"}:
+            raise Fault("CONFIRMATION_LEVEL", "This approval level cannot authorize an action.")
         if preapproved.get():
             # The person already approved this exact tool call through the v2 policy (asked once).
             return fingerprint
@@ -256,8 +261,10 @@ class TaskContext:
 
         if interrupts.active():
             return await self._confirm_interrupt(
-                interrupts.active(), action, application, effect, data, fingerprint
+                interrupts.active(), action, application, effect, data, fingerprint, level=level
             )
+        if level != "tap":
+            raise Fault("NEEDS_DURABLE_REVIEW", "Enable durable reviews for this stronger approval level.")
         confirmation_id, nonce = identifier(), secrets.token_urlsafe(32)
         future = asyncio.get_running_loop().create_future()
         self.session.confirmations[confirmation_id] = {
@@ -290,7 +297,9 @@ class TaskContext:
         finally:
             self.session.confirmations.pop(confirmation_id, None)
 
-    async def _confirm_interrupt(self, service, action, application, effect, data, fingerprint):
+    async def _confirm_interrupt(
+        self, service, action, application, effect, data, fingerprint, *, level="tap"
+    ):
         """V2-05: the same confirmation as a durable interrupt; the shell's dialog and routes are unchanged."""
         from ..interrupts import InterruptSpec
 
@@ -302,7 +311,7 @@ class TaskContext:
                 effect[:1000],
                 preview={"application": application[:160], "effect": effect[:1000], "data": data[:4000]},
                 action=action,
-                level="tap",
+                level=level,
                 ttl_s=60,
             ),
             run_id=self.task.task_id,
@@ -623,6 +632,11 @@ class Coordinator:
         work; if so the agent retries with the error, instead of stopping at the first wall."""
         from .. import config, jev_client, usage_log
 
+        # A failed offline step must stay failed. The fallback agent has not passed
+        # a comparative task-quality gate and must not bypass local admission.
+        local_fallback = os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "fallback"
+        if local_fallback and not config.jev_gates():
+            return None
         agent = self.adapters.get("agent")
         task = ctx.task
         if agent is None or task.dispatched and outcome.outcome == "unknown_effect":
@@ -660,8 +674,9 @@ class Coordinator:
                 usage_log.record_jev("recover", answer)
                 if float(answer["answers"]["recoverable"]["probability"]) < 0.4:
                     return None
-            except Exception:  # noqa: BLE001 -- If Jev is unsure or slow, try the agent anyway.
-                pass
+            except Exception:  # noqa: BLE001 -- Cloud recovery keeps its existing best-effort behavior.
+                if local_fallback:
+                    return None
         failed = task.capability
         try:
             await asyncio.wait_for(failed_adapter.stop(task.task_id), 4)
@@ -1149,10 +1164,13 @@ class Coordinator:
     async def close_media(self, s):
         async with s.media_lock:
             media, s.media = s.media, None
+            generation = s.media_generation
             s.media_generation += 1
             if media:
                 await media.close()
-                s.hub.publish("media.closed", {"message": "Microphone connection closed."})
+                s.hub.publish(
+                    "media.closed", {"message": "Microphone connection closed.", "generation": generation}
+                )
 
     async def end(self, s):
         if s.state == "closed":

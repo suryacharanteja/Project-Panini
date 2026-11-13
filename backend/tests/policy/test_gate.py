@@ -6,6 +6,7 @@ from backend import v2flags
 
 
 def _result(tmp_path, monkeypatch, **fields):
+    monkeypatch.setenv("PANINI_REDTEAM_ENFORCE", "true")
     path = tmp_path / "latest.json"
     if fields:
         path.write_text(json.dumps(fields))

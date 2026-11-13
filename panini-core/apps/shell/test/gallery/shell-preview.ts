@@ -3,8 +3,33 @@
 const listeners: ((event: any) => void)[] = [];
 const snapshot = { state: 'ready', task: null, results: [], selected_targets: {} };
 (window as any).panini = {
-  async invoke(method: string) {
-    if (method === 'status') return { connected: true, preferences: {}, snapshot };
+  async invoke(method: string, input: any = {}) {
+    const personas = [
+      { id: 'panini', name: 'PANINI', color: 'copper' },
+      { id: 'scout', name: 'Scout', color: 'cyan' },
+      { id: 'quill', name: 'Quill', color: 'violet' },
+    ];
+    if (method === 'voice-personas') return { personas };
+    if (method === 'media') {
+      ((window as any).voiceOffers ||= []).push(input);
+      emit('media.connected', {
+        generation: input.generation,
+        persona: personas.find((p) => p.id === input.persona_id),
+      });
+      return { sdp: 'scripted SDP answer' };
+    }
+    if (method === 'media-close') {
+      setTimeout(() => emit('media.closed', { generation: input.generation }), 40);
+      return { status: 'closed' };
+    }
+    if (method === 'status')
+      return {
+        connected: true,
+        preferences: {
+          view: new URLSearchParams(location.search).has('personas') ? 'compact' : 'stage',
+        },
+        snapshot,
+      };
     if (method === 'capabilities')
       return {
         capabilities: ['search', 'browser', 'desktop', 'code', 'agent'].map((c) => ({
@@ -24,6 +49,8 @@ const snapshot = { state: 'ready', task: null, results: [], selected_targets: {}
 };
 const emit = (type: string, data: any, capability?: string) =>
   listeners.forEach((l) => l({ type, data, capability, task_id: 't1' }));
+(window as any).emitPersonaPreview = (persona: unknown, text: string) =>
+  emit('task.running', { persona, message: text, agent_event: 'persona.message' }, 'agent');
 const script: [number, () => void][] = [
   [2500, () => emit('task.preparing', { message: 'Preparing your instruction.' }, 'search')],
   [
@@ -62,7 +89,7 @@ const script: [number, () => void][] = [
   ],
 ];
 let delay = 0;
-for (const [wait, step] of script) {
+for (const [wait, step] of new URLSearchParams(location.search).has('personas') ? [] : script) {
   delay += wait;
   setTimeout(step, delay);
 }

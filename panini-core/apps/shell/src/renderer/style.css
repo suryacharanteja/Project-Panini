@@ -487,6 +487,12 @@ textarea::placeholder {
   color: #e8b89a;
   background: #261a16;
 }
+.dictation-hint {
+  margin: 7px 0 0;
+  color: #a8a8b3;
+  font-size: 11px;
+  line-height: 1.4;
+}
 .ptt {
   display: block;
   margin: 7px auto 0;
@@ -1640,4 +1646,45 @@ main.stage {
   .interaction-orbit {
     display: none;
   }
+}
+.persona-chip {
+  display: inline-block;
+  border: 1px solid currentColor;
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: #e8b89a;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.brand strong {
+  display: block;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.persona-chip[data-color='cyan'] {
+  color: #4ecdd6;
+}
+.persona-chip[data-color='violet'] {
+  color: #b99cff;
+}
+.persona-chip[data-color='green'] {
+  color: #76d2a0;
+}
+.persona-chip[data-color='amber'] {
+  color: #ffbf00;
+}
+.persona-chip[data-color='rose'] {
+  color: #f292b1;
+}
+.persona-timeline > div {
+  border-left: 1px solid #b8733340;
+  margin: 12px 0;
+  padding: 8px 12px;
+}
+.persona-timeline p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

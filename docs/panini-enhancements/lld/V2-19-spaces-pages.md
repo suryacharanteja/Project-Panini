@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 4 · P1 · M (5 days) |
 | Depends on | V2-05 (reviews), V2-07 (shared UI and Admin conversations); V2-18 for persona access |
 | Flag | `PANINI_SPACES` (default `false`) |
-| Status | Not started |
+| Status | In progress |
 | Decision | Register D9 (UI in Admin) |
 
 ## 1. Outcome
@@ -45,9 +45,9 @@ No document workspace. Results live in tasks, notices and the agent inbox; proje
 | --- | --- |
 | `backend/spaces/store.py` | Spaces, pages, revisions, CAS, soft delete, FTS |
 | `backend/spaces/tools.py` | Agent tools |
-| `backend/spaces/export.py` | Markdown export; PDF through the managed Playwright session (`browser_pdf_save` on a rendered page) |
+| `backend/spaces/export.py` | Stored-source saving; PDF through a fresh isolated Playwright print context |
 | `backend/routes/spaces.py` | Console API |
-| `backend/harness/migrations/0014_spaces.sql` | Tables |
+| `backend/harness/migrations/0016_spaces.sql` | Tables (0014 is already used by calls) |
 | Admin `src/pages/spaces/` | `SpaceLibrary`, `SpaceWorkspace`, `PageDocument`, `PageOutline`, editor folder (ported) |
 | `panini-core/apps/shared-ui/cards/` | "Save to Space" action on result and receipt cards |
 
@@ -116,8 +116,8 @@ selection").
 
 ### 5.8 Integrations
 
-- Result and receipt cards: **Save to Space** → `pages_create(review=false)` into the persona's default Space
-  with source links.
+- Result and receipt cards: **Save to Space** uses the owner console's validated stored-source endpoint,
+  with an explicit destination and source links. Agent-created pages always require review.
 - Call receipts (V2-16/20) and channel threads can be saved as pages.
 - Teach-by-demo skills (V2-22) store their human-readable description as a page.
 
@@ -146,9 +146,9 @@ Ported from OpenDots and extended:
 
 ## 8. Acceptance criteria
 
-- [ ] Create, edit with conflicts, nest, search, soft delete and restore work in Admin.
-- [ ] "Show me the draft before saving" produces a review card; approve saves once; decline saves nothing.
-- [ ] PANINI cites a page found by `pages_search` in an answer.
+- [x] Create, edit with conflicts, nest, search, soft delete and restore work in Admin.
+- [x] "Show me the draft before saving" produces a review card; approve saves once; decline saves nothing.
+- [x] PANINI cites a page found by `pages_search` in an answer (one live gpt-4.1 synthetic case).
 
 ## 9. Rollout and rollback
 
@@ -158,3 +158,37 @@ Flag on after step 3. Rollback: flag off hides Spaces and tools; data stays.
 
 - Sync pages to a folder of Markdown files (for Obsidian/VS Code users)? Recommendation: optional one-way export
   to `Documents\PANINI Spaces` in a later item.
+
+## 11. Delivery evidence — 2026-10-04
+
+Implemented: atomic CAS and 50 revisions, nested-parent validation, 30-day restore, filtered FTS,
+persona space access, canonical read tools and approved create/edit tools, durable review replay,
+owner-edited approvals, stable page/persona threads and AG-UI page conversations. Access is checked
+before every model entry. Page context and search/read results carry quarantined provenance.
+Admin has a lazy-loaded Tiptap 3.31.4 editor, Markdown mode, tables/tasks, insertion menu, autosave,
+local draft recovery, search, nested creation, trash/restore, page discussions and Markdown export.
+
+The next integrated increment delivers validated result/receipt/history saving and rejection tests,
+isolated PDF export, grid/outline, moves, history restoration, access controls, reviewed move/delete,
+owner destroy, validated default destinations and resolved-decision recovery while a run is parked.
+The editor modules are separated into PageDocument, SpaceLibrary, PageOutline and shared types.
+
+`npm test`: **798 backend** tests passed; all other repository gates passed. Final browser smoke
+uses the built Admin, throwaway database and real AG-UI/interrupt code with a scripted model; it
+also verifies moves, history restoration, owner destroy and real PDF export. A separate live
+gpt-4.1 run searched and cited a synthetic page correctly. The PDF and responsive screenshots were
+visually inspected. Evidence and limits: [qualification](../qualification-spaces-2026-10-04.md).
+
+Phone notebook actions, conflict recovery, stored-source saving and export downloads are now verified
+through the real fabric browser preview. Approved Teach skills can now be saved from Admin as a
+versioned, validated page source; retries preserve owner edits and pending or integrity-failed
+versions are refused. Focused backend tests, an authenticated owner API test and a built-Admin fixture
+API smoke cover this path. Still open: channel integrations, a real-service Teach-to-Spaces browser qualification, additional
+crash-window and live-provider qualification, installed-runtime and production release gates.
+This is a local development increment; V2-19 and the full LLD program remain in progress.
+
+
+## Channel integration — 2026-10-06
+
+Long verified channel results (Telegram, Slack, WhatsApp, email) become pages in the owner's default Space, with
+a short reply naming the page (`backend/channels/manager.py`, `test_a_long_channel_result_is_saved_as_a_space_page_with_a_short_reply`).

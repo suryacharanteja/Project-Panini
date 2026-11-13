@@ -2,11 +2,15 @@ id: chat.date-math
 title: Date maths
 modes:
 - live
+- local
 needs:
 - openai
 turn: What day of the week is 25 December 2026?
 files: {}
 expect:
+  outcome_in:
+  - verified_complete
+  - reply
   message_contains_all:
   - friday
 tags:

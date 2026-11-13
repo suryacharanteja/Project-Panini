@@ -69,6 +69,10 @@ class HttpServer:
 
     # -- HTTP ---------------------------------------------------------------
     def _http(self):
+        from .. import private_mode
+
+        if private_mode.active():
+            raise ConnectorError(private_mode.reason())
         if self.client is None:
             self.client = httpx.AsyncClient(timeout=60, follow_redirects=False)
         return self.client
@@ -137,6 +141,10 @@ class HttpServer:
 
     # -- Lifecycle ------------------------------------------------------------
     async def start(self):
+        from .. import private_mode
+
+        if private_mode.active():
+            raise ConnectorError(private_mode.reason())
         if self.started:
             return
         try:

@@ -9,6 +9,7 @@ function fixture({
   getUserMedia,
   MediaRecorder,
   savedMode,
+  sttStatus,
   mode = 'chromium',
 } = {}) {
   let initialize;
@@ -78,6 +79,7 @@ function fixture({
       }
       if (url.endsWith('/extension/status'))
         return Response.json(onExtension ? await onExtension() : { connected: false });
+      if (url === '/api/stt/status') return Response.json(sttStatus || { mode: 'off' });
       if (url.startsWith('/api/browser/status') && onStatus) return Response.json(await onStatus());
       return Response.json({ stats: {}, status: 'stopping' });
     },
@@ -86,6 +88,7 @@ function fixture({
     readFileSync(new URL('../public/browser-use.js', import.meta.url), 'utf8'),
     context,
   );
+  vm.runInContext("sttMode = 'off'", context);
   return {
     elements,
     element,
@@ -264,6 +267,25 @@ test('interim speech is visible but only a final utterance executes', async () =
   assert.equal(f.streams.length, 1);
   finish(f.streams[0], { event: 'complete', message: 'Done' });
   await flush();
+});
+
+test('private mode permits local recording and disables browser Web Speech', async () => {
+  const f = fixture({
+    sttStatus: {
+      mode: 'private',
+      configured: false,
+      local: { ready: true },
+      active_engine: 'local',
+    },
+  });
+  await f.run('checkSttStatus()');
+  assert.match(f.element('stt-label').textContent, /Local speech ready/);
+  assert.equal(f.element('record-webspeech-btn').disabled, true);
+  assert.equal(f.element('record-assembly-btn').textContent, 'Local model');
+  assert.equal(f.element('assembly-key-link').hidden, true);
+  await f.run('startWebSpeech()');
+  assert.equal(f.speech(), undefined);
+  assert.equal(f.run('window.JevBrowser.canStartVoice()'), false);
 });
 
 test('Stop keeps controls disabled until backend cleanup is confirmed', async () => {

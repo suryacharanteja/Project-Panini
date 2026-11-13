@@ -100,6 +100,8 @@ class Ingress:
         hook = self.hooks.get(hook_id)
         if hook is None or not _eq(path_secret, hook.get("path_secret", "")):
             return DENIED
+        if hook["kind"] == "generic" and len(delivery.get("body") or "") > 90000:
+            return {"status": 413, "body": ""}
         body = base64.b64decode(delivery.get("body") or "")
         headers, method, now = (
             delivery.get("headers") or {},
@@ -127,5 +129,16 @@ class Ingress:
         handler = self.handlers.get(kind)
         if handler is None:
             return {"status": 202, "body": "accepted"}
-        answer = await handler(hook_id, headers, body)
+        try:
+            answer = await handler(hook_id, headers, body)
+        except Exception:
+            # A failed internal hand-off must be retryable with the same signed delivery ID.
+            self.store.execute(
+                "DELETE FROM ingress_seen WHERE hook=? AND delivery_id=?", (hook_id, delivery_id)
+            )
+            raise
+        if isinstance(answer, dict) and answer.get("status", 200) >= 500:
+            self.store.execute(
+                "DELETE FROM ingress_seen WHERE hook=? AND delivery_id=?", (hook_id, delivery_id)
+            )
         return answer if isinstance(answer, dict) else {"status": 200, "body": ""}

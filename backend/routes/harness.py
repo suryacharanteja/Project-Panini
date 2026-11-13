@@ -14,7 +14,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..harness import a2a
 from ..harness.memory import KINDS, MemoryError
+from .outbound import add_outbound
 from .panini import principal
+from .presence import add_presence
+from .triggers import add_triggers
 
 router = APIRouter()
 
@@ -963,3 +966,81 @@ def add_interrupts(r, guard, surface):
 
 add_interrupts(console_router, lambda request: None, "console")
 add_interrupts(shell_router, lambda request: principal(request), "avatar")
+
+add_triggers(console_router, lambda request: None)
+add_triggers(shell_router, lambda request: principal(request, controller=True), shell=True)
+
+
+class PhoneCaller(Strict):
+    number: str = Field(min_length=8, max_length=16)
+    name: str = Field(min_length=1, max_length=80)
+    pin: str = Field(default="", max_length=8)
+    kind: str = Field(default="owner", pattern="^(owner|contact|blocked)$")
+    persona_id: str = Field(default="panini", pattern=r"^[a-z][a-z0-9-]{0,40}$")
+
+
+def add_phone(r, guard):
+    def phone(request):
+        from ..telephony.inbound import runtime
+
+        return runtime(request.app)
+
+    @r.get("/phone")
+    async def phone_status(request: Request):
+        guard(request)
+        return phone(request).status()
+
+    @r.post("/phone/webhook")
+    async def phone_webhook(payload: dict, request: Request):
+        guard(request)
+        from ..fabric.runtime import runtime
+
+        try:
+            result = runtime(request.app).configure_phone_webhook(payload.get("secret"))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        phone(request)
+        return result
+
+    @r.post("/phone/callers")
+    async def phone_caller(payload: PhoneCaller, request: Request):
+        guard(request)
+        h = harness(request)
+        try:
+            h.personas.get(payload.persona_id)
+            phone(request).callers.put(**payload.model_dump())
+        except (ValueError, KeyError) as exc:
+            raise HTTPException(422, str(exc)) from None
+        return {"status": "saved"}
+
+    @r.post("/phone/callers/remove")
+    async def phone_remove(payload: dict, request: Request):
+        guard(request)
+        try:
+            phone(request).callers.remove(payload.get("number"))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return {"status": "removed"}
+
+    @r.post("/phone/end")
+    async def phone_end(request: Request):
+        guard(request)
+        await phone(request).end()
+        return {"status": "ended"}
+
+    @r.post("/phone/verify")
+    async def phone_verify(request: Request):
+        guard(request)
+        service = phone(request)
+        service.request_verification()
+        return {"status": "requested"}
+
+
+add_phone(console_router, lambda request: None)
+add_phone(shell_router, lambda request: principal(request))
+
+add_outbound(console_router, lambda request: None, configurable=True)
+add_outbound(shell_router, lambda request: principal(request))
+
+add_presence(console_router, lambda request: None)
+add_presence(shell_router, lambda request: principal(request, controller=True), native=True)

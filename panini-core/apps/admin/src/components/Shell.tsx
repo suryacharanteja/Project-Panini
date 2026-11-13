@@ -49,6 +49,7 @@ export const NAV: Section[] = [
       { to: '/runs', label: 'Activity', icon: <Activity size={16} />, deva: 'क्रिया' },
       { to: '/receipts', label: 'Receipts', icon: <ShieldCheck size={16} />, deva: 'प्रमाण' },
       { to: '/projects', label: 'Projects', icon: <Boxes size={16} />, deva: 'योजना' },
+      { to: '/spaces', label: 'Spaces', icon: <Layers size={16} /> },
     ],
   },
   {
@@ -56,8 +57,10 @@ export const NAV: Section[] = [
     items: [
       { to: '/build/skills', label: 'Skills', icon: <Sparkles size={16} />, deva: 'कौशल' },
       { to: '/build/connectors', label: 'Connectors', icon: <Plug size={16} />, deva: 'सेतु' },
+      { to: '/build/channels', label: 'Channels', icon: <MessagesSquare size={16} /> },
       { to: '/build/automations', label: 'Automations', icon: <Timer size={16} />, deva: 'नियम' },
       { to: '/build/agents', label: 'Agents', icon: <Bot size={16} />, deva: 'कर्ता' },
+      { to: '/build/personas', label: 'Personas', icon: <Bot size={16} /> },
       {
         to: '/build/capabilities',
         label: 'Capabilities',
@@ -68,6 +71,8 @@ export const NAV: Section[] = [
       { to: '/build/live', label: 'Live', icon: <Eye size={16} />, deva: 'दृश्य' },
       { to: '/build/safety', label: 'Safety', icon: <ShieldCheck size={16} />, deva: 'रक्षा' },
       { to: '/build/remote', label: 'Remote access', icon: <Smartphone size={16} />, deva: 'दूर' },
+      { to: '/build/phone', label: 'Phone line', icon: <Smartphone size={16} /> },
+      { to: '/build/android', label: 'Android hands', icon: <Smartphone size={16} /> },
       { to: '/memory', label: 'Memory', icon: <Brain size={16} />, deva: 'स्मृति' },
     ],
   },
@@ -247,6 +252,7 @@ export function Shell() {
                     <li key={item.to}>
                       <Link
                         to={item.to}
+                        onClick={() => setMenu(false)}
                         aria-current={active ? 'page' : undefined}
                         className={cx(
                           'group flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition',

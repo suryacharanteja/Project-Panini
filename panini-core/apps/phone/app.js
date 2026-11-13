@@ -18,17 +18,29 @@ const app = {
   fabric: null,
   shared: null,
   viewRevision: 0,
+  activeScreen: '',
+  threadTarget: '',
   installPrompt: null,
   main: document.querySelector('main'),
   nav: document.querySelector('nav'),
 
   async show(name) {
-    if (!TABS.some(([tab]) => tab === name)) name = 'home';
+    if (!['calls', 'spaces', 'conversation'].includes(name) && !TABS.some(([tab]) => tab === name))
+      name = 'home';
+    this.activeScreen = name;
+    const activeTab =
+      name === 'calls'
+        ? 'home'
+        : name === 'spaces'
+          ? 'settings'
+          : name === 'conversation'
+            ? 'threads'
+            : name;
     const revision = ++this.viewRevision;
     this.main.setAttribute('aria-busy', 'true');
     this.nav.querySelectorAll('button').forEach((b) => {
-      b.classList.toggle('active', b.dataset.tab === name);
-      if (b.dataset.tab === name) b.setAttribute('aria-current', 'page');
+      b.classList.toggle('active', b.dataset.tab === activeTab);
+      if (b.dataset.tab === activeTab) b.setAttribute('aria-current', 'page');
       else b.removeAttribute('aria-current');
     });
     try {
@@ -98,6 +110,7 @@ const app = {
         this.fabric = fabric;
         toast('Paired. Welcome.');
         this.nav.hidden = false;
+        void presenceHeartbeat();
 
         return this.show('home');
       } catch {
@@ -164,6 +177,7 @@ async function start() {
   );
   app.fabric = await Fabric.load();
   const params = new URLSearchParams(location.search);
+  app.threadTarget = params.get('thread') || '';
   if (!app.fabric || location.hash.includes('v=1')) {
     app.nav.hidden = true;
     return app.main.replaceChildren(screens.pairing(app));
@@ -178,14 +192,66 @@ async function start() {
 }
 
 window.paniniDebug = { b64 }; // Lets the PC-side tests check the bundle loaded.
-start().catch((error) => {
-  app.main.replaceChildren(
-    h(
-      'section.screen',
-      {},
-      h('h2', { text: 'PANINI could not start' }),
-      h('p', { text: error.message }),
-      h('button', { onclick: () => location.reload() }, 'Try again'),
-    ),
-  );
+let presenceBusy = false;
+async function presenceHeartbeat() {
+  if (!app.fabric || presenceBusy) return;
+  presenceBusy = true;
+  try {
+    const reply = await app.fabric.request('POST', '/presence', { foreground: !document.hidden });
+    if (reply.status === 403) return app.revoked();
+  } catch {
+  } finally {
+    presenceBusy = false;
+  }
+}
+function retract(id) {
+  for (const card of document.querySelectorAll('[data-interrupt-id]'))
+    if (card.dataset.interruptId === id) card.remove();
+}
+let inboxPolling = false;
+async function refreshOpenCards() {
+  if (!app.fabric || document.hidden || app.activeScreen !== 'inbox' || inboxPolling) return;
+  inboxPolling = true;
+  try {
+    const reply = await app.fabric.request('GET', '/interrupts');
+    if (reply.status !== 200) return;
+    const ids = new Set((reply.body.interrupts || []).map((item) => item.id));
+    app.setBadge(ids.size);
+    for (const card of document.querySelectorAll('[data-interrupt-id]'))
+      if (!ids.has(card.dataset.interruptId)) card.remove();
+    const registration = await navigator.serviceWorker?.getRegistration();
+    for (const note of (await registration?.getNotifications()) || [])
+      if (note.data?.type === 'interrupt' && !ids.has(note.data.id)) note.close();
+  } catch {
+  } finally {
+    inboxPolling = false;
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  void presenceHeartbeat();
+  void refreshOpenCards();
 });
+navigator.serviceWorker?.addEventListener('message', (event) => {
+  if (event.data?.type === 'interrupt.resolved') {
+    retract(event.data.id);
+    void refreshOpenCards();
+  }
+});
+setInterval(() => {
+  if (!document.hidden) void presenceHeartbeat();
+}, 30000);
+setInterval(() => void refreshOpenCards(), 2000);
+void presenceHeartbeat();
+start()
+  .catch((error) => {
+    app.main.replaceChildren(
+      h(
+        'section.screen',
+        {},
+        h('h2', { text: 'PANINI could not start' }),
+        h('p', { text: error.message }),
+        h('button', { onclick: () => location.reload() }, 'Try again'),
+      ),
+    );
+  })
+  .finally(() => void presenceHeartbeat());

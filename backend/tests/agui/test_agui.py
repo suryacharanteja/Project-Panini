@@ -235,6 +235,78 @@ def test_approval_parks_the_run_and_resume_continues_at_the_pending_call(tmp_pat
         assert states.count("resumed") == 1 and states.count("completed") == 1
 
 
+@pytest.mark.parametrize("level", ["verify", "local"])
+def test_stronger_registry_review_cannot_be_resolved_by_agui_tap(tmp_path, agui_on, monkeypatch, level):
+    from fastapi.testclient import TestClient
+
+    from backend.policy import new_grant
+
+    monkeypatch.setenv("PANINI_V2_REGISTRY", "true")
+    monkeypatch.setenv("PANINI_V2_POLICY", "enforce")
+    app, h, target = _command_world(tmp_path)
+    h.policy.put_grant(new_grant(tools=("run_command",), levels={"local_exec": level}))
+    with TestClient(app, base_url="http://127.0.0.1") as client:
+        first = events(client.post("/api/agui/agents/panini/run", json=body(), headers=HEADERS))
+        (interrupt,) = first[-1]["outcome"]["interrupts"]
+        review = h.interrupts.get(interrupt["id"], include_secret=True)
+        assert review["level"] == level and review["action"]["approval_level"] == level
+        resume = [
+            {
+                "interruptId": interrupt["id"],
+                "status": "resolved",
+                "payload": {"approved": True},
+                "metadata": {"nonce": review["nonce"], "actionDigest": review["action_digest"]},
+            }
+        ]
+        second = events(
+            client.post(
+                "/api/agui/agents/panini/run",
+                json=body(run="run-2", resume=resume, messages=[]),
+                headers=HEADERS,
+            )
+        )
+        assert second[-1]["type"] == "RUN_ERROR"
+        assert h.interrupts.get(review["id"])["status"] == "open" and not target.exists()
+        from backend.interrupts import decided_by
+
+        h.interrupts.resolve(
+            review["id"],
+            nonce=review["nonce"],
+            action_digest=review["action_digest"],
+            status="resolved",
+            payload={"approved": True},
+            decided_by=decided_by("avatar", "local"),
+        )
+        app.state.agui = None  # Resume using the durable proof after replacing the stream runner.
+        forged = [{**resume[0], "metadata": {**resume[0]["metadata"], "nonce": "wrong"}}]
+        bad = events(
+            client.post(
+                "/api/agui/agents/panini/run",
+                headers=HEADERS,
+                json=body(run="bad-proof", resume=forged, messages=[]),
+            )
+        )
+        assert bad[-1]["code"] == "INTERRUPT_CHANGED" and not target.exists()
+        third = events(
+            client.post(
+                "/api/agui/agents/panini/run",
+                headers=HEADERS,
+                json=body(run="pc-approved", resume=resume, messages=[]),
+            )
+        )
+        assert third[-1]["result"]["outcome"] == "verified_complete", third
+        assert target.read_text(encoding="utf-8-sig").strip() == "hello"
+        assert not h.interrupts.list("open")  # The legacy command prompt did not ask a second time.
+        again = events(
+            client.post(
+                "/api/agui/agents/panini/run",
+                headers=HEADERS,
+                json=body(run="already-done", resume=resume, messages=[]),
+            )
+        )
+        assert again[-1]["code"] == "INTERRUPT_UNKNOWN"
+
+
 def test_a_wrong_nonce_or_a_decline_never_runs_the_action(tmp_path, agui_on):
     from fastapi.testclient import TestClient
 

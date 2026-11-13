@@ -70,6 +70,9 @@ class Interrupts:
         schema = spec.response_schema or (APPROVAL_SCHEMA if spec.kind == "approval" else None)
         action_digest = digest(spec.action) if spec.action is not None else None
         now = self.clock()
+        preview = json.dumps(spec.preview, ensure_ascii=False, default=str)
+        if len(preview) > 160000:
+            raise ValueError("Interrupt preview exceeds 160000 characters.")
         self.store.execute(
             "INSERT INTO interrupts(id, run_id, thread_id, task_id, kind, reason, title, message, preview, action, "
             "action_digest, response_schema, level, nonce, tool_call_id, created_at, expires_at, opened_by) "
@@ -83,7 +86,7 @@ class Interrupts:
                 spec.reason,
                 spec.title[:200],
                 spec.message[:2000],
-                json.dumps(spec.preview, ensure_ascii=False, default=str)[:20000],
+                preview,
                 json.dumps(spec.action, default=str) if spec.action is not None else None,
                 action_digest,
                 json.dumps(schema) if schema else None,

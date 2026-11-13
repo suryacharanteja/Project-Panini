@@ -79,9 +79,13 @@ class JevClient:
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                 )
                 self._ready = Future()
-                threading.Thread(target=self._read, args=(self._process, self._ready), daemon=True).start()
-                threading.Thread(target=self._drain_stderr, args=(self._process,), daemon=True).start()
-            process, ready = self._process, self._ready
+                # The reader may clear self._process immediately when startup fails. Both workers
+                # must retain the same process, rather than read mutable state between starts.
+                process, ready = self._process, self._ready
+                threading.Thread(target=self._read, args=(process, ready), daemon=True).start()
+                threading.Thread(target=self._drain_stderr, args=(process,), daemon=True).start()
+            else:
+                process, ready = self._process, self._ready
         try:
             ready.result(timeout=10)
         except Exception:
@@ -149,13 +153,15 @@ _client = JevClient()
 
 
 def ask(state, questions, timeout=config.PROVIDER_TIMEOUT):
+    if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "private":
+        raise RuntimeError("Jev cloud checks are unavailable in private mode.")
     if not config.configured("AI_GATEWAY_API_KEY"):
         raise RuntimeError("AI_GATEWAY_API_KEY is not configured")
     return _client.ask(state, questions, timeout)
 
 
 def warm():
-    if not config.configured("AI_GATEWAY_API_KEY"):
+    if not config.jev_gates():
         return False
     try:
         _client.start()

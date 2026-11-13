@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 import time
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import comparison as comparison_service
-from . import config, jev_client, stt_service
+from . import config, jev_client, private_mode, stt_service
 from .console import ConsoleBoundary
 from .extension_pairing import PairingStore
 from .fabric import router as fabric_router
@@ -20,20 +20,38 @@ from .http import ApiBoundary
 from .panini.contracts import Fault
 from .panini.settings import Settings
 from .routes import admin, agui, browser, comparison, harness, panini, speech, voice
+from .routes import android as android_routes
+from .routes import channels as channels_routes
 from .routes import console as console_routes
 from .routes import live as live_routes
+from .routes import mcp as mcp_routes
+from .routes import spaces as spaces_routes
+from .routes import teach as teach_routes
 from .work import CapacityError, WorkPool
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    stack = AsyncExitStack()
+    mcp_monitor = None
+    if app.state.harness and not private_mode.active():
+        from .mcp_server.server import Service
+
+        app.state.mcp = Service(app.state.harness)
+        app.state.harness.mcp = app.state.mcp
+        await stack.enter_async_context(app.state.mcp.manager.run())
+        mcp_monitor = asyncio.create_task(app.state.mcp.monitor())
     if app.state.panini:
         app.state.panini.start()
     if app.state.harness:
         app.state.harness.start()
         from . import v2flags
 
-        if v2flags.value("PANINI_REMOTE_MODE") != "off":  # Off until the V2-13 red-team gate passes.
+        if v2flags.enabled("PANINI_PHONE_LINE"):
+            from .telephony.inbound import runtime as phone_runtime
+
+            await phone_runtime(app).recover()
+        if v2flags.value("PANINI_REMOTE_MODE") != "off":
             from .fabric.runtime import runtime
 
             await runtime(app).start()
@@ -42,6 +60,13 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         try:
+            if mcp_monitor:
+                mcp_monitor.cancel()
+                await asyncio.gather(mcp_monitor, return_exceptions=True)
+                await app.state.mcp.close()
+            await stack.aclose()
+            if getattr(app.state, "phone_line", None):
+                await app.state.phone_line.close()
             if app.state.panini:
                 await app.state.panini.close()
             if getattr(app.state, "fabric_runtime", None):
@@ -89,10 +114,13 @@ def create_app(
     app.state.panini = None
     app.state.harness = None
     app.state.admin = None
+    app.state.mcp = None
     if os.getenv("PANINI_HARNESS_ENABLED", "1") != "0":
         from .harness.runtime import Harness
 
         app.state.harness = (harness_factory or Harness)()
+        if hasattr(app.state.harness, "continuity"):
+            app.state.harness.continuity.app = app
     if settings.enabled:
         from .panini.coordinator import Coordinator
         from .panini.planning import route
@@ -123,6 +151,7 @@ def create_app(
     app.state.compare_service = compare_operation or comparison_service.compare
     app.state.transcribe_service = transcribe_operation or stt_service.transcribe_audio_bytes
     origins = config.allowed_origins()
+    app.add_middleware(private_mode.PrivateBoundary)
     app.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=[
@@ -147,7 +176,17 @@ def create_app(
     app.include_router(harness.shell_router)
     app.include_router(harness.console_router)
     app.include_router(harness.a2a_router)
+    app.include_router(spaces_routes.console_router)
+    app.include_router(spaces_routes.shell_router)
     app.include_router(admin.router)
+    app.include_router(android_routes.router)
+    app.include_router(teach_routes.router)
+    app.include_router(teach_routes.shell_router)
+    app.include_router(mcp_routes.router)
+    from starlette.routing import Route
+
+    app.router.routes.append(Route("/mcp", mcp_routes.Endpoint(app), methods=["GET", "POST", "DELETE"]))
+    app.include_router(channels_routes.router)
     app.include_router(agui.console_router)
     app.include_router(agui.shell_router)
     app.include_router(live_routes.console_router)

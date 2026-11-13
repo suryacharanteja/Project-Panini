@@ -2,6 +2,7 @@ id: chat.clarify-when-vague
 title: Clarify when vague
 modes:
 - live
+- local
 needs:
 - openai
 turn: Run a simulation.
@@ -11,6 +12,7 @@ expect:
   - blocked
   - needs_input
   - clarification
+  - reply
   message_contains_any:
   - '?'
 tags: []

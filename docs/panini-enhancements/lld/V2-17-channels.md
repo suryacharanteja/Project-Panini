@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 3 · P1 · L (1.5 weeks; channels can ship one at a time) |
 | Depends on | V2-06 (run engine), V2-13 (guardian gate), V2-14 (WhatsApp ingress only) |
 | Flag | `PANINI_CHANNELS` = comma list of `slack`, `telegram`, `whatsapp`, `email` (default empty) |
-| Status | Not started |
+| Status | In progress: Telegram, Slack, WhatsApp and email built and tested with fakes; live accounts pending |
 | Decision | Register D5 (WhatsApp Cloud API only) |
 
 ## 1. Outcome
@@ -174,16 +174,85 @@ CREATE TABLE IF NOT EXISTS channel_messages(channel TEXT NOT NULL, message_id TE
 
 - [ ] Telegram and Slack live with allow-lists; WhatsApp and email pass their integration tests (live when
       accounts exist).
-- [ ] Ported OpenDots Slack tests green.
-- [ ] Provider errors never appear in replies or logs (safe-failure test).
-- [ ] A conversation started in Telegram continues on the avatar (thread binding).
+- [x] Ported OpenDots Slack tests green (`backend/tests/channels/test_providers.py`, 2026-10-06).
+- [x] Provider errors never appear in replies or logs (safe-failure tests for Telegram and Slack, 2026-10-06).
+- [x] A conversation started in Telegram (or any owner channel) continues on the avatar (thread binding, 2026-10-06).
 
 ## 9. Rollout and rollback
 
-Enable channels one by one in Admin (each requires the V2-13 gate). Rollback: remove the channel from
+Enable channels one by one in Admin. The owner has disabled/deferred the V2-13 red-team gate;
+this increment remains a development release with action approvals enforced. Rollback: remove the channel from
 `PANINI_CHANNELS`; bindings remain.
 
 ## 10. Open questions
 
 - Allow trusted contacts (family) to ask PANINI for shared information (for example a family calendar)?
   Recommendation: later, through a dedicated persona with read-only grants (V2-18).
+
+## 11. Telegram text increment — 2026-10-04
+
+Migration 0025 adds account configuration, inbound dedupe, channel jobs, polling offsets and a durable
+reply outbox. Bot credentials use the existing DPAPI vault; responses expose only a configured boolean.
+The Bot API adapter long-polls the official API, persists offsets only after durable intake, and replies
+as bounded plain text. Numeric owner/group allow-lists, human-only intake, paused behavior, per-account
+task limits and bounded reply queues are enforced. Edited messages do not start work.
+
+Each accepted message creates an existing leased task bound to a persistent channel conversation.
+The channel principal is preserved in run records and receipts. Channel policy is enforced even when
+local policy is shadow/off; effects park on interrupts on the PC/paired phone. Account/group revocation
+cancels queued work and stops in-flight hands. A reopened database resumes a parked memory write after
+phone approval without repeating it. Channel text cannot resolve approvals.
+
+Replies are deduplicated durably. Explicit 429 rejections respect Retry-After and preserve chunk order;
+timeouts/crashes during sending become unknown delivery and are not blindly resent. Provider messages
+and bot credentials are redacted from logs. Admin Build → Channels configures and disables accounts.
+
+The browser check uses real Admin APIs, a real durable worker and a fake Telegram HTTP provider in an
+isolated loopback preview. It does not qualify a live bot. Telegram attachment/voice input, proactive
+notices, automatic avatar handoff, persona selection, Slack Socket Mode, WhatsApp and email remain open.
+Remote desktop/code hands are not enabled by this increment. Red-team work remains disabled/deferred.
+
+
+## 12. Slack, WhatsApp and email — 2026-10-06
+
+All four channels share the manager, dedupe, outbox, jobs, policy and guard. No new SDKs.
+
+- **Accounts** (`accounts.py`): per-channel validation of owner IDs, groups, settings and write-only secrets
+  (Slack bot + app tokens and workspace ID; WhatsApp access token, app secret, verify token, phone number ID;
+  email mailbox settings and password). An account cannot change channel.
+- **Identity** (`identity.py`): Telegram unchanged; Slack needs the exact workspace and member IDs, and a DM or an
+  allow-listed channel; WhatsApp needs the owner's number in a 1:1 thread; email needs an allow-listed address
+  **and** aligned DKIM or SPF in the receiving server's Authentication-Results.
+- **Slack** (`slack.py`): Socket Mode over a plain WebSocket (`apps.connections.open`), every envelope acknowledged
+  before work, replies in thread via `chat.postMessage`. OpenDots behaviour ported: mentions subscribe their
+  thread (not while paused; a failed subscribe still answers), follow-ups only in subscribed threads and never on
+  unreadable state, bots/apps/edits/deletes ignored.
+- **WhatsApp** (`whatsapp.py`): inbound through V2-14 ingress (challenge and X-Hub-Signature-256 verified on the
+  PC), one thread per number, replies through the Graph API. It needs remote access for its public webhook.
+- **Email** (`mail.py`): IMAP polling with the last UID stored after durable delivery, threads by
+  References/In-Reply-To root, quoted history removed, SMTP replies in thread marked `Auto-Submitted`; mailing
+  lists, auto-generated mail and PANINI's own address are never answered.
+- **Avatar handoff** (`brain/threads.py`): the avatar's continue-recent now includes owner channel threads.
+- **Admin** → Channels: one page for all four channels.
+
+Tests: `backend/tests/channels/test_providers.py` (14), on top of the existing 26 Telegram tests. Covered:
+- the seven OpenDots Slack cases;
+- Socket Mode acks before work;
+- WhatsApp through real ingress (forged signature refused);
+- email authentication alignment, auto-mail suppression, threading and UID bookkeeping;
+- channel text can never resolve an approval (I4);
+- write-only routes;
+- avatar handoff.
+
+Not done: live qualification with a real Telegram bot, Slack workspace, WhatsApp number and mailbox (they need
+your accounts and tokens); channel attachments.
+
+### Proactive notices and long results — 2026-10-06
+
+- **Proactive notices:** V2-24 presence routing already delivers notices to a preferred channel. It now accepts
+  any owner's private conversation, not only chats whose thread key equals the sender: Telegram and WhatsApp
+  1:1 chats, Slack direct messages, and email threads. Groups and Slack channel threads are never notice
+  destinations (`identity.private_conversation`).
+- **Long results (with V2-19):** a verified channel result longer than 3,000 characters is saved as a page in
+  the owner's default Space (when Spaces are on and a default Space is set). The reply is a short summary
+  naming the page. Retries reuse the same page; without a Space the full text is sent in chunks as before.

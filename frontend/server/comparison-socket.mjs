@@ -8,17 +8,17 @@ export function attachComparisonSocket(
     backendUrl,
     allowedOrigins,
     limiter,
-    consoleAuth = null,
+    authorize = null,
     consoleToken = '',
     maxConnections = 32,
   },
 ) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 100000 });
-  server.on('upgrade', (req, socket, head) => {
+  server.on('upgrade', async (req, socket, head) => {
     // Own only this path. Other upgrade handlers are registered on the same
     // server, so closing sockets we do not own would kill theirs.
     if (req.url !== '/ws/compare') return;
-    if (!allowedRequest(req, allowedOrigins) || (consoleAuth && !consoleAuth.authenticated(req))) {
+    if (!allowedRequest(req, allowedOrigins) || (authorize && !(await authorize(req)))) {
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       return;
     }

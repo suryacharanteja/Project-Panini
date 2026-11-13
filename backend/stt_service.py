@@ -5,7 +5,7 @@ import io
 import os
 import time
 
-from . import config
+from . import config, local_stt, local_tts, private_mode
 from .errors import provider_error
 
 try:
@@ -18,19 +18,55 @@ def is_configured() -> bool:
     return aai is not None and config.configured("ASSEMBLYAI_API_KEY")
 
 
+def can_transcribe() -> bool:
+    mode = os.getenv("PANINI_LOCAL_MODE", "off").strip().lower()
+    if mode == "private":
+        return local_stt.readiness()["ready"]
+    return is_configured() or (mode == "fallback" and local_stt.readiness()["ready"])
+
+
 def get_status() -> dict:
+    mode = os.getenv("PANINI_LOCAL_MODE", "off").strip().lower()
+    local = local_stt.readiness()
+    cloud = is_configured()
+    if mode == "private":
+        engine = "local" if local["ready"] else None
+    elif cloud:
+        engine = "assemblyai"
+    else:
+        engine = "local" if mode == "fallback" and local["ready"] else None
     return {
+        "mode": mode,
         "assemblyai_installed": aai is not None,
-        "configured": is_configured(),
-        "fallback": "Web Speech API (browser native)" if not is_configured() else None,
+        "configured": cloud,
+        "local": local,
+        "local_tts": local_tts.readiness(),
+        "active_engine": engine,
+        "fallback": None if mode == "private" or can_transcribe() else "Web Speech API (browser native)",
     }
 
 
 async def transcribe_audio_bytes(audio_bytes: bytes) -> dict:
-    if not is_configured():
-        raise RuntimeError("AssemblyAI is not configured; use Web Speech or enter text")
     if not 500 <= len(audio_bytes) <= config.MAX_AUDIO_BYTES:
         raise ValueError("Audio must be between 500 bytes and 10 MiB")
+    mode = os.getenv("PANINI_LOCAL_MODE", "off").strip().lower()
+    if private_mode.active():
+        return await local_stt.transcribe_audio_bytes(audio_bytes)
+    if not is_configured():
+        if mode == "fallback" and local_stt.readiness()["ready"]:
+            return await local_stt.transcribe_audio_bytes(audio_bytes)
+        raise RuntimeError("AssemblyAI is not configured; use Web Speech or enter text")
+    if mode == "fallback":
+        try:
+            return await _cloud_transcribe(audio_bytes)
+        except (RuntimeError, TimeoutError):
+            if local_stt.readiness()["ready"]:
+                return await local_stt.transcribe_audio_bytes(audio_bytes)
+            raise
+    return await _cloud_transcribe(audio_bytes)
+
+
+async def _cloud_transcribe(audio_bytes: bytes) -> dict:
     started = time.monotonic()
 
     try:

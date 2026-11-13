@@ -35,6 +35,9 @@ class Tasks:
         condition=None,
         hold=False,
         project_id=None,
+        kind=None,
+        persona_id=None,
+        budget_usd=None,
     ):
         """Queue a task; hold=True waits for the person's approval first (e.g. a request from another agent)."""
         goal = " ".join(str(goal).split())
@@ -48,7 +51,17 @@ class Tasks:
             project = self.store.one("SELECT status FROM projects WHERE id=?", (project_id,))
             if not project or project["status"] != "active":
                 raise ValueError("A task needs an active project.")
+        if kind is not None and kind not in {"trigger", "responsibility"}:
+            raise ValueError("Unsupported background task kind.")
+        if kind is not None and (
+            not isinstance(persona_id, str)
+            or not 1 <= len(persona_id) <= 64
+            or type(budget_usd) not in (int, float)
+            or not 0 < budget_usd <= 0.20
+        ):
+            raise ValueError("Trigger tasks need a persona and bounded budget.")
         task_id = uuid4().hex
+        scheduled = bool(every_minutes or condition or (run_at is not None and run_at > self.clock() + 1))
         data = {
             "goal": goal,
             "title": (title or goal)[:120],
@@ -63,7 +76,10 @@ class Tasks:
             "checkpoint": None,
             "result": None,
             "created": self.clock(),
+            "scheduled": scheduled,
         }
+        if kind is not None:
+            data.update(kind=kind, persona_id=persona_id, budget_usd=budget_usd)
         if hold:
             self._write(task_id, data, "needs_review", None)
             self.store.event(task_id, "awaiting_approval", data["title"])

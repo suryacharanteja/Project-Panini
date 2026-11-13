@@ -33,16 +33,10 @@ async def test_tool_receipts_survive_turn_and_record_approval_without_payloads(t
     workspace.mkdir()
     agent = Agent(
         workspace,
-        ScriptedModel(
-            [
-                {
-                    "calls": [
-                        {"name": "write_file", "arguments": {"path": "proof.txt", "content": "PRIVATE_VALUE"}}
-                    ]
-                },
-                {"text": "Done."},
-            ]
-        ),
+        ScriptedModel([
+            {"calls": [{"name": "write_file", "arguments": {"path": "proof.txt", "content": "PRIVATE_VALUE"}}]},
+            {"text": "Done."},
+        ]),
         Settings(sandbox="none"),
         Host(),
     )

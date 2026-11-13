@@ -2,7 +2,7 @@ from panini_cli.agent import jev_selector
 
 
 def test_jev_selector_names_each_candidate_and_accounts_for_usage(monkeypatch):
-    from backend import jev_client
+    from panini_cli.jev import client as jev_client
 
     def ask(state, questions, timeout):
         assert timeout == 15

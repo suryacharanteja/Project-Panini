@@ -34,6 +34,8 @@ class LedgerHook(Hooks):
             args=args,
             effect=str(getattr(spec.effect, "value", spec.effect)),
             principal=asdict(ctx.principal),
+            persona_id=getattr(getattr(ctx, "agent", None), "persona_id", "panini"),
+            thread_id=getattr(getattr(ctx, "agent", None), "thread_id", None),
         )
         ctx.receipt = receipt["id"]
         verdict, prior = ledger.replay_decision(receipt["operation_key"], exclude=receipt["id"])

@@ -50,6 +50,10 @@ class CodeAdapter(UnavailableAdapter):
                 self.workspace_error = True
 
     async def availability(self):
+        from .. import private_mode
+
+        if private_mode.active():
+            return {"capability": self.name, "state": "unavailable", "reason": private_mode.reason()}
         ready = False
         reason = "PANINI-CLI is off. Turn it on in PANINI Admin → Code, then restart PANINI."
         if self.enabled:

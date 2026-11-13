@@ -23,7 +23,14 @@ const application = await electron.launch({
   executablePath: packaged
     ? resolve(root, 'artifacts/panini-package/win-unpacked/PANINI.exe')
     : require('electron'),
-  args: [...(packaged ? [] : [resolve(root, 'panini-core/apps/shell')]), ...voiceArgs],
+  args: [
+    ...(packaged ? [] : [resolve(root, 'panini-core/apps/shell')]),
+    ...voiceArgs,
+    // An isolated profile (its own single-instance lock), so a test can run beside the owner's PANINI.
+    ...(process.env.PANINI_SMOKE_USER_DATA
+      ? [`--user-data-dir=${process.env.PANINI_SMOKE_USER_DATA}`]
+      : []),
+  ],
   env,
   timeout: 60000,
 });
@@ -453,4 +460,3 @@ try {
     process.kill(calculatorPid);
   await application.close();
 }
-

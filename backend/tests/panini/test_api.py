@@ -1,3 +1,4 @@
+import base64
 from uuid import uuid4
 
 import pytest
@@ -29,6 +30,72 @@ def test_disabled_profile_does_not_enable_panini():
     client = TestClient(create_app(panini_settings=Settings()), base_url="http://localhost")
     assert client.get("/api/panini/health").status_code == 404
     assert client.post("/api/browser/stop").status_code == 200
+
+
+def test_authenticated_controller_can_dictate_locally_in_private_mode(runtime, monkeypatch):
+    from backend import local_stt
+
+    client, _, sid, controller = runtime
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+    monkeypatch.setattr(local_stt, "readiness", lambda: {"ready": True})
+
+    async def local(_audio):
+        return {"text": "open Notepad", "engine": "faster-whisper-local"}
+
+    monkeypatch.setattr(local_stt, "transcribe_audio_bytes", local)
+    path = f"/api/panini/sessions/{sid}/stt/transcribe"
+    body = {"audio_b64": base64.b64encode(b"x" * 500).decode()}
+    assert client.post(path, json=body).status_code == 401
+    assert (
+        client.get(f"/api/panini/sessions/{sid}/stt/status", headers=controller).json()["mode"] == "private"
+    )
+    response = client.post(path, headers=controller, json=body)
+    assert response.status_code == 200
+    assert response.json()["text"] == "open Notepad"
+
+
+def test_local_speech_requires_controller_lease_and_local_mode(runtime, monkeypatch):
+    from backend import local_tts
+
+    client, _, sid, controller = runtime
+    path = f"/api/panini/sessions/{sid}/tts/synthesize"
+    body = {"text": "PANINI is ready."}
+    assert client.post(path, json=body).status_code == 401
+    assert client.post(path, headers=controller, json=body).status_code == 503
+    monkeypatch.setenv("PANINI_LOCAL_MODE", "private")
+    monkeypatch.setattr(local_tts, "readiness", lambda: {"ready": True})
+
+    async def local(text):
+        assert text == body["text"]
+        return {"audio_b64": "UklGRg==", "engine": "windows-sapi-local"}
+
+    monkeypatch.setattr(local_tts, "synthesize", local)
+    assert client.post(path, headers=controller, json=body).json()["engine"] == "windows-sapi-local"
+    invalid = {**controller, "x-panini-lease-epoch": "-1"}
+    assert client.post(path, headers=invalid, json=body).status_code == 409
+    assert client.post(path, headers=controller, json={"text": "x" * 501}).status_code == 422
+
+
+def test_handoff_speech_is_fixed_and_requires_continuity_and_controller(runtime, monkeypatch):
+    from backend import local_tts
+
+    client, _, sid, controller = runtime
+    path = f"/api/panini/sessions/{sid}/tts/handoff"
+    assert client.post(path).status_code == 401
+    assert client.post(path, headers=controller).status_code == 503
+    monkeypatch.setenv("PANINI_PRESENCE", "true")
+    monkeypatch.setattr(local_tts, "readiness", lambda: {"ready": True})
+    spoken = []
+
+    async def synthesize(text):
+        spoken.append(text)
+        return {"audio_b64": "UklGRg==", "engine": "windows-sapi-local"}
+
+    monkeypatch.setattr(local_tts, "synthesize", synthesize)
+    assert client.post(path, headers=controller).json()["engine"] == "windows-sapi-local"
+    assert spoken == ["Continuing from your phone."]
+    invalid = {**controller, "x-panini-lease-epoch": "-1"}
+    assert client.post(path, headers=invalid).status_code == 409
 
 
 def test_end_receipt_is_idempotent_after_lease_is_closed(runtime):

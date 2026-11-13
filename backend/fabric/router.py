@@ -11,6 +11,8 @@ import json
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..routes.outbound import add_outbound
+from ..routes.presence import add_presence
 from . import crypto
 
 router = APIRouter(prefix="/api/remote")
@@ -33,6 +35,11 @@ def _harness(request: Request):
     return h
 
 
+add_outbound(router, _fabric)
+
+add_presence(router, _fabric, phone=True)
+
+
 def payload_digest(payload: dict | None) -> str:
     return hashlib.sha256(
         json.dumps(payload or {}, sort_keys=True, separators=(",", ":")).encode()
@@ -50,11 +57,112 @@ class Decision(BaseModel):
     status: str = Field(pattern="^(resolved|cancelled)$")
     payload: dict | None = None
     signature: str
+    ceremony_id: str | None = None
+    credential: dict | None = None
+
+
+class PasskeyBegin(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    origin: str = Field(max_length=300)
+
+
+class PasskeyFinish(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ceremony_id: str = Field(max_length=100)
+    credential: dict
+
+
+class PasskeyDecision(Decision):
+    origin: str = Field(max_length=300)
+
+
+def _passkeys(fabric):
+    service = getattr(fabric, "passkeys", None)
+    if service is None:
+        raise HTTPException(503, "Passkeys are not configured.")
+    return service
+
+
+def _passkey_call(fn, *args, **kwargs):
+    import sqlite3
+
+    from webauthn.helpers.exceptions import WebAuthnException
+
+    try:
+        return fn(*args, **kwargs)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from None
+    except (WebAuthnException, sqlite3.IntegrityError):
+        raise HTTPException(403, "Passkey verification failed. Start again.") from None
+
+
+@router.get("/passkeys")
+async def passkeys(request: Request):
+    fabric, device_id = _fabric(request)
+    return {"passkeys": _passkeys(fabric).list(device_id)}
+
+
+@router.post("/passkeys/register/options")
+async def passkey_options(payload: PasskeyBegin, request: Request):
+    fabric, device_id = _fabric(request)
+    return _passkey_call(_passkeys(fabric).begin, device_id, payload.origin)
+
+
+@router.post("/passkeys/register")
+async def passkey_register(payload: PasskeyFinish, request: Request):
+    fabric, device_id = _fabric(request)
+    return _passkey_call(_passkeys(fabric).finish, device_id, payload.ceremony_id, payload.credential)
+
+
+@router.delete("/passkeys/{credential_id}")
+async def passkey_remove(credential_id: str, request: Request):
+    fabric, device_id = _fabric(request)
+    _passkeys(fabric).remove(device_id, credential_id)
+    return {"removed": True}
+
+
+@router.post("/interrupts/{interrupt_id}/passkey/options")
+async def passkey_decision_options(interrupt_id: str, payload: PasskeyDecision, request: Request):
+    fabric, device_id = _fabric(request)
+    view = _harness(request).interrupts.get(interrupt_id, include_secret=True)
+    if (
+        view["status"] != "open"
+        or view["level"] != "verify"
+        or view["nonce"] != payload.nonce
+        or view["action_digest"] != payload.action_digest
+    ):
+        raise HTTPException(409, "The request changed or cannot use a passkey. Review it again.")
+    statement = decision_statement(
+        interrupt_id, payload.nonce, payload.action_digest, payload.status, payload.payload
+    )
+    if not crypto.verify(fabric.devices.active(device_id)["sign_pub"], statement, payload.signature):
+        raise HTTPException(403, "The decision is not signed by this device.")
+    return _passkey_call(_passkeys(fabric).begin, device_id, payload.origin, statement=statement)
 
 
 class Ask(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(min_length=1, max_length=4000)
+    attachments: list[str] = Field(default_factory=list, max_length=5)
+    thread_id: str | None = Field(default=None, max_length=64)
+
+
+class Upload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=120)
+    mime: str = Field(max_length=80)
+    base64: str = Field(min_length=4, max_length=1_000_000)
+
+
+class Dictation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mime: str = Field(max_length=80)
+    base64: str = Field(min_length=4, max_length=1_000_000)
+
+
+UPLOAD_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain"}
+UPLOAD_MAX = 700_000  # One envelope carries at most 1 MB; base64 adds a third.
+OWNER_SURFACES = ("avatar", "phone_app", "agui", "telegram", "slack", "whatsapp", "email")
 
 
 class Share(BaseModel):
@@ -87,6 +195,13 @@ async def interrupts(request: Request):
     return {"interrupts": _harness(request).interrupts.list()}
 
 
+@router.post("/android/stop")
+async def stop_android(request: Request):
+    _fabric(request)
+    # Stopping device control must remain available even when live viewing is disabled.
+    return await _harness(request).android.stop()
+
+
 @router.get("/interrupts/{interrupt_id}")
 async def interrupt(interrupt_id: str, request: Request):
     _fabric(request)
@@ -104,13 +219,33 @@ async def resolve(interrupt_id: str, decision: Decision, request: Request):
     )
     if not crypto.verify(device["sign_pub"], statement, decision.signature):
         raise HTTPException(403, "The decision is not signed by this device.")
+    view = _harness(request).interrupts.get(interrupt_id, include_secret=True)
+    if view["nonce"] != decision.nonce or view["action_digest"] != decision.action_digest:
+        raise HTTPException(409, "The request changed. Review it again.")
+    if view["level"] == "local":
+        raise HTTPException(403, "This request must be approved on the PC.")
+    if view["level"] == "verify" and not (decision.credential and decision.ceremony_id):
+        raise HTTPException(403, "This request needs a passkey.")
+    method = "tap"
+    if decision.credential is not None or decision.ceremony_id is not None:
+        if not decision.credential or not decision.ceremony_id:
+            raise HTTPException(403, "A complete passkey response is required.")
+        _passkey_call(
+            _passkeys(fabric).finish,
+            device_id,
+            decision.ceremony_id,
+            decision.credential,
+            statement=statement,
+        )
+        method = "passkey"
+    # Resolve rechecks the current nonce, digest, expiry, authority and first decision.
     return _harness(request).interrupts.resolve(
         interrupt_id,
         nonce=decision.nonce,
         action_digest=decision.action_digest,
         status=decision.status,
         payload=decision.payload,
-        decided_by=decided_by("phone_app", "tap", device_id=device_id, signature=decision.signature),
+        decided_by=decided_by("phone_app", method, device_id=device_id, signature=decision.signature),
     )
 
 
@@ -164,12 +299,107 @@ async def forget(request: Request):
     return {"forgotten": True}
 
 
+@router.post("/attachments")
+async def attach(payload: Upload, request: Request):
+    """A photo or file from the phone, kept as an artifact for the next request. Its content is untrusted."""
+    _fabric(request)
+    import base64 as b64
+    import binascii
+
+    if payload.mime not in UPLOAD_TYPES:
+        raise HTTPException(415, "Send a photo (JPEG, PNG, WebP), a PDF or a text file.")
+    try:
+        data = b64.b64decode(payload.base64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(422, "The file did not arrive intact.") from None
+    if not 1 <= len(data) <= UPLOAD_MAX:
+        raise HTTPException(413, "Files from the phone can be up to 700 KB.")
+    artifact = _harness(request).artifacts.put("phone-upload", data, payload.mime)
+    return {"id": artifact, "name": payload.name, "mime": payload.mime, "bytes": len(data)}
+
+
+@router.post("/dictation")
+async def dictation(payload: Dictation, request: Request):
+    """Voice from the phone when the browser cannot recognise speech itself: transcribed on the PC."""
+    _fabric(request)
+    import base64 as b64
+    import binascii
+
+    from ..routes.speech import transcribe
+
+    if not payload.mime.startswith("audio/"):
+        raise HTTPException(415, "Send audio.")
+    try:
+        data = b64.b64decode(payload.base64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(422, "The recording did not arrive intact.") from None
+    result = await transcribe(data, request)
+    return {"text": str((result or {}).get("text", "") if isinstance(result, dict) else result)[:4000]}
+
+
+@router.get("/conversations")
+async def conversations(request: Request):
+    """Recent owner conversations from every surface (avatar, phone, console, channels), to continue here."""
+    _fabric(request)
+    h = _harness(request)
+    marks = ",".join("?" for _ in OWNER_SURFACES)
+    rows = h.store.all(
+        f"SELECT s.id, s.title, s.updated, GROUP_CONCAT(DISTINCT b.surface) AS surfaces FROM sessions s "
+        f"JOIN thread_bindings b ON b.thread_id=s.id WHERE b.surface IN ({marks}) "
+        "GROUP BY s.id ORDER BY s.updated DESC LIMIT 20",
+        OWNER_SURFACES,
+    )
+    return {"conversations": [{**dict(r), "surfaces": (r["surfaces"] or "").split(",")} for r in rows]}
+
+
+def _owner_thread(h, thread_id):
+    marks = ",".join("?" for _ in OWNER_SURFACES)
+    row = h.store.one(
+        f"SELECT thread_id FROM thread_bindings WHERE thread_id=? AND surface IN ({marks}) LIMIT 1",
+        (thread_id, *OWNER_SURFACES),
+    )
+    if row is None:
+        raise HTTPException(404, "This conversation is not available to continue.")
+    return thread_id
+
+
 @router.post("/ask")
 async def ask(payload: Ask, request: Request):
-    """A request from the phone. It runs as a background task (least privilege); its approvals come back here."""
+    """A request from the phone. It runs as a background task (least privilege); its approvals come back here.
+    With thread_id it continues that owner conversation, wherever it started; otherwise it starts a new one."""
+    import time
+    import uuid
+
+    from ..policy.provenance import quarantine
+
     _, device_id = _fabric(request)
-    task = _harness(request).tasks.submit(payload.text, origin="phone", title=payload.text[:80])
-    return {"task_id": task["id"], "title": task.get("title", "")}
+    h = _harness(request)
+    thread_id = (
+        _owner_thread(h, payload.thread_id)
+        if payload.thread_id
+        else h.threads.bind(
+            "phone_app", f"{device_id}:{uuid.uuid4().hex}", title=payload.text[:80], continue_recent=False
+        )
+    )
+    goal = payload.text
+    if payload.attachments:
+        files = []
+        for artifact_id in payload.attachments:
+            found = h.artifacts.get(artifact_id)
+            if found is None or found[0].get("kind") != "phone-upload":
+                raise HTTPException(404, "An attachment is no longer available.")
+            files.append(
+                {"artifact_id": artifact_id, "mime": found[0].get("mime"), "bytes": found[0].get("bytes")}
+            )
+        goal = " ".join(
+            [goal, "Attached from my phone:", quarantine({"files": files}, ["shared"])["untrusted"]]
+        )
+    task = h.tasks.submit(goal[:4000], origin="phone", title=payload.text[:80])
+    h.store.execute(
+        "INSERT OR REPLACE INTO task_threads(task_id, thread_id, created) VALUES (?,?,?)",
+        (task["id"], thread_id, time.time()),
+    )
+    return {"task_id": task["id"], "title": task.get("title", ""), "thread_id": thread_id}
 
 
 @router.post("/share")
@@ -206,6 +436,75 @@ async def threads(request: Request):
     return {"threads": [_thread_view(task) for task in _harness(request).tasks.list(limit=50)]}
 
 
+@router.get("/personas")
+async def personas(request: Request):
+    _fabric(request)
+    from .. import v2flags
+
+    if not v2flags.enabled("PANINI_PERSONAS"):
+        return {"enabled": False, "personas": [], "default_id": "panini"}
+    service = _harness(request).personas
+    return {
+        "enabled": True,
+        "personas": [service.presentation(p["id"]) for p in service.list()],
+        "default_id": service.surface_default("phone_app"),
+    }
+
+
+@router.get("/calls")
+async def calls(request: Request):
+    _fabric(request)
+    from ..telephony.inbound import runtime
+
+    result = runtime(request.app).monitor()
+    outbound = _harness(request).outbound
+    active = outbound.monitor()
+    if active:
+        result["active"] = {**active, "persona": _harness(request).personas.presentation("panini")}
+    result["calls"] += [
+        {
+            "id": row["id"],
+            "state": row["state"],
+            "duration_s": (row["outcome"] or {}).get("duration_s", 0),
+            "reason": row["reason"],
+            "receipt_id": row["receipt_id"],
+            "summary": (row["outcome"] or {}).get("summary", ""),
+            "direction": "outbound",
+            "usage_seconds": (row["outcome"] or {}).get("usage_seconds"),
+            "final_usage_seconds": (row["outcome"] or {}).get("final_usage_seconds"),
+            "finalization_confirmed": (row["outcome"] or {}).get("finalization_confirmed", False),
+            "outcome_report": row["outcome_report"],
+            "lookup_receipt_ids": row["lookup_receipt_ids"],
+        }
+        for row in outbound.status()["briefs"]
+        if row["receipt_id"]
+    ]
+    return result
+
+
+@router.post("/calls/{call_id}/{action}")
+async def call_action(call_id: str, action: str, request: Request):
+    _fabric(request)
+    from ..telephony.inbound import runtime
+
+    service = runtime(request.app)
+    outbound = _harness(request).outbound
+    if outbound.active and outbound.active["id"] == call_id:
+        await outbound.control(call_id, action)
+        return {"status": "accepted"}
+    if not service.active or service.active.id != call_id:
+        raise HTTPException(409, "This call has ended or changed.")
+    if action == "end":
+        await service.end(reason="Ended on the paired phone.")
+    elif action == "verify":
+        service.request_verification()
+    elif action == "transfer":
+        await service.transfer()
+    else:
+        raise HTTPException(404, "Unknown call control.")
+    return {"status": "accepted"}
+
+
 @router.get("/threads/{task_id}")
 async def thread(task_id: str, request: Request):
     _fabric(request)
@@ -214,7 +513,23 @@ async def thread(task_id: str, request: Request):
         task = tasks.get(task_id)
     except KeyError:
         raise HTTPException(404, "This task is no longer available.") from None
-    return {"thread": _thread_view(task), "events": tasks.events(task_id=task_id, limit=100)}
+    from .. import v2flags
+
+    h = _harness(request)
+    messages = []
+    if v2flags.enabled("PANINI_PERSONAS"):
+        rows = h.store.all(
+            "SELECT id,persona_id,text,created FROM persona_messages WHERE thread_id=? ORDER BY id DESC LIMIT 100",
+            (task_id,),
+        )
+        messages = [
+            {**dict(row), "persona": h.personas.presentation(row["persona_id"])} for row in reversed(rows)
+        ]
+    return {
+        "thread": _thread_view(task),
+        "events": tasks.events(task_id=task_id, limit=100),
+        "messages": messages,
+    }
 
 
 @router.post("/threads/{task_id}/stop")

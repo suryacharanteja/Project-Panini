@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 5 · P2 · L (1.5 weeks) |
 | Depends on | V2-08 (Node sidecar pattern), V2-03 (policy), V2-12 (live view) |
 | Flag | `PANINI_ANDROID` (default `false`) |
-| Status | Not started |
+| Status | In progress: registry hand, Admin setup and live-view integration built; physical qualification and remaining setup requirements pending |
 | Decision | Register D6 (ADB wireless debugging first) |
 
 ## 1. Outcome
@@ -150,3 +150,7 @@ phone (Admin shows how).
 
 - Use `launchBrowser()` to drive Chrome on Android with the full Playwright browser vocabulary? Recommendation:
   yes in a follow-up, reusing V2-10's tool table with `browser_select("android")`.
+
+## 11. Implementation checkpoint (2026-10-04)
+
+See [Android hands qualification](../qualification-android-hands-2026-10-04.md). The sidecar uses a bounded JSON-lines transport to the pinned Playwright Android API rather than exposing an additional model-facing MCP endpoint. No acceptance box is checked from fake-device tests.

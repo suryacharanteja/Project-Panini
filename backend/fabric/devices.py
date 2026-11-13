@@ -144,6 +144,8 @@ class Devices:
         self.store.execute("UPDATE devices_v2 SET last_seen=? WHERE id=?", (self.clock(), device_id))
 
     def revoke(self, device_id: str) -> bool:
+        self.store.execute("DELETE FROM device_passkeys WHERE device_id=?", (device_id,))
+        self.store.execute("DELETE FROM passkey_ceremonies WHERE device_id=?", (device_id,))
         return bool(
             self.store.execute(
                 "UPDATE devices_v2 SET status='revoked' WHERE id=? AND status!='revoked'", (device_id,)

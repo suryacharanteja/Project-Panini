@@ -39,9 +39,35 @@ export async function home(app) {
       'div.card',
       {},
       h('h3', { text: 'Background work' }),
+      h('button.wide', { onclick: () => app.show('calls') }, 'Phone calls'),
       h('p.muted', {
         text: `${status.tasks?.running ?? status.running ?? 0} running, ${status.tasks?.queued ?? status.queued ?? 0} waiting`,
       }),
     ),
+    status.android?.active &&
+      h(
+        'div.card',
+        {},
+        h('h3', { text: 'PANINI is using your phone' }),
+        h('p.muted', {
+          text: 'Android debugging control is active. You can stop it here or turn off debugging on your phone.',
+        }),
+        h(
+          'button.danger.wide',
+          {
+            onclick: (event) =>
+              action(event.currentTarget, async () => {
+                const reply = await app.fabric.request('POST', '/android/stop');
+                if (reply.status !== 200)
+                  throw new Error(
+                    reply.body?.detail || 'Could not stop phone control. Pause PANINI instead.',
+                  );
+                toast('Phone control stopped.');
+                app.show('home');
+              }),
+          },
+          'Stop phone control',
+        ),
+      ),
   );
 }

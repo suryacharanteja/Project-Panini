@@ -20,13 +20,20 @@ class AgentAdapter:
         self.running = {}
 
     async def availability(self):
-        ready = config.configured("OPENAI_API_KEY") or bool(
-            __import__("os").getenv("PANINI_CLI_SCRIPTED_MODEL")
-        )
+        from .. import private_mode
+
+        if private_mode.active():
+            return {"capability": self.name, "state": "unavailable", "reason": private_mode.reason()}
+        import os
+
+        ready = config.configured("OPENAI_API_KEY") or bool(os.getenv("PANINI_CLI_SCRIPTED_MODEL"))
+        reason = "Configure an OpenAI credential or a qualified local fallback model."
+        if not ready and os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "fallback":
+            ready, reason = config.local_model_qualified("agent")
         return {
             "capability": self.name,
             "state": "ready" if ready else "unavailable",
-            "reason": "" if ready else "Configure the OpenAI credential to use the PANINI agent.",
+            "reason": "" if ready else reason,
         }
 
     async def targets(self):
@@ -98,9 +105,14 @@ class AgentAdapter:
         browsers = () if _browser_v2() and self.harness.registry is not None else ("browser",)
         capabilities = [name for name in ("search", *browsers, "desktop", "code") if name in self.adapters]
 
-        async def confirm(summary, detail):
+        async def confirm(summary, detail, decision=None):
             try:
-                await context.confirm(summary, "PANINI agent", summary, detail)
+                if decision is None:
+                    await context.confirm(summary, "PANINI agent", summary, detail)
+                else:
+                    level = decision.level.value
+                    action = {"summary": summary, "detail": detail, "approval_level": level}
+                    await context.confirm(action, "PANINI agent", summary, detail, level=level)
             except Fault:
                 return False
             return True
@@ -112,13 +124,15 @@ class AgentAdapter:
             scope=None,
             deadline_seconds=540,
             confirm=confirm,
+            surface="avatar",
         )
 
         agent.run_id = context.task.task_id
+        agent.confirm_decision = confirm
         agent.thread_id = self.sessions[session_key]
         from .. import v2flags
 
-        if v2flags.enabled("PANINI_V2_AGUI"):
+        if v2flags.enabled("PANINI_V2_AGUI") or v2flags.enabled("PANINI_PERSONAS"):
             agent.observe = _card_events(context)  # V2-07: the shell shows each tool call as a card.
         agent.reflex = getattr(context.task, "reflex", None)
         browser = self.adapters.get("browser")
@@ -193,6 +207,9 @@ def _card_events(context):
     from ..ledger.redact import redact_args, redact_result
 
     def observe(event, **data):
+        if event == "message" and data.get("persona"):
+            context.emit("running", data["text"], agent_event="persona.message", persona=data["persona"])
+            return
         if event == "tool.started":
             tool = {"id": data["call_id"], "name": data["name"], "args": redact_args(data.get("args") or {})}
         elif event == "tool.finished":

@@ -1,6 +1,10 @@
 import { Download, RefreshCw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { InterruptCard } from '../../../shared-ui/cards';
+import '../../../shared-ui/tokens.css';
 import { ago, api, harness, useResource, when } from '../api';
+import { SaveToSpace } from './spaces/SaveToSpace';
+import { TriggerPanel } from './TriggerPanel';
 import {
   Badge,
   Button,
@@ -23,11 +27,12 @@ const STATUS_TONE: Record<string, any> = {
 };
 
 export function InboxPage() {
+  const interrupts = useResource<any>(harness('/interrupts'), 2000);
   const reviews = useResource<any>(harness('/reviews'), 10000);
   const notices = useResource<any>(harness('/notices'), 10000);
   const { busy, run } = useAction();
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const reload = () => Promise.all([reviews.reload(), notices.reload()]);
+  const reload = () => Promise.all([reviews.reload(), notices.reload(), interrupts.reload()]);
 
   const decide = (id: string, decision: 'rerun' | 'dismiss') =>
     run(
@@ -63,6 +68,33 @@ export function InboxPage() {
         </Button>
       }
     >
+      <div className="mb-5 grid gap-3">
+        {interrupts.data?.interrupts?.map((item: any) => (
+          <InterruptCard
+            key={item.id}
+            interrupt={{ ...item, expiresAt: new Date(item.expires_at * 1000).toISOString() }}
+            allowSession
+            onDecide={async (approved, allowForSession) => {
+              const fresh = await api(harness(`/interrupts/${item.id}`));
+              if (fresh.status !== 'open') {
+                await interrupts.reload();
+                return;
+              }
+              if (fresh.nonce !== item.nonce || fresh.action_digest !== item.action_digest)
+                throw new Error('The review changed. Refresh before deciding.');
+              await api(harness(`/interrupts/${item.id}`), {
+                body: {
+                  nonce: item.nonce,
+                  action_digest: item.action_digest,
+                  status: 'resolved',
+                  payload: { approved, ...(allowForSession ? { allow_for_session: true } : {}) },
+                },
+              });
+              await reload();
+            }}
+          />
+        ))}
+      </div>
       <div className="grid gap-5">
         <Card title="Waiting for your decision" deva="प्रतीक्षा">
           {(reviews.data?.reviews ?? []).length === 0 ? (
@@ -246,6 +278,10 @@ export function RunsPage() {
                     {detail.data.result.outcome}
                   </Badge>
                   <p className="mt-2 whitespace-pre-wrap">{detail.data.result.message}</p>
+                  {detail.data.status === 'completed' &&
+                    detail.data.result.outcome === 'verified_complete' && (
+                      <SaveToSpace kind="task" sourceId={detail.data.id} />
+                    )}
                 </div>
               )}
               <ol className="derive relative ml-2 border-l border-copper/30 pl-5">
@@ -587,6 +623,7 @@ export function AutomationsPage() {
           )}
         </Card>
       </div>
+      <TriggerPanel />
     </Page>
   );
 }

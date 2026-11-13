@@ -14,6 +14,8 @@ from websockets.asyncio.client import connect
 from .conversation import control_intent
 from .prompts import LIVE_INSTRUCTIONS
 
+HANDLER_CLOSE_TIMEOUT_S = 10
+
 
 class LiveConnection:
     def __init__(self, api_key, on_event, on_request, *, model="gpt-live-1", voice="marin"):
@@ -57,7 +59,12 @@ class LiveConnection:
                 f"Live voice connection was rejected ({response.status_code}). Check OpenAI model access and billing."
             )
         body = response.json()
-        self.session_id = body["session"]["id"]
+        await self.attach(body["session"]["id"])
+        return body["transport"]["sdp"]
+
+    async def attach(self, session_id):
+        """Attach to an already-created/accepted session; never create or accept it twice."""
+        self.session_id = session_id
         try:
             self.socket = await connect(
                 f"wss://api.openai.com/v1/live/sessions/{self.session_id}/attach",
@@ -72,17 +79,18 @@ class LiveConnection:
         except BaseException:
             await self.close()
             raise
-        return body["transport"]["sdp"]
 
     async def send(self, kind, **values):
         if not self.socket:
             return
+        identifier = uuid4().hex
         async with self.send_lock:
-            await self.socket.send(json.dumps({"type": kind, "event_id": uuid4().hex, **values}))
+            await self.socket.send(json.dumps({"type": kind, "event_id": identifier, **values}))
+        return identifier
 
     async def speak(self, text, delegation_id=None):
         # The API bounds each context append to 500 tokens. Keep independent spoken updates short.
-        await self.send("session.commentary.append", delegation_id=delegation_id, content=text[:1200])
+        return await self.send("session.commentary.append", delegation_id=delegation_id, content=text[:1200])
 
     async def handle_event(self, event):
         kind = event.get("type", "")
@@ -91,6 +99,8 @@ class LiveConnection:
         elif kind == "session.closed":
             self.usage = event.get("usage")
             self.finalized.set()
+        elif kind in {"session.commentary.appended", "session.instructions.appended", "session.thinking.appended"}:
+            await self.on_event({"type": "context.accepted", "client_event_id": event.get("client_event_id")})
         elif kind == "session.input_transcript.delta":
             self.input.append(
                 {
@@ -261,9 +271,11 @@ class LiveConnection:
         for task in timers:
             task.cancel()
         await asyncio.gather(*timers, return_exceptions=True)
-        for task in list(self.handlers):
+        handlers = [task for task in self.handlers if task is not asyncio.current_task()]
+        for task in handlers:
             task.cancel()
-        await asyncio.gather(*self.handlers, return_exceptions=True)
+        if handlers:
+            await asyncio.wait(handlers, timeout=HANDLER_CLOSE_TIMEOUT_S)
         if self.socket:
             with contextlib.suppress(Exception):
                 await self.send("session.close")

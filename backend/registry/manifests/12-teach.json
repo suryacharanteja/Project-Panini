@@ -1,0 +1,34 @@
+{
+  "schema": "panini.capability/1",
+  "id": "teach",
+  "title": "Demonstration skills",
+  "version": "1.0.0",
+  "summary": "Replay owner-reviewed demonstrations, applying permissions to every step.",
+  "entry": "backend.teach.service:TeachHand",
+  "tools": [
+    {
+      "name": "use_skill",
+      "hand": "teach",
+      "title": "Replay a reviewed skill",
+      "description": "Replay a reviewed demonstration with named string inputs. Each action applies current permissions, receipts and assertions. Does not grant permissions. Stops on ambiguous targets or unverified outcomes.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "maxLength": 63 },
+          "inputs": {
+            "type": "object",
+            "maxProperties": 30,
+            "additionalProperties": { "type": "string", "maxLength": 2000 }
+          }
+        },
+        "required": ["name", "inputs"]
+      },
+      "effect": "observe",
+      "meta": true,
+      "requires": ["teach", "foreground", "private", "ledger", "browser_v2"],
+      "strict": false,
+      "order": 112
+    }
+  ]
+}

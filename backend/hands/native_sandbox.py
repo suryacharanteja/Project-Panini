@@ -279,10 +279,12 @@ class NativeSandbox:
 
     # Running commands ------------------------------------------------------------------------------
     def run(self, computer: str, command: str, *, timeout_s: float = 30, memory_mb: int = 1024,
-            network: bool = False, max_processes: int = 32) -> dict:  # fmt: skip
+            network: bool = False, max_processes: int = 32, cancel=None) -> dict:  # fmt: skip
         """Run `command` with cmd.exe inside the computer's AppContainer. Returns exitCode, stdout, stderr."""
         if not available():
             raise NativeSandboxError("The native sandbox needs Windows.")
+        if cancel is not None and cancel.is_set():
+            raise NativeSandboxError("The sandbox command was cancelled before launch.")
         workspace = self.workspace(computer)
         sid, _ = self.sid(computer)
         caps, cap_sids = (SID_AND_ATTRIBUTES * 1)(), []
@@ -430,17 +432,28 @@ class NativeSandbox:
             for reader in readers:
                 reader.start()
             started = time.monotonic()
-            kernel32.ResumeThread(process.hThread)
-            waited = kernel32.WaitForSingleObject(process.hProcess, int(timeout_s * 1000))
-            timed_out = waited == WAIT_TIMEOUT
+            if cancel is None or not cancel.is_set():
+                kernel32.ResumeThread(process.hThread)
+            deadline = started + timeout_s
+            cancelled = False
+            waited = WAIT_TIMEOUT
+            while True:
+                if cancel is not None and cancel.is_set():
+                    cancelled = True
+                    break
+                waited = kernel32.WaitForSingleObject(process.hProcess, 50)
+                if waited != WAIT_TIMEOUT or time.monotonic() >= deadline:
+                    break
+            timed_out = not cancelled and waited == WAIT_TIMEOUT
             kernel32.TerminateJobObject(job, 1)  # Ends every process the command started, so the pipes close.
             code = wintypes.DWORD()
             kernel32.GetExitCodeProcess(process.hProcess, ctypes.byref(code))
             for reader in readers:
                 reader.join(5)
             return {
-                "exitCode": None if timed_out else int(code.value),
+                "exitCode": None if timed_out or cancelled else int(code.value),
                 "timedOut": timed_out,
+                "cancelled": cancelled,
                 "stdout": output["stdout"].decode("utf-8", errors="replace")[:MAX_OUTPUT],
                 "stderr": output["stderr"].decode("utf-8", errors="replace")[:MAX_OUTPUT],
                 "seconds": round(time.monotonic() - started, 3),

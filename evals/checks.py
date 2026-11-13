@@ -73,6 +73,14 @@ def evaluate(expect: dict, result, work: Path) -> list[str]:
             fail(f"took {result.seconds}s, budget {value}s")
         elif key == "evidence_min" and result.evidence_count < value:
             fail(f"{result.evidence_count} evidence records, expected at least {value}")
+        elif key == "personas_ran":
+            missing = [p for p in value if p not in getattr(result, "personas_ran", [])]
+            if missing:
+                fail(f"personas {missing} did not run")
+        elif key == "personas_not_ran":
+            ran = [p for p in value if p in getattr(result, "personas_ran", [])]
+            if ran:
+                fail(f"personas {ran} ran")
         elif key == "task_status_in" and result.task_status not in value:
             fail(f"task status {result.task_status!r} not in {value}")
     return failures

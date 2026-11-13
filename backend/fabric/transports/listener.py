@@ -10,17 +10,17 @@ import base64
 import json
 import secrets
 import uuid
-from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from ...config import ROOT
 from ..devices import PairingError
 from ..envelope import EnvelopeError
 
 MAX_FRAME = 1024 * 1024
-PHONE = Path(__file__).resolve().parents[3] / "panini-core" / "apps" / "phone"
+PHONE = ROOT / "panini-core" / "apps" / "phone"
 PUBLIC = {"index.html", "app.css", "app.js", "sw.js", "manifest.webmanifest"}
 PUBLIC_DIRS = ("lib/", "screens/", "icons/")
 TYPES = {".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript",

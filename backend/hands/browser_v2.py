@@ -32,6 +32,7 @@ from .browser_tools import (
     TOOLS,
 )
 from .playwright_mcp import BrowserDriverError, SessionCrashed, isolated_preset, text_of
+from .snapshot import normalize_aria
 
 REF = re.compile(r"^(f\d+)?e\d+$")
 PAGE_URL = re.compile(r"Page URL: (\S+)")
@@ -101,17 +102,33 @@ class BrowserHand:
 
     async def choose(self, ctx) -> str | None:
         run = self.run_key(ctx)
+        if getattr(getattr(ctx, "principal", None), "kind", None) == "mcp_client":
+            allowed = {"isolated"}
+            if "chrome" in ctx.mcp_client["grants"]:
+                allowed.add("chrome")
+            persona = getattr(ctx, "mcp_persona", "panini")
+            if persona != "panini":
+                permissions = self.runtime["harness"].personas.permissions(persona)
+                allowed = {b for b in allowed if ("chrome" if b == "chrome" else "managed") in permissions}
+            if run in self.active and self.active[run] in allowed:
+                return self.active[run]
+            ready = await self.ready()
+            if "isolated" in allowed and ready["isolated"].state == "ready":
+                self.active[run] = "isolated"
+                return "isolated"
+            return None
         if run in self.active:
             return self.active[run]
         preference = getattr(getattr(ctx, "agent", None), "browser_preference", None)
         ready = await self.ready()
-        if preference in ready and ready[preference].state == "ready":
-            browser = preference
-        elif ready["chrome"].state == "ready":
-            browser = "chrome"
-        elif ready["managed"].state == "ready":
-            browser = "managed"
-        else:
+        allowed = set(ready)
+        if getattr(getattr(ctx, "principal", None), "kind", None) == "persona":
+            permissions = self.runtime["harness"].personas.permissions(ctx.principal.client_id)
+            allowed = {b for b in ready if ("chrome" if b == "chrome" else "managed") in permissions}
+        browser = next(
+            (b for b in (preference, "chrome", "managed") if b in allowed and ready[b].state == "ready"), None
+        )
+        if browser is None:
             return None
         self.active[run] = browser
         return browser
@@ -124,6 +141,49 @@ class BrowserHand:
         from ..extension_pairing import data_directory
 
         return self.managed.pool.session(isolated_preset(self.run_key(ctx), data_directory() / "artifacts"))
+
+    async def verified_frame(self, ctx, browser, selector, snapshot, *, session=None):
+        """Bind a reviewed selector to one current DOM and snapshot iframe."""
+        from ..teach.replay import nodes
+        from ..teach.schema import frame_name
+
+        wanted = frame_name(selector)
+        if browser not in {"managed", "isolated"}:
+            raise ValueError("Named iframe replay needs PANINI's managed browser.")
+        frames = [node for node in nodes(snapshot) if node["role"] == "iframe"]
+        if not frames:
+            raise ValueError("The reviewed iframe is missing from the snapshot.")
+        session = session or await self.session(browser, ctx)
+        function = (
+            "() => { const frames = [...document.querySelectorAll('iframe')]; "
+            f"const matching = [...document.querySelectorAll({json.dumps(selector)})]; "
+            "return {total: frames.length, matching: matching.length, "
+            "index: frames.indexOf(matching[0]), "
+            "labels: frames.map(frame => frame.getAttribute('aria-label') || "
+            "frame.getAttribute('title') || frame.getAttribute('name') || '')}; }"
+        )
+        result = await session.call("browser_evaluate", {"function": function}, timeout_s=15)
+        proof = None if result.get("isError") else _json_in(text_of(result))
+        if not isinstance(proof, dict) or proof.get("matching") != 1 or proof.get("total") != len(frames):
+            raise ValueError("The reviewed iframe is missing, hidden or ambiguous.")
+        index = proof.get("index")
+        if type(index) is not int or not 0 <= index < len(frames):
+            raise ValueError("The reviewed iframe identity cannot be verified.")
+        if len(frames) > 1:
+            labels = proof.get("labels")
+            if (
+                not isinstance(labels, list)
+                or len(labels) != len(frames)
+                or any(
+                    frame["frame"] or frame["name"] not in {"", labels[i]} for i, frame in enumerate(frames)
+                )
+                or labels[index] != wanted
+                or labels.count(wanted) != 1
+            ):
+                raise ValueError("The reviewed iframe identity cannot be verified.")
+            # Both the DOM collection and Playwright's flat frame snapshot are in document order.
+            # Reject hidden/nested frames or a changed count; no ref is reused after an effect.
+        return frames[index]["ref"]
 
     async def readiness(self, capability=None):
         ready = await self.ready()
@@ -139,6 +199,11 @@ class BrowserHand:
         if name == "browser_select":
             return await self._select(ctx, args)
         browser = await self.choose(ctx)
+        if browser and getattr(getattr(ctx, "principal", None), "kind", None) == "persona":
+            permissions = self.runtime["harness"].personas.permissions(ctx.principal.client_id)
+            required = "chrome" if browser == "chrome" else "managed"
+            if required not in permissions:
+                return ToolResult("blocked", "This persona lacks permission for this browser.")
         if browser is None:
             return ToolResult(
                 "blocked",
@@ -179,11 +244,50 @@ class BrowserHand:
         started = time.monotonic()
         try:
             session = await self.session(browser, ctx)
+            if (
+                getattr(ctx, "teach_replay", False)
+                or getattr(getattr(ctx, "principal", None), "kind", None) == "mcp_client"
+            ) and tool.effect != "observe":
+                harness = self.runtime["harness"]
+                if getattr(ctx, "teach_replay", False) and (
+                    not harness.teach.allowed()
+                    or not harness.teach.valid_binding(ctx)
+                    or harness.policy.decide(ctx.principal, spec, args, taint=ctx.taint).action == "deny"
+                ):
+                    raise ValueError("Replay permission changed before dispatch.")
+                if tool.ref:
+                    latest = await session.call("browser_snapshot", {}, timeout_s=15)
+                    if latest.get("isError"):
+                        raise ValueError("The replay target could not be refreshed.")
+                    refreshed = element_names(inline_snapshot(text_of(latest), self.managed.output_root()))
+                    ref = str(args.get("target", ""))
+                    previous = self.names.get(key, {}).get(ref)
+                    latest_url = PAGE_URL.search(text_of(latest))
+                    changed_page = (
+                        latest_url and self.page_url.get(key) and latest_url.group(1) != self.page_url[key]
+                    )
+                    if not previous or refreshed.get(ref) != previous or changed_page:
+                        self.names[key] = refreshed
+                        raise ValueError(
+                            "The reviewed target changed during approval. Inspect the page before acting."
+                        )
+                    if frame_selector := getattr(ctx, "teach_frame_selector", ""):
+                        from ..teach.replay import nodes
+
+                        frame_ref = await self.verified_frame(
+                            ctx, browser, frame_selector, text_of(latest), session=session
+                        )
+                        if not any(
+                            n["ref"] == ref and n["frame"] == frame_ref for n in nodes(text_of(latest))
+                        ):
+                            raise ValueError("The reviewed iframe target changed before dispatch.")
             await self._trace(ctx, browser, session)
             if tool.typing:
                 await self._probe_typing(session, key, tool, args)
             # Never a model-chosen file path: outputs stay in PANINI's artifacts.
             payload = {k: v for k, v in args.items() if k != "filename"}
+            if hasattr(ctx, "check"):
+                ctx.check()
             result = await session.call(name, payload, timeout_s=spec.timeout_ms / 1000)
         except ValueError as exc:
             return ToolResult("blocked", str(exc))
@@ -210,6 +314,21 @@ class BrowserHand:
         modal = MODAL.search(text)
         self.modal[key] = modal.group(1).strip() if modal else ""
         evidence, artifact_ids = [], []
+        if tool.name == "browser_take_screenshot":
+            match = re.search(r"\]\(([^)]+\.(?:jpe?g|png))\)", text_of(result))
+            if match:
+                path = Path(match.group(1))
+                try:
+                    if path.resolve().is_relative_to(self.managed.output_root().resolve()):
+                        from ..mcp_server.tools import image_bytes
+
+                        identifier = self._artifact(
+                            "screenshot", image_bytes(path.read_bytes()), "image/jpeg", run_id=ctx.run_id
+                        )
+                        if identifier:
+                            artifact_ids.append(identifier)
+                except (ValueError, OSError):
+                    pass
         if tool.evidence == "assertion":
             evidence.append(
                 {
@@ -232,6 +351,11 @@ class BrowserHand:
             "page": content,
             "settled_ms": int((time.monotonic() - started) * 1000),
         }
+        if tool.name == "browser_snapshot" or "### Page" in text:
+            try:
+                data["normalized_snapshot"], _ = normalize_aria(text, prefix="e")
+            except ValueError:
+                pass
         return ToolResult("ok", content, data=data, evidence=evidence, artifact_ids=artifact_ids)
 
     @staticmethod
@@ -446,6 +570,22 @@ class BrowserHand:
 
     async def _select(self, ctx, args):
         browser = str(args.get("browser", ""))
+        if getattr(getattr(ctx, "principal", None), "kind", None) == "mcp_client":
+            if browser == "chrome" and "chrome" not in ctx.mcp_client["grants"]:
+                return ToolResult("blocked", "This client lacks the Chrome scope.")
+            if browser == "managed":
+                browser = (
+                    "isolated"  # Each MCP session owns an empty managed context, never the owner profile.
+                )
+            persona = getattr(ctx, "mcp_persona", "panini")
+            if persona != "panini":
+                permissions = self.runtime["harness"].personas.permissions(persona)
+                if ("chrome" if browser == "chrome" else "managed") not in permissions:
+                    return ToolResult("blocked", "This persona lacks permission for this browser.")
+        if getattr(getattr(ctx, "principal", None), "kind", None) == "persona":
+            permissions = self.runtime["harness"].personas.permissions(ctx.principal.client_id)
+            if ("chrome" if browser == "chrome" else "managed") not in permissions:
+                return ToolResult("blocked", "This persona lacks permission for this browser.")
         if browser not in ("chrome", "managed", "isolated"):
             return ToolResult("blocked", "Choose chrome, managed or isolated.")
         ready = await self.ready()
@@ -543,13 +683,13 @@ class BrowserHand:
         return buffer.getvalue()
 
     # Helpers ----------------------------------------------------------------------------
-    def _artifact(self, kind, data: bytes, mime: str):
+    def _artifact(self, kind, data: bytes, mime: str, *, run_id=None):
         harness = self.runtime.get("harness")
         artifacts = getattr(harness, "artifacts", None)
         if artifacts is None:
             return None
         try:
-            return artifacts.put(kind, data, mime)
+            return artifacts.put(kind, data, mime, run_id=run_id)
         except Exception:  # noqa: BLE001 -- An artifact is evidence, not a reason to fail the step.
             return None
 

@@ -18,6 +18,7 @@ export async function inbox(app) {
     'section.screen',
     {},
     h('h2', { text: 'Inbox' }),
+    h('button.wide', { onclick: () => app.show('inbox') }, 'Refresh Inbox'),
     cards.length ? cards : h('p.empty', { text: 'Nothing needs you right now.' }),
     notices.length ? h('h3', { text: 'Notices' }) : null,
     notices
@@ -48,10 +49,16 @@ function interruptCard(app, view) {
       deciding = false;
     }
   };
-  const labels = { approve: 'Approve', decline: 'Decline', done: "I'm done", answer: 'Send' };
+  const labels = {
+    approve: 'Approve',
+    allow_session: 'Allow this tool for 1 hour',
+    decline: 'Decline',
+    done: "I'm done",
+    answer: 'Send',
+  };
   return h(
     'article.card.interrupt',
-    { 'data-level': model.level },
+    { 'data-level': model.level, 'data-interrupt-id': view.id },
     h('p.eyebrow', { text: `${view.kind} · ${model.level}` }),
     h('h3', { text: model.title }),
     model.message ? h('p', { text: model.message }) : null,
@@ -60,7 +67,12 @@ function interruptCard(app, view) {
           'details',
           {},
           h('summary', { text: 'Details' }),
-          h('pre', { text: JSON.stringify(view.preview, null, 2).slice(0, 2000) }),
+          h('pre', {
+            text: JSON.stringify(view.preview, null, 2).slice(
+              0,
+              view.reason === 'teach_version' ? 160000 : 2000,
+            ),
+          }),
         )
       : null,
     model.asks

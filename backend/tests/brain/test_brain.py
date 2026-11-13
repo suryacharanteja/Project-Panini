@@ -112,6 +112,14 @@ def test_meter_reports_the_crossed_limit(monkeypatch):
 
 
 # Runs ---------------------------------------------------------------------------
+def test_a_delegates_run_is_attributed_to_its_persona(store):
+    runs = Runs(store)
+    lead = runs.start(mode="foreground", principal={"kind": "owner"})
+    child = runs.start(mode="subagent", principal={"kind": "persona"}, parent_run_id=lead, persona_id="scout")
+    rows = {r["id"]: r["persona_id"] for r in store.all("SELECT id, persona_id FROM runs")}
+    assert rows == {lead: "panini", child: "scout"}
+
+
 def test_runs_record_checkpoints_and_spend(store):
     runs = Runs(store)
     run_id = runs.start(mode="background", principal={"kind": "system"}, task_id="t1", tier="fast")
@@ -272,7 +280,8 @@ def test_the_cost_budget_stops_a_run_plainly(tmp_path, one_brain, monkeypatch):
     model = Switchable([step, step, step], usage={"input_tokens": 100_000, "output_tokens": 0})
     h = make_harness(tmp_path, model)
     result = asyncio.run(h.agent(delegate=None, capabilities=()).run("loop"))
-    assert result.outcome == "partial" and "cost limit" in result.message and result.steps == 2
+    assert result.outcome == "partial" and "cost limit" in result.message and result.steps == 1
+    assert result.plan == []  # The over-budget turn's tools are never dispatched.
     assert h.runs.list()[0]["state"] == "partial"
 
 

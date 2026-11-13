@@ -13,6 +13,13 @@ runtime_paths = [
 # imports must be discoverable at collection time as well as analysis time.
 sys.path[:0] = runtime_paths
 datas, binaries, hiddenimports = [(str(root / "backend/tasks.json"), "backend")], [], []
+# SQL and Python migrations are discovered as files, including inside a frozen build.
+datas += [
+    (str(p), "backend/harness/migrations")
+    for p in (root / "backend/harness/migrations").iterdir()
+    if p.is_file() and p.name[:4].isdigit() and p.suffix in {".sql", ".py"}
+]
+datas += [(str(root / "backend/harness/persona.md"), "backend/harness")]
 # Built-in agent skills are data files (SKILL.md), not modules.
 datas += [
     (str(p), str(p.parent.relative_to(root)))
@@ -26,7 +33,12 @@ datas += [
     for p in (root / "backend/harness/mobile_app").iterdir()
     if p.is_file()
 ]
-for package in ("browser_use", "panini", "uvicorn", "bubus", "cdp_use"):
+for package in ("browser_use", "panini", "uvicorn", "bubus", "cdp_use", "faster_whisper", "ctranslate2", "av"):
+    data, binary, imports = collect_all(package)
+    datas += data
+    binaries += binary
+    hiddenimports += imports
+for package in ("phonenumbers", "tzdata"):
     data, binary, imports = collect_all(package)
     datas += data
     binaries += binary
@@ -38,7 +50,7 @@ hiddenimports += [
     ".".join(p.relative_to(browser_root).with_suffix("").parts).removesuffix(".__init__")
     for p in (browser_root / "panini_browser").rglob("*.py")
 ]
-for package in ("browser-use", "pydantic", "openai", "httpx", "fastapi"):
+for package in ("browser-use", "pydantic", "openai", "httpx", "fastapi", "mcp", "mcp-types", "httpx2", "jsonschema", "faster-whisper", "ctranslate2", "av"):
     datas += copy_metadata(package)
 a = Analysis(
     [str(root / "scripts/panini-backend-entry.py")],

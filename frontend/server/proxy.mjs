@@ -48,6 +48,20 @@ export async function proxy(req, res, target, handler, timeoutMs = 65000, extraH
     if (cookie) headers.set('cookie', cookie);
   }
   const pathname = new URL(target).pathname;
+  if (pathname === '/mcp') {
+    for (const name of [
+      'authorization',
+      'mcp-session-id',
+      'mcp-protocol-version',
+      'mcp-method',
+      'mcp-name',
+      'last-event-id',
+    ])
+      if (req.headers[name]) headers.set(name, req.headers[name]);
+    // Modern MCP mirrors explicitly annotated scalar parameters into these headers.
+    for (const [name, value] of Object.entries(req.headers))
+      if (/^mcp-param-[a-z0-9_-]+$/i.test(name) && value) headers.set(name, value);
+  }
   // A2A callers authenticate with their own bearer token; the card needs the public host.
   if (pathname === '/a2a' && req.headers.authorization)
     headers.set('authorization', req.headers.authorization);
@@ -61,7 +75,8 @@ export async function proxy(req, res, target, handler, timeoutMs = 65000, extraH
   const pairing =
     new URL(target).pathname === '/api/extension/pair' &&
     EXTENSION_ORIGIN.test(req.headers.origin || '');
-  headers.set('origin', pairing ? req.headers.origin : new URL(target).origin);
+  if (pathname !== '/mcp')
+    headers.set('origin', pairing ? req.headers.origin : new URL(target).origin);
   headers.set('x-request-id', req.requestId);
   for (const [name, value] of Object.entries(extraHeaders)) headers.set(name, value);
   let tooLarge = false;

@@ -46,31 +46,19 @@ async def test_native_agent_can_request_host_access_for_one_command(tmp_path, mo
     outside.write_text("HOST_ACCESS_WORKED", encoding="utf-8")
     command = f"Get-Content -LiteralPath '{outside}'"
     host = Host()
-    model = ScriptedModel(
-        [
-            {
-                "calls": [
-                    {
-                        "name": "run_command",
-                        "arguments": {
-                            "command": command,
-                            "timeout_seconds": 20,
-                            "scope": "host",
-                        },
-                    }
-                ]
-            },
-            {"text": "Command finished."},
-        ]
-    )
+    model = ScriptedModel([
+        {"calls": [{"name": "run_command", "arguments": {
+            "command": command, "timeout_seconds": 20, "scope": "host",
+        }}]},
+        {"text": "Command finished."},
+    ])
     agent = Agent(workspace, model, Settings(sandbox="native"), host)
     agent.session_id = "host-scope-test"
     result = await agent.turn("Read the test file with host access.")
     assert result.status == "completed"
     assert host.approvals[0]["executionScope"] == "host"
-    outputs = [
-        item["output"] for item in model.requests[-1]["items"] if item.get("type") == "function_call_output"
-    ]
+    outputs = [item["output"] for item in model.requests[-1]["items"]
+               if item.get("type") == "function_call_output"]
     assert "HOST_ACCESS_WORKED" in outputs[0]
     rows = [json.loads(line) for line in receipts.path_for(agent.session_id).read_text().splitlines()]
     assert all(row["sandbox"] == "host" for row in rows)
@@ -96,23 +84,12 @@ async def test_host_scope_can_reach_local_network(tmp_path, monkeypatch):
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()
     command = f'curl.exe --noproxy "*" --silent http://127.0.0.1:{server.server_port}/scope-test'
-    model = ScriptedModel(
-        [
-            {
-                "calls": [
-                    {
-                        "name": "run_command",
-                        "arguments": {
-                            "command": command,
-                            "timeout_seconds": 20,
-                            "scope": "host",
-                        },
-                    }
-                ]
-            },
-            {"text": "Network check finished."},
-        ]
-    )
+    model = ScriptedModel([
+        {"calls": [{"name": "run_command", "arguments": {
+            "command": command, "timeout_seconds": 20, "scope": "host",
+        }}]},
+        {"text": "Network check finished."},
+    ])
     agent = Agent(tmp_path, model, Settings(sandbox="native"), Host())
     try:
         result = await agent.turn("Check local network access.")
@@ -121,9 +98,8 @@ async def test_host_scope_can_reach_local_network(tmp_path, monkeypatch):
         server.server_close()
         worker.join(timeout=2)
     assert result.status == "completed"
-    outputs = [
-        item["output"] for item in model.requests[-1]["items"] if item.get("type") == "function_call_output"
-    ]
+    outputs = [item["output"] for item in model.requests[-1]["items"]
+               if item.get("type") == "function_call_output"]
     assert "PANINI_NETWORK_OK" in outputs[0]
     assert seen == ["/scope-test"]
 
@@ -163,21 +139,12 @@ async def test_agent_routes_host_terminal_with_native_default(tmp_path, monkeypa
         encoding="utf-8",
     )
     command = f'& "{sys.executable}" -u "{script}"'
-    model = ScriptedModel(
-        [
-            {"calls": [{"name": "terminal_start", "arguments": {"command": command, "scope": "host"}}]},
-            {
-                "calls": [
-                    {
-                        "name": "terminal_send",
-                        "arguments": {"session_id": "t1", "input": "hello", "wait_seconds": 3},
-                    }
-                ]
-            },
-            {"calls": [{"name": "terminal_stop", "arguments": {"session_id": "t1"}}]},
-            {"text": "Terminal checked."},
-        ]
-    )
+    model = ScriptedModel([
+        {"calls": [{"name": "terminal_start", "arguments": {"command": command, "scope": "host"}}]},
+        {"calls": [{"name": "terminal_send", "arguments": {"session_id": "t1", "input": "hello", "wait_seconds": 3}}]},
+        {"calls": [{"name": "terminal_stop", "arguments": {"session_id": "t1"}}]},
+        {"text": "Terminal checked."},
+    ])
     host = Host()
     agent = Agent(tmp_path, model, Settings(sandbox="native"), host)
     agent.session_id = "host-terminal-test"
@@ -187,9 +154,8 @@ async def test_agent_routes_host_terminal_with_native_default(tmp_path, monkeypa
         await agent.close()
     assert result.status == "completed"
     assert [item["executionScope"] for item in host.approvals] == ["host", "host"]
-    outputs = [
-        item["output"] for item in model.requests[-1]["items"] if item.get("type") == "function_call_output"
-    ]
+    outputs = [item["output"] for item in model.requests[-1]["items"]
+               if item.get("type") == "function_call_output"]
     assert "READY" in outputs[0] and "ECHO:hello" in outputs[1]
     rows = [json.loads(line) for line in receipts.path_for(agent.session_id).read_text().splitlines()]
     assert all(row["sandbox"] == "host" for row in rows)
@@ -208,12 +174,10 @@ async def test_local_mode_is_labeled_as_host_access(tmp_path, monkeypatch):
     monkeypatch.setenv("PANINI_DATA_DIR", str(tmp_path / "data"))
     command = "Write-Output PANINI_LOCAL" if os.name == "nt" else "echo PANINI_LOCAL"
     host = Host()
-    model = ScriptedModel(
-        [
-            {"calls": [{"name": "run_command", "arguments": {"command": command}}]},
-            {"text": "Done."},
-        ]
-    )
+    model = ScriptedModel([
+        {"calls": [{"name": "run_command", "arguments": {"command": command}}]},
+        {"text": "Done."},
+    ])
     agent = Agent(tmp_path, model, Settings(sandbox="none"), host)
     agent.session_id = "local-host-label-test"
     assert (await agent.turn("Run the local command.")).status == "completed"

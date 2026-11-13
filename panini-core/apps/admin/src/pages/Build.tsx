@@ -1,6 +1,8 @@
 import { Copy, KeyRound, LogIn, LogOut, Play, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { admin, ago, api, harness, useResource } from '../api';
+import { TeachPanel } from '../components/TeachPanel';
+import { McpPanel } from '../components/McpPanel';
 import {
   Badge,
   Button,
@@ -16,7 +18,13 @@ import {
 
 /* ── Skills ─────────────────────────────────────────────────────────────── */
 
-type Skill = { name: string; description: string; origin: string; instructions?: string };
+type Skill = {
+  name: string;
+  description: string;
+  origin: string;
+  instructions?: string;
+  replay?: boolean;
+};
 
 const SKILL_TEMPLATE = `1. Restate the goal and what a good result contains.
 2. …
@@ -58,6 +66,7 @@ export function SkillsPage() {
         </Button>
       }
     >
+      <TeachPanel />
       <div className={cx('grid gap-5', editing && 'lg:grid-cols-[1fr_1.3fr]')}>
         <Card title="Library">
           {(skills.data?.skills ?? []).length === 0 ? (
@@ -73,7 +82,9 @@ export function SkillsPage() {
                     <span className="mono text-sm text-copper-glow">{s.name}</span>
                     <Badge tone={s.origin === 'user' ? 'copper' : 'neutral'}>{s.origin}</Badge>
                     <div className="flex-1" />
-                    {s.origin === 'user' ? (
+                    {s.replay ? (
+                      <Badge tone="copper">Reviewed replay</Badge>
+                    ) : s.origin === 'user' ? (
                       <Button tone="ghost" onClick={() => void open(s)}>
                         Edit
                       </Button>
@@ -740,6 +751,7 @@ export function AgentsPage() {
   const { busy, run } = useAction();
   return (
     <Page title="Agents" deva="कर्ता" eyebrow="Agent-to-agent (A2A)">
+      <McpPanel />
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="Agents that can ask PANINI" deva="आगत">
           <p className="-mt-2 mb-4 text-sm text-muted">

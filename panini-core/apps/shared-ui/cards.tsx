@@ -1,5 +1,9 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { CardBoundary } from './boundary';
+import { TeachReview } from './TeachReview';
+const MarkdownPreview = lazy(() =>
+  import('./MarkdownPreview').then((module) => ({ default: module.MarkdownPreview })),
+);
 import { resultState, STATE_LABEL, toolDetail, toolLabel, toText, type ToolState } from './text';
 
 /** Inline cards for agent conversations (V2-07): tool calls, approvals, questions, choices, take-overs. */
@@ -59,24 +63,47 @@ export type InterruptView = {
   expiresAt?: string;
 };
 
-type Decide = (approved: boolean) => Promise<void> | void;
+type Decide = (approved: boolean, allowForSession?: boolean) => Promise<void> | void;
 
 function InterruptCardBody({
   interrupt,
   onDecide,
+  onReview,
+  allowSession = false,
 }: {
   interrupt: InterruptView;
   onDecide: Decide;
+  onReview?: (approved: boolean, content: string) => Promise<void> | void;
+  allowSession?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const preview = interrupt.preview as Record<string, unknown> | undefined;
-  const detail = toText(preview?.detail ?? preview?.effect ?? preview, 1500);
-  const decide = async (approved: boolean) => {
+  const pageDraft =
+    interrupt.kind === 'review' &&
+    interrupt.reason === 'page_draft' &&
+    typeof preview?.content === 'string';
+  const teachReview = interrupt.kind === 'review' && interrupt.reason === 'teach_version';
+  const detail = pageDraft
+    ? String(preview.content)
+    : toText(preview?.detail ?? preview?.effect ?? preview, 1500);
+  const [reviewContent, setReviewContent] = useState(pageDraft ? String(preview?.content) : '');
+  const [rendered, setRendered] = useState(false);
+  const permission = preview?.mcp_permission as { tool?: unknown; seconds?: unknown } | undefined;
+  const sessionAvailable =
+    allowSession &&
+    interrupt.reason === 'mcp_effect' &&
+    interrupt.kind === 'approval' &&
+    interrupt.level === 'tap' &&
+    typeof permission?.tool === 'string' &&
+    permission.tool.startsWith('browser_') &&
+    permission.seconds === 3600;
+  const decide = async (approved: boolean, session = false) => {
     setBusy(true);
     setError('');
     try {
-      await onDecide(approved);
+      if (pageDraft && onReview) await onReview(approved, reviewContent);
+      else await onDecide(approved, session);
     } catch (exc) {
       setError(toText((exc as Error)?.message) || 'The decision could not be sent.');
       setBusy(false);
@@ -93,7 +120,45 @@ function InterruptCardBody({
         <Chip state="attention" />
       </header>
       <p>{toText(interrupt.message, 1000)}</p>
-      {detail && <pre className="pc-preview">{detail}</pre>}
+      {pageDraft && (
+        <details onToggle={(event) => setRendered(event.currentTarget.open)}>
+          <summary>Rendered draft</summary>
+          {rendered && (
+            <Suspense fallback={<p role="status">Rendering draft…</p>}>
+              <MarkdownPreview content={reviewContent} />
+            </Suspense>
+          )}
+        </details>
+      )}
+      {pageDraft && typeof preview?.previous_content === 'string' && (
+        <details>
+          <summary>
+            Previous revision{preview.previous_truncated ? ' (first 20,000 characters)' : ''}
+          </summary>
+          <pre className="pc-preview">{preview.previous_content}</pre>
+        </details>
+      )}
+      {pageDraft && typeof preview?.diff === 'string' && (
+        <details>
+          <summary>
+            Changes{preview.diff_truncated ? ' (shortened; full text is available above)' : ''}
+          </summary>
+          <pre className="pc-preview">{preview.diff}</pre>
+        </details>
+      )}
+      {teachReview ? (
+        <TeachReview preview={preview} />
+      ) : pageDraft && onReview ? (
+        <textarea
+          aria-label="Review page draft"
+          value={reviewContent}
+          maxLength={20000}
+          onChange={(event) => setReviewContent(event.target.value)}
+          className="pc-preview w-full min-h-64"
+        />
+      ) : (
+        detail && <pre className="pc-preview">{detail}</pre>
+      )}
       <p className="pc-hint">
         Nothing happens until you approve.
         {stronger ? ' This step needs approval on this PC or with a passkey.' : ''}
@@ -107,10 +172,21 @@ function InterruptCardBody({
         >
           Approve
         </button>
+        {sessionAvailable && (
+          <button type="button" disabled={busy} onClick={() => void decide(true, true)}>
+            Allow this tool for 1 hour
+          </button>
+        )}
         <button type="button" disabled={busy} onClick={() => void decide(false)}>
           Decline
         </button>
       </div>
+      {sessionAvailable && (
+        <p className="pc-hint">
+          Temporary permission covers this tool’s navigation and input. Submissions still need
+          approval.
+        </p>
+      )}
       {error && (
         <p role="alert" className="pc-error">
           {error}
@@ -120,7 +196,12 @@ function InterruptCardBody({
   );
 }
 
-export function InterruptCard(props: { interrupt: InterruptView; onDecide: Decide }) {
+export function InterruptCard(props: {
+  interrupt: InterruptView;
+  onDecide: Decide;
+  onReview?: (approved: boolean, content: string) => Promise<void> | void;
+  allowSession?: boolean;
+}) {
   return (
     <CardBoundary label="approval card">
       <InterruptCardBody {...props} />

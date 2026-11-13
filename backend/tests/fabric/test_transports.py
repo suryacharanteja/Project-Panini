@@ -38,6 +38,7 @@ def runtime(tmp_path, fabric, monkeypatch):
 
 
 def gate(monkeypatch, passed):
+    monkeypatch.setenv("PANINI_REDTEAM_ENFORCE", "true")
     monkeypatch.setattr(
         v2flags,
         "redteam_gate",

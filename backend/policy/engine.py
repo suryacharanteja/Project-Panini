@@ -14,7 +14,18 @@ from .effects import RISKY_WORDS, classify
 
 E, L = EffectClass, ApprovalLevel
 TIERS = ("local", "remote", "channel", "external", "background")
-UNTRUSTED_TAINTS = {"web", "email", "channel", "call", "mcp", "a2a", "shared", "client_context"}
+UNTRUSTED_TAINTS = {
+    "web",
+    "email",
+    "channel",
+    "call",
+    "mcp",
+    "a2a",
+    "shared",
+    "client_context",
+    "page",
+    "android",
+}
 
 # balanced (= PANINI_APPROVALS=risky): effect → level per tier (local, remote, channel, external, background)
 BALANCED = {
@@ -55,12 +66,12 @@ def profile_name() -> str:
 def tier(principal: Principal, background: bool = False) -> str:
     if principal.kind in {"external_agent", "mcp_client", "channel_user"} or not principal.verified:
         return "external"
+    if principal.surface in {"slack", "telegram", "whatsapp", "email"}:
+        return "channel"
     if background or principal.surface in {"background", "trigger", "schedule"}:
         return "background"
     if principal.surface in {"phone_app", "phone_line", "agui_remote"}:
         return "remote"
-    if principal.surface in {"slack", "telegram", "whatsapp", "email"}:
-        return "channel"
     return "local"
 
 
@@ -233,6 +244,12 @@ class Policy:
         if spec.name.endswith("_run") and effect is not E.CREDENTIAL:
             level = L.NONE  # The capability asks per action itself.
         subjects = subjects or _subjects(principal)
+        if principal.kind == "persona":
+            # Specialists never inherit owner or surface grants. An absent grant is a denial,
+            # including read-only tools; approval cannot supply a missing permission.
+            subjects = {f"persona:{principal.client_id}"}
+            if not any(g.applies(subjects, spec, principal, self.clock()) for g in self.grants()):
+                return Decision("deny", L.DENY, effect, ("Persona lacks this permission",), tier=where)
         grant_ids = []
         now = self.clock()
         for grant in sorted(self.grants(), key=lambda g: g.specificity(spec)):
@@ -244,6 +261,20 @@ class Policy:
             level = L.DENY
         if where == "external" and RISK[effect] >= RISK[E.SUBMIT]:
             level = stricter(level, L.TAP)
+        if principal.kind == "mcp_client" and effect is not E.OBSERVE:
+            # A caller cannot silently navigate/select or inherit a generic surface exemption.
+            # Only explicit, short-lived, exact-tool owner grants may exempt low-risk effects.
+            exempt = any(
+                g.id in grant_ids
+                and g.subject == f"mcp_client:{principal.client_id}"
+                and spec.name in g.tools
+                and g.expires_at
+                and 0 < g.expires_at - now <= 3600
+                and level is L.NONE
+                for g in self.grants()
+            )
+            if not exempt:
+                level = stricter(level, L.TAP)
         if where in {"remote", "channel"} and effect in HIGH:
             exact = [
                 g

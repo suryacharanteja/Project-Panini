@@ -2,10 +2,13 @@
 
 import asyncio
 import json
+import os
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
+from .. import local_tts, stt_service
 from ..panini.contracts import (
     ConfirmationDecision,
     Control,
@@ -21,6 +24,8 @@ from ..panini.contracts import (
     TicketExchange,
     Turn,
 )
+from .speech import Base64Audio
+from .speech import encoded as transcribe_encoded
 
 router = APIRouter(prefix="/api/panini")
 
@@ -189,6 +194,52 @@ async def command(session_id: str, payload: Turn, request: Request):
     return await c.submit(s, p, epoch, payload)
 
 
+@router.get("/sessions/{session_id}/stt/status")
+async def dictation_status(session_id: str, request: Request):
+    session(request, session_id)
+    return stt_service.get_status()
+
+
+@router.post("/sessions/{session_id}/stt/transcribe")
+async def dictation(session_id: str, payload: Base64Audio, request: Request):
+    session(request, session_id, mutation=True)
+    return await transcribe_encoded(payload, request)
+
+
+class LocalSpeech(BaseModel):
+    text: str = Field(min_length=1, max_length=local_tts.MAX_TEXT)
+
+
+@router.post("/sessions/{session_id}/tts/synthesize")
+async def local_speech(session_id: str, payload: LocalSpeech, request: Request):
+    session(request, session_id, mutation=True)
+    if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() not in {"private", "fallback"}:
+        raise Fault("LOCAL_SPEECH_OFF", "Local speech is available in private or fallback mode.", 503)
+    if not local_tts.readiness()["ready"]:
+        raise Fault("LOCAL_SPEECH_UNAVAILABLE", "Windows local speech is unavailable.", 503)
+    try:
+        return await request.app.state.speech_work.run(lambda: local_tts.synthesize(payload.text))
+    except (ValueError, RuntimeError) as exc:
+        raise Fault("LOCAL_SPEECH_FAILED", str(exc)[:200], 502) from exc
+
+
+@router.post("/sessions/{session_id}/tts/handoff")
+async def handoff_speech(session_id: str, request: Request):
+    session(request, session_id, mutation=True)
+    from .. import v2flags
+
+    if not v2flags.enabled("PANINI_PRESENCE"):
+        raise Fault("HANDOFF_SPEECH_OFF", "Continuity is off.", 503)
+    if not local_tts.readiness()["ready"]:
+        raise Fault("LOCAL_SPEECH_UNAVAILABLE", "Windows local speech is unavailable.", 503)
+    try:
+        return await request.app.state.speech_work.run(
+            lambda: local_tts.synthesize("Continuing from your phone.")
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise Fault("LOCAL_SPEECH_FAILED", str(exc)[:200], 502) from exc
+
+
 @router.get("/sessions/{session_id}/commands/{command_id}")
 async def receipt(session_id: str, command_id: str, request: Request):
     c, p = principal(request, controller=True)
@@ -331,13 +382,23 @@ async def connect_media(session_id: str, payload: MediaOffer, request: Request):
         c.authorize(s, p, epoch)
         if s.media or payload.media_generation <= s.media_generation:
             raise Fault("MEDIA_BUSY", "Close the existing microphone connection before reconnecting.")
+        from ..panini.voice import voice_profile
+
+        profile = voice_profile(c, payload.persona_id)
+        s.voice_persona_id = profile["id"]
         s.media_generation = payload.media_generation
         media = c.voice_factory(c, s, p, epoch)
         s.media = media
         try:
             answer = await media.start(payload.sdp)
             c.authorize(s, p, epoch)
-            s.hub.publish("media.connected", {"generation": s.media_generation})
+            s.hub.publish(
+                "media.connected",
+                {
+                    "generation": s.media_generation,
+                    "persona": {key: profile[key] for key in ("id", "name", "color")},
+                },
+            )
             return {"sdp": answer, "media_generation": s.media_generation}
         except BaseException as exc:
             s.media = None
@@ -360,6 +421,17 @@ async def disconnect_media(session_id: str, payload: MediaClose, request: Reques
     await c.stop(s)
     await c.close_media(s)
     return {"status": "closed"}
+
+
+@router.get("/sessions/{session_id}/voice-personas")
+async def voice_personas(session_id: str, request: Request):
+    c, _, _, _ = session(request, session_id, mutation=True)
+    from .. import v2flags
+
+    service = getattr(c.adapters.get("agent"), "harness", None)
+    if not v2flags.enabled("PANINI_PERSONAS") or service is None:
+        return {"personas": []}
+    return {"personas": [service.personas.presentation(row["id"]) for row in service.personas.list()]}
 
 
 @router.post("/extensions/pairing-code")

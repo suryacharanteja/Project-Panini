@@ -151,6 +151,14 @@ class Admin:
             if not setting:
                 raise AdminError(f"{key} is not a PANINI setting.")
             normalised[key] = validate(setting, value)
+            if key == "PANINI_LOCAL_BASE_URL" and normalised[key]:
+                from panini_cli.agent.local_model import endpoint
+                from panini_cli.agent.model import ModelError
+
+                try:
+                    endpoint(normalised[key])
+                except ModelError as exc:
+                    raise AdminError(str(exc)) from None
         for key, value in normalised.items():
             setting = BY_KEY[key]
             if setting.type == "secret" and value and setting.test:
@@ -197,6 +205,10 @@ class Admin:
     # -- Keys -----------------------------------------------------------------
     async def test_key(self, which, value=None):
         """(ok, detail). Uses the given value, or the configured one."""
+        from .. import private_mode
+
+        if private_mode.active():
+            return False, private_mode.reason()
         if which == "openai":
             key = value or os.getenv("OPENAI_API_KEY", "")
             url, headers = "https://api.openai.com/v1/models", {"Authorization": f"Bearer {key}"}

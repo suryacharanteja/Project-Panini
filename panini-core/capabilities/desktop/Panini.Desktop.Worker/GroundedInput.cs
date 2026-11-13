@@ -164,6 +164,7 @@ internal static class GroundedInput
             ["ENTER"] = 13, ["RETURN"] = 13, ["TAB"] = 9, ["ESC"] = 27, ["ESCAPE"] = 27,
             ["SPACE"] = 32, ["BACKSPACE"] = 8, ["DELETE"] = 46, ["INSERT"] = 45,
             ["UP"] = 38, ["DOWN"] = 40, ["LEFT"] = 37, ["RIGHT"] = 39,
+            ["ARROWUP"] = 38, ["ARROWDOWN"] = 40, ["ARROWLEFT"] = 37, ["ARROWRIGHT"] = 39,
             ["HOME"] = 36, ["END"] = 35, ["PAGEUP"] = 33, ["PAGEDOWN"] = 34
         };
         var codes = keys.Select(key => map.TryGetValue(key, out var vk) ? vk :
@@ -176,15 +177,26 @@ internal static class GroundedInput
         Send(codes.Select(vk => Key(vk, 0, Flags(vk))).Concat(releases).ToArray(), releases, validate);
     }
 
-    public static void Unicode(string text, Action validate)
+    public static void Unicode(string text, Action validate, bool paced = false)
     {
         if (text.Length is < 1 or > 4000 || text.Any(c => char.IsControl(c) && c is not '\r' and not '\n' and not '\t'))
             throw new InvalidOperationException("INPUT_TEXT_UNSUPPORTED");
         text = text.Replace("\r\n", "\n").Replace('\r', '\n');
-        var events = text.SelectMany(c => c is '\n' or '\t'
-            ? new[] { Key((ushort)(c == '\n' ? 13 : 9), 0, 0), Key((ushort)(c == '\n' ? 13 : 9), 0, 2) }
-            : new[] { Key(0, c, 4), Key(0, c, 6) }).ToArray();
-        Send(events, events.Where(e => (e.Data.Keyboard.Flags & 2) != 0).ToArray(), validate);
+        var units = paced ? text.EnumerateRunes().Select(r => r.ToString()).Chunk(8).Select(chunk => string.Concat(chunk)) : new[] { text }.AsEnumerable();
+        foreach (var unit in units)
+        {
+            validate();
+            foreach (var part in paced ? unit.Select(c => c.ToString()) : new[] { unit }.AsEnumerable())
+            {
+                var events = part.SelectMany(c => c is '\n' or '\t'
+                    ? new[] { Key((ushort)(c == '\n' ? 13 : 9), 0, 0), Key((ushort)(c == '\n' ? 13 : 9), 0, 2) }
+                    : new[] { Key(0, c, 4), Key(0, c, 6) }).ToArray();
+                // Hooked rich-edit providers can conflate rapidly queued VK_PACKET
+                // surrogate halves. Release and let each UTF-16 unit reach the app.
+                Send(events, events.Where(e => (e.Data.Keyboard.Flags & 2) != 0).ToArray(), validate);
+                if (paced) Thread.Sleep(char.IsSurrogate(part[0]) ? 10 : 2);
+            }
+        }
     }
 
     public static void EnsureIdle()
@@ -207,7 +219,7 @@ internal static class GroundedInput
         }
     }
 
-    public static void Click(IntPtr window, AutomationElement element, Action validate, int clickCount = 1)
+    public static void Click(IntPtr window, AutomationElement element, Action validate, int clickCount = 1, Action<int, int>? boundsHit = null)
     {
         var observedBounds = element.Current.BoundingRectangle;
         Point point;
@@ -241,6 +253,7 @@ internal static class GroundedInput
                 throw new InvalidOperationException("ELEMENT_CHANGED");
             if (GetAncestor(WindowFromPoint(new NativePoint { X = x, Y = y }), 2) != window)
                 throw new InvalidOperationException("TARGET_OCCLUDED");
+            if (boundsHit is not null) { boundsHit(x, y); return; }
             var hit = AutomationElement.FromPoint(new Point(x, y));
             for (var i = 0; hit is not null && i < 64; i++, hit = TreeWalker.RawViewWalker.GetParent(hit))
             {
@@ -249,7 +262,8 @@ internal static class GroundedInput
             }
             throw new InvalidOperationException("ELEMENT_OCCLUDED");
         }
-        Send(events.ToArray(), [MouseEvent(4)], ClickCheck);
+        if (boundsHit is null) Send(events.ToArray(), [MouseEvent(4)], ClickCheck);
+        else Pointer(new[] { (x, y) }, count == 2 ? "double_click" : "click", "left", 0, 0, ClickCheck);
     }
 
     public static void Move(int x, int y, Action validate)
@@ -296,18 +310,51 @@ internal static class GroundedInput
         }
     }
 
+    public static bool TypeDocument(AutomationElement element, string text, Action validate, bool replace = false)
+    {
+        if (text.Any(char.IsControl)) throw new InvalidOperationException("USE_REVIEWED_KEY_STEPS");
+        if (text.Length > 4000 || (!replace && text.Length == 0)) throw new InvalidOperationException("INPUT_TEXT_UNSUPPORTED");
+        if (element.Current.ControlType != ControlType.Edit && element.Current.ControlType != ControlType.Document)
+            throw new InvalidOperationException("TEXT_TARGET_NOT_EDITABLE");
+        void Check()
+        {
+            validate();
+            if (element.Current.IsPassword || !element.Current.IsEnabled || element.Current.IsOffscreen
+                || !Automation.Compare(AutomationElement.FocusedElement, element)) throw new InvalidOperationException("FOCUS_CHANGED");
+        }
+        // A recorded value is the whole field. Do not append it or delete anything
+        // until the provider proves that this same editable document can be read back.
+        TextPattern? reader = null;
+        if (replace)
+        {
+            Check();
+            if (!element.TryGetCurrentPattern(TextPattern.Pattern, out var pattern))
+                throw new InvalidOperationException("TEXT_VERIFICATION_UNAVAILABLE");
+            reader = (TextPattern)pattern;
+            _ = reader.DocumentRange.GetText(4001);
+            Chord(["Ctrl", "A"], Check);
+            Thread.Sleep(60);
+        }
+        if (text.Length == 0) Chord(["Backspace"], Check);
+        else Unicode(text, Check, paced: true);
+        if (!replace) return false;
+        // The input was dispatched once. A failed readback is an unknown result,
+        // never an invitation to resend a destructive replacement.
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            Thread.Sleep(40);
+            Check();
+            if (reader!.DocumentRange.GetText(4001) == text) return true;
+        }
+        throw new InvalidOperationException("TEXT_REPLACEMENT_UNVERIFIED");
+    }
+
     public static void PressKey(string key, Action validate)
     {
         if (string.IsNullOrWhiteSpace(key) || key.Length > 32) throw new InvalidOperationException("KEY_UNSUPPORTED");
-        var map = new Dictionary<string, ushort>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["Enter"] = 0x0D, ["Return"] = 0x0D, ["Tab"] = 0x09, ["Escape"] = 0x1B,
-            ["Space"] = 0x20, ["Backspace"] = 0x08, ["Delete"] = 0x2E,
-            ["Up"] = 0x26, ["Down"] = 0x28, ["Left"] = 0x25, ["Right"] = 0x27,
-        };
-        if (!map.TryGetValue(key, out var vk) && !(key.Length == 1 && char.IsLetterOrDigit(key[0])))
+        var parts = key.Split('+');
+        if (parts[..^1].Any(p => p.ToUpperInvariant() is not ("CTRL" or "SHIFT" or "ALT" or "WIN")))
             throw new InvalidOperationException("KEY_UNSUPPORTED");
-        if (vk == 0) vk = (ushort)char.ToUpperInvariant(key[0]);
-        Send(new[] { Key(vk, 0, 0), Key(vk, 0, 2) }, new[] { Key(vk, 0, 2) }, () => { EnsureIdle(); validate(); });
+        Chord(parts, validate);
     }
 }

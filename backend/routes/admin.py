@@ -5,6 +5,7 @@ Secrets are write-only; responses never contain key values or connector secrets.
 """
 
 import json
+import os
 import platform
 import re
 import sys
@@ -87,6 +88,114 @@ def _bad(exc):
     return HTTPException(422, str(exc).strip("'"))
 
 
+class PersonaCreate(Strict):
+    id: str = Field(min_length=1, max_length=41)
+    values: dict = Field(default_factory=dict)
+
+
+class PersonaPermissions(Strict):
+    permissions: list[str] = Field(max_length=20)
+
+
+class PersonaTest(Strict):
+    text: str = Field(min_length=1, max_length=2000)
+
+
+class PersonaSurface(Strict):
+    surface: str = Field(min_length=1, max_length=150)
+    persona_id: str = Field(min_length=1, max_length=41)
+
+
+@router.put("/personas/surfaces/default")
+async def persona_surface_default(request: Request, spec: PersonaSurface):
+    try:
+        harness(request).personas.bind_surface(spec.surface, spec.persona_id)
+        return {"surface": spec.surface, "persona_id": spec.persona_id}
+    except (ValueError, KeyError) as exc:
+        raise _bad(exc) from None
+
+
+@router.post("/personas/{persona_id}/test")
+async def personas_test(request: Request, persona_id: str, spec: PersonaTest):
+    from .. import v2flags
+
+    if not v2flags.enabled("PANINI_PERSONAS"):
+        raise HTTPException(409, "Personas are off. Enable PANINI_PERSONAS after qualification.")
+    h = harness(request)
+    try:
+        h.personas.get(persona_id)
+    except KeyError as exc:
+        raise _bad(exc) from None
+    agent = h.agent(delegate=None, capabilities=(), persona_id=persona_id, max_steps=1)
+    agent.only_tools = set()  # Identity preview has no tool effects.
+    # Use a depth-one preview so a mention in the test text cannot switch the chosen identity.
+    agent.depth = 1
+    result = await agent.run(spec.text)
+    return {"persona_id": persona_id, "outcome": result.outcome, "message": result.message}
+
+
+@router.get("/personas")
+async def personas_list(request: Request):
+    from .. import v2flags
+    from ..personas.store import COLORS, PERMISSIONS
+
+    h = harness(request)
+    return {
+        "personas": [h.personas.get(p["id"]) for p in h.personas.list()],
+        "permission_options": list(PERMISSIONS),
+        "colors": COLORS,
+        "enabled": v2flags.enabled("PANINI_PERSONAS"),
+        "surface_defaults": {
+            row["surface"]: h.personas.surface_default(row["surface"])
+            for row in h.store.all("SELECT * FROM persona_surfaces")
+        },
+    }
+
+
+@router.post("/personas")
+async def personas_create(request: Request, spec: PersonaCreate):
+    try:
+        return harness(request).personas.create(spec.id, **spec.values)
+    except (ValueError, KeyError) as exc:
+        raise _bad(exc) from None
+
+
+@router.patch("/personas/{persona_id}")
+async def personas_update(request: Request, persona_id: str, values: dict):
+    try:
+        return harness(request).personas.update(persona_id, **values)
+    except (ValueError, KeyError) as exc:
+        raise _bad(exc) from None
+
+
+@router.put("/personas/{persona_id}/permissions")
+async def personas_permissions(request: Request, persona_id: str, spec: PersonaPermissions):
+    try:
+        return harness(request).personas.set_permissions(persona_id, spec.permissions)
+    except (ValueError, KeyError) as exc:
+        raise _bad(exc) from None
+
+
+@router.delete("/personas/{persona_id}")
+async def personas_archive(request: Request, persona_id: str):
+    try:
+        harness(request).personas.archive(persona_id)
+        return {"archived": True}
+    except (ValueError, KeyError) as exc:
+        raise _bad(exc) from None
+
+
+@router.get("/personas/messages/{thread_id}")
+async def persona_messages(request: Request, thread_id: str):
+    return {
+        "messages": harness(request).store.all(
+            "SELECT m.*,p.name,p.color FROM persona_messages m JOIN personas p ON p.id=m.persona_id "
+            "WHERE thread_id=? ORDER BY m.id DESC LIMIT 100",
+            (thread_id,),
+        )
+    }
+
+
 # -- Overview, health, system --------------------------------------------------
 @router.get("/health")
 async def health(request: Request, refresh: bool = False):
@@ -145,7 +254,11 @@ async def settings(request: Request):
 @router.patch("/settings")
 async def update_settings(payload: SettingsPatch, request: Request):
     try:
-        return await admin(request).update(payload.changes)
+        result = await admin(request).update(payload.changes)
+        teach = getattr(request.app.state.harness, "teach", None)
+        if teach and not teach.allowed():
+            await teach.close()
+        return result
     except (AdminError, ValueError) as exc:
         raise _bad(exc) from None
 
@@ -159,6 +272,55 @@ async def test_key(which: str, request: Request):
     return {"ok": ok, "detail": detail}
 
 
+@router.post("/local-model/test")
+async def test_local_model():
+    """Probe only the configured loopback endpoint with a synthetic tool call."""
+    from panini_cli.agent.local_model import LocalModel
+    from panini_cli.agent.model import ModelError
+
+    from .. import private_mode
+
+    try:
+        local = LocalModel(timeout=10.0)
+    except ModelError as exc:
+        return {"ok": False, "detail": str(exc)}
+    try:
+        result = await local.probe()
+        if private_mode.active():
+            from ..brain.local_gate import ask as ask_local
+
+            answer = await ask_local(
+                {"goal": "Open Notepad", "claim": "Notepad opened", "delegated_results": []},
+                {
+                    "achieved": {
+                        "type": "boolean",
+                        "instructions": "Is there evidence that Notepad opened?",
+                    }
+                },
+                model=local,
+            )
+            if answer["answers"]["achieved"]["probability"] != 0.0:
+                return {"ok": False, "detail": "The local evidence gate accepted an unsupported claim."}
+            return {"ok": True, "detail": f"{result['model']} passed tool-call and evidence-schema tests."}
+        return {"ok": True, "detail": f"{result['model']} answered the tool-call test."}
+    except (ModelError, ValueError, TimeoutError) as exc:
+        return {"ok": False, "detail": str(exc)}
+    finally:
+        await local.close()
+
+
+@router.get("/local-model/qualification")
+async def local_model_qualification():
+    """Show the task classes that have passed comparative local qualification."""
+    from panini_cli.agent.local_quality import CLASSES, qualified
+
+    classes = {}
+    for task_class in sorted(CLASSES):
+        ready, reason = qualified(task_class)
+        classes[task_class] = {"ready": ready, "reason": reason}
+    return {"model": os.getenv("PANINI_LOCAL_MODEL", "").strip(), "classes": classes}
+
+
 @router.get("/audit")
 async def audit(request: Request):
     return {"entries": admin(request).audit_log()}
@@ -167,7 +329,11 @@ async def audit(request: Request):
 @router.post("/audit/{entry_id}/restore")
 async def restore(entry_id: str, request: Request):
     try:
-        return await admin(request).restore(entry_id)
+        result = await admin(request).restore(entry_id)
+        teach = getattr(request.app.state.harness, "teach", None)
+        if teach and not teach.allowed():
+            await teach.close()
+        return result
     except AdminError as exc:
         raise _bad(exc) from None
 

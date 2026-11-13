@@ -5,6 +5,7 @@ state after its last finished tool round, compressed; a parked or interrupted ba
 and the ledger (V2-04) replays any step that already happened.
 """
 
+import hashlib
 import json
 import time
 import zlib
@@ -13,6 +14,7 @@ from uuid import uuid4
 
 MAX_CHECKPOINT = 512 * 1024
 OUTPUT_CHARS = 2000
+MAX_RESULT_CHARS = 1_000_000
 STATES = {"running", "parked", "resumed", "completed", "partial", "blocked", "failed", "interrupted"}
 
 
@@ -21,12 +23,21 @@ class Runs:
         self.store, self.clock = store, clock
 
     def start(
-        self, *, mode, principal, thread_id=None, task_id=None, parent_run_id=None, tier=None, budget=None
+        self,
+        *,
+        mode,
+        principal,
+        thread_id=None,
+        task_id=None,
+        parent_run_id=None,
+        tier=None,
+        budget=None,
+        persona_id="panini",
     ) -> str:
         run_id, now = uuid4().hex, self.clock()
         self.store.execute(
             "INSERT INTO runs(id, thread_id, principal, mode, parent_run_id, task_id, state, tier, created, "
-            "updated, budget) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "updated, budget, persona_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 run_id,
                 thread_id,
@@ -39,6 +50,7 @@ class Runs:
                 now,
                 now,
                 json.dumps(budget or {}),
+                persona_id or "panini",  # A delegate's run is attributed to the specialist that ran it.
             ),
         )
         return run_id
@@ -75,13 +87,24 @@ class Runs:
     def finish(self, run_id, state: str, result: dict, usage: dict | None = None):
         if state not in STATES:
             raise ValueError(f"Unknown run state {state!r}")
+        encoded = json.dumps(result, ensure_ascii=False, default=str)
+        if len(encoded) > MAX_RESULT_CHARS:
+            encoded = json.dumps(
+                {
+                    "outcome": str(result.get("outcome", "partial"))[:100],
+                    "message": str(result.get("message", ""))[:16000],
+                    "result_truncated": True,
+                    "source_sha256": hashlib.sha256(encoded.encode()).hexdigest(),
+                },
+                ensure_ascii=False,
+            )
         self.store.execute(
             "UPDATE runs SET state=?, result=?, updated=?"
             + (", usage=?" if usage is not None else "")
             + " WHERE id=?",
             (
                 state,
-                json.dumps(result, ensure_ascii=False, default=str)[:20000],
+                encoded,
                 self.clock(),
                 *([json.dumps(usage)] if usage is not None else []),
                 run_id,
@@ -126,6 +149,18 @@ class Runs:
             (since,),
         )
         return float(row["usd"] or 0.0)
+
+    def close_parked_tree(self, task_id, state: str):
+        """Declining a lead also closes its waiting members, including resumed attempts."""
+        if state not in {"blocked", "interrupted"}:
+            raise ValueError("A waiting run tree can only be blocked or interrupted.")
+        self.store.execute(
+            "WITH RECURSIVE family(id) AS ("
+            "SELECT id FROM runs WHERE task_id=? UNION "
+            "SELECT r.id FROM runs r JOIN family f ON r.parent_run_id=f.id) "
+            "UPDATE runs SET state=?, updated=? WHERE state='parked' AND id IN (SELECT id FROM family)",
+            (task_id, state, self.clock()),
+        )
 
     def spent_today(self) -> float:
         midnight = datetime.fromtimestamp(self.clock()).replace(hour=0, minute=0, second=0, microsecond=0)

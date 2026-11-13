@@ -71,6 +71,9 @@ class Harness:
         from .. import policy
 
         self.policy = policy.install(policy.Policy(self.store))
+        from ..personas import Personas
+
+        self.personas = Personas(self.store, self.policy)
         from .. import ledger
         from ..extension_pairing import data_directory
 
@@ -94,6 +97,33 @@ class Harness:
         self.sandbox.register_live()  # V2-12: its frames and owner input in the live view.
         self.sandbox.ensure_row(DEFAULT_COMPUTER)
         self.threads = Threads(self.store, self.sessions)
+        from ..spaces import Spaces
+
+        self.spaces = Spaces(self.store, self.threads, self.personas)
+        from ..channels.manager import ChannelManager
+        from .secrets_store import SecretStore
+
+        self.channels = ChannelManager(self, SecretStore(self.store.path.parent / "channel-secrets.bin"))
+        from ..telephony.outbound import OutboundCalls
+
+        self.outbound = OutboundCalls(self)
+        from ..hands.android import Android
+        from ..live import hub
+
+        self.android = Android(self)
+        hub().register_poller("android", self.android.frame, 1.0)
+        from ..teach.service import Teach
+
+        self.teach = Teach(self)
+        from ..hands.desktop_fine import DesktopFine
+
+        self.desktop_fine = DesktopFine(self)
+        from ..fabric.routing import Continuity
+
+        self.continuity = Continuity(self)
+        from ..triggers import TriggerBus
+
+        self.triggers = TriggerBus(self)
 
     def agent(self, *, delegate, emit=None, capabilities=None, **options):
         agent = Agent(
@@ -106,7 +136,17 @@ class Harness:
         )
         from .. import v2flags
 
-        if v2flags.enabled("PANINI_V2_REGISTRY"):
+        if any(
+            v2flags.enabled(key)
+            for key in (
+                "PANINI_V2_REGISTRY",
+                "PANINI_PERSONAS",
+                "PANINI_SPACES",
+                "PANINI_ANDROID",
+                "PANINI_TEACH",
+                "PANINI_DESKTOP_TOOLS",
+            )
+        ):
             agent.registry = self.registry
         return agent
 
@@ -125,11 +165,12 @@ class Harness:
                 },
                 state=self.store,
             )
+            from ..channels.guard import ChannelGuard
             from ..ledger.hook import LedgerHook
             from ..policy.hook import PolicyHook
 
             # The ledger runs first so policy refusals are receipted too.
-            self._registry.hooks += [LedgerHook(), PolicyHook()]
+            self._registry.hooks += [LedgerHook(), ChannelGuard(self.channels), PolicyHook()]
         return self._registry
 
     def status(self):
@@ -150,6 +191,10 @@ class Harness:
                 "AND json_extract(data, '$.kind')='watch'"
             )["n"],
             "connectors": len(self.connectors.servers),
+            "android": self.android.activity(),
+            "recording": self.teach.recorder.status(),
+            "mcp": list(getattr(getattr(self, "mcp", None), "activity", {}).values()),
+            "presence": self.continuity.presence.status(),
         }
 
     def suggest(self, force=False):
@@ -162,7 +207,7 @@ class Harness:
     def _on_interrupt(self, event, view):
         """Background interrupts reach the inbox; a decision resumes or ends the parked task (V2-05)."""
         task_id = view.get("task_id")
-        if not task_id:
+        if not task_id or task_id.startswith(("trigger-proposal:", "responsibility-proposal:")):
             return
         if event == "interrupt.opened":
             self.notices.add(
@@ -180,7 +225,7 @@ class Harness:
             if approved:
                 self.tasks.resume(task_id, view.get("action_digest"))
             else:
-                self.runs.close_parked(task_id, "blocked")
+                self.runs.close_parked_tree(task_id, "blocked")
                 reason = {"expired": "The approval request expired."}.get(
                     view["status"], "You declined this step."
                 )
@@ -192,8 +237,15 @@ class Harness:
         """A background run asking the person: approved actions pass once; otherwise the run parks (V2-05)."""
         from ..interrupts import InterruptSpec, Parked, active, digest
 
-        async def confirm(summary, detail):
+        async def confirm(summary, detail, decision=None):
+            from ..policy import v1_confirmation_preapproved
+
+            if decision is None and v1_confirmation_preapproved():
+                return True
             action = {"summary": str(summary)[:500], "detail": str(detail)[:3000]}
+            level = decision.level.value if decision else "tap"
+            if decision is not None:
+                action["approval_level"] = level
             key = digest(action)
             if self.tasks.consume_preapproval(task["id"], key):
                 return True
@@ -208,7 +260,7 @@ class Harness:
                     f"A background task wants to: {summary}",
                     preview={"task": task.get("title", ""), "detail": str(detail)[:3000]},
                     action=action,
-                    level="tap",
+                    level=level,
                     ttl_s=24 * 3600,
                 ),
                 run_id=task["id"],
@@ -220,6 +272,13 @@ class Harness:
         return confirm
 
     def background_cycle(self):
+        if not self.teach.allowed() and (
+            self.teach.recorder.current or self.teach.recorder.starting or self.teach.replayer.active
+        ):
+            try:
+                asyncio.get_running_loop().create_task(self.teach.close())
+            except RuntimeError:
+                pass
         if getattr(self, "interrupts", None):
             self.interrupts.expire_overdue()
         browsers = getattr(self, "browsers", None)
@@ -271,15 +330,25 @@ class Harness:
     def start(self):
         import asyncio
 
+        from .. import private_mode
+
         self.interrupts.cancel_foreground_after_restart()
         self.runs.recover()
         self.recover_ledger()
         self.worker.start()
+        if private_mode.active():
+            return  # No phone, channel, outbound, presence, or trigger background loop.
         self._mobile_start = asyncio.get_running_loop().create_task(self.mobile.start_if_enabled())
+        self._channels_start = asyncio.get_running_loop().create_task(self.channels.start())
+        self.outbound.start()
+        self.continuity.start()
+        self.triggers.start()
 
     async def close(self):
         from .. import interrupts, ledger, policy
 
+        await self.continuity.close()
+        await self.triggers.close()
         # Uninstall the process-wide v2 services this harness installed.
         if interrupts._service is self.interrupts:
             interrupts._service = None
@@ -287,6 +356,14 @@ class Harness:
             ledger._ledger = ledger._artifacts = None
         if policy._policy is self.policy:
             policy._policy = None
+        start = getattr(self, "_channels_start", None)
+        if start:
+            await start
+        await self.outbound.close()
+        await self.teach.close()
+        await self.desktop_fine.close()
+        await self.android.driver.close()
+        await self.channels.stop()
         await self.mobile.disable(save=False)
         await self.worker.close()
         await self.connectors.close()
@@ -295,9 +372,21 @@ class Harness:
 
     async def run_background(self, task, tasks):
         """Run one durable task with least-privilege capabilities."""
+        channel_job = self.channels.job(task["id"])
+        channel_account = None
+        if channel_job:
+            if not self.channels.permitted(channel_job):
+                return "blocked", "This channel account is disabled or its owner access was removed.", []
+            channel_account = self.channels.accounts.get(channel_job["account_id"])
         available = [c for c in BACKGROUND_CAPABILITIES if c in self.adapters]
 
         async def delegate(capability, instruction):
+            if capability not in available:
+                return {
+                    "outcome": "blocked",
+                    "message": "This capability is unavailable for background work.",
+                    "results": [],
+                }
             tasks.checkpoint(
                 task["id"], task["lease_id"], {"capability": capability, "instruction": instruction}
             )
@@ -353,25 +442,122 @@ class Harness:
             confirm=self._background_confirm(task) if active() else None,
             private=not external,
             background=True,
+            surface=channel_account["channel"]
+            if channel_account
+            else ("phone_app" if task.get("origin") in {"phone", "phone-share"} else "background"),
+            persona_id=task.get("persona_id"),
         )
         agent.run_id = task["id"]
-        from .. import brain
+        agent.confirm_decision = agent.confirm
+        # A channel job, or a task that continues an owner conversation (V2-15 phone turns), runs in that thread.
+        bound = (
+            None
+            if channel_job
+            else self.store.one("SELECT thread_id FROM task_threads WHERE task_id=?", (task["id"],))
+        )
+        agent.thread_id = (
+            channel_job["thread_id"] if channel_job else (bound["thread_id"] if bound else task["id"])
+        )
+        if task.get("kind") in {"trigger", "responsibility"}:
+            from dataclasses import replace
+
+            from ..brain.budget import Budget
+
+            agent.budget_override = replace(
+                Budget.for_mode(True), max_usd=min(float(task["budget_usd"]), Budget.for_mode(True).max_usd)
+            )
+
+            def check_trigger():
+                if not self.triggers.enabled or not tasks.owns(task["id"], task["lease_id"]):
+                    raise Fault("TRIGGER_STOPPED", "This automation was paused or disabled.", 409)
+                if task["kind"] == "trigger":
+                    rule_id = task["origin"].removeprefix("trigger:")
+                    rule = self.triggers.get(rule_id)
+                    if rule["status"] != "active":
+                        raise Fault("TRIGGER_STOPPED", "This trigger was paused.", 409)
+                    owner = self.triggers.responsibilities.owner_of(rule_id)
+                    if owner and self.triggers.responsibilities.get(owner)["status"] != "active":
+                        raise Fault("TRIGGER_STOPPED", "Its responsibility was paused.", 409)
+                else:
+                    responsibility_id = task["origin"].removeprefix("responsibility:")
+                    if self.triggers.responsibilities.get(responsibility_id)["status"] != "active":
+                        raise Fault("TRIGGER_STOPPED", "This responsibility was paused.", 409)
+
+            agent.before_model = check_trigger
+        if channel_job:
+            agent.registry = self.registry
+            agent.durable = True
+
+            def check_channel():
+                if not self.channels.permitted(channel_job):
+                    raise Fault("CHANNEL_DISABLED", "This channel account is no longer authorized.", 403)
+                if not tasks.owns(task["id"], task["lease_id"]):
+                    raise asyncio.CancelledError()
+
+            agent.before_model = check_channel
+
+            async def channel_confirm(summary, detail, decision=None):
+                from ..interrupts import InterruptSpec, Parked, digest
+                from ..policy import v1_confirmation_preapproved
+
+                check_channel()
+                if decision is None and v1_confirmation_preapproved():
+                    return True
+                action = {"summary": str(summary)[:500], "detail": str(detail)[:3000]}
+                decision = decision or agent.tool_context().decision
+                level = str(decision.level) if decision else "tap"
+                if decision is not None:
+                    action["approval_level"] = level
+                if tasks.consume_preapproval(task["id"], digest(action)):
+                    return True
+                view = self.interrupts.open(
+                    InterruptSpec(
+                        "approval",
+                        "tool_call",
+                        str(summary)[:200],
+                        f"A {channel_account['channel']} request needs approval on your PC or phone.",
+                        preview={"account": channel_account["label"], "detail": str(detail)[:3000]},
+                        action=action,
+                        level=level,
+                        ttl_s=24 * 3600,
+                    ),
+                    run_id=task["id"],
+                    task_id=task["id"],
+                    thread_id=agent.thread_id,
+                    owner_principal={"surface": channel_account["channel"]},
+                )
+                raise Parked(view["id"], str(summary)[:200])
+
+            agent.confirm = channel_confirm
+            agent.confirm_decision = channel_confirm
 
         # V2-06: a run parked on an approval continues from its last checkpoint; the ledger replays any
         # step that already happened, and the approved action passes once.
-        parked_run = self.runs.resumable(task["id"]) if brain.enabled() else None
+        parked_run = self.runs.resumable(task["id"])
         checkpoint = self.runs.load_checkpoint(parked_run["id"]) if parked_run else None
         if parked_run:
             self.runs.close_parked(task["id"], "resumed")
             self.store.event(task["id"], "resumed", "Continuing from where the task stopped.")
         try:
-            result = await agent.run(goal, resume=checkpoint)
+            result = await agent.run(
+                goal, session_id=agent.thread_id if (channel_job or bound) else None, resume=checkpoint
+            )
         except Parked as parked:
             return (
                 "waiting_input",
                 f"Waiting for your approval: {parked.title}",
                 [f"interrupt:{parked.interrupt_id}"],
             )
+        except Exception as error:  # noqa: BLE001 -- channel callers never receive provider errors.
+            if not channel_job:
+                raise
+            from ..channels.base import safe_failure
+            from ..channels.manager import FAILURE
+
+            safe_failure(error)
+            return "blocked", FAILURE, []
+        if checkpoint and checkpoint.get("persona_calls"):
+            self.runs.close_parked_tree(task["id"], "blocked")
         outcome = result.outcome if result.outcome != "reply" else "verified_complete"
         if watch:
             if outcome in ("verified_complete", "partial"):

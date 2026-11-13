@@ -7,6 +7,7 @@ convention as the coordinator's digest(). Appends run inside BEGIN IMMEDIATE so 
 import hashlib
 import json
 import time
+from uuid import uuid4
 
 GENESIS = "0" * 64
 
@@ -27,7 +28,9 @@ def append(store, receipt_id: str, kind: str, body: dict, *, clock=time.time) ->
     text = canonical(body)
     with store.lock:
         db = store.db
-        db.execute("BEGIN IMMEDIATE")
+        nested = db.in_transaction
+        savepoint = "ledger_" + uuid4().hex
+        db.execute(f"SAVEPOINT {savepoint}" if nested else "BEGIN IMMEDIATE")
         try:
             row = db.execute("SELECT hash FROM ledger_entries ORDER BY seq DESC LIMIT 1").fetchone()
             prev = row[0] if row else GENESIS
@@ -36,9 +39,11 @@ def append(store, receipt_id: str, kind: str, body: dict, *, clock=time.time) ->
                 "INSERT INTO ledger_entries(receipt_id, kind, body, ts, prev_hash, hash) VALUES (?,?,?,?,?,?)",
                 (receipt_id, kind, text, clock(), prev, value),
             )
-            db.execute("COMMIT")
+            db.execute(f"RELEASE {savepoint}" if nested else "COMMIT")
         except BaseException:
-            db.execute("ROLLBACK")
+            db.execute(f"ROLLBACK TO {savepoint}" if nested else "ROLLBACK")
+            if nested:
+                db.execute(f"RELEASE {savepoint}")
             raise
     return {"seq": cursor.lastrowid, "hash": value, "prev_hash": prev}
 

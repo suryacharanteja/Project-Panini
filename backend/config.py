@@ -12,12 +12,41 @@ os.environ.setdefault("ANONYMIZED_TELEMETRY", "false")
 
 
 def configured(name: str) -> bool:
+    from . import private_mode
+
+    if private_mode.active() and name in {"OPENAI_API_KEY", "AI_GATEWAY_API_KEY", "ASSEMBLYAI_API_KEY"}:
+        return False
     value = os.getenv(name, "").strip()
     return bool(value and not value.startswith("your_") and value != "change-me")
 
 
+def local_model_configured() -> bool:
+    if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() not in {"fallback", "private"}:
+        return False
+    if not os.getenv("PANINI_LOCAL_MODEL", "").strip():
+        return False
+    from panini_cli.agent.local_model import endpoint
+    from panini_cli.agent.model import ModelError
+
+    try:
+        endpoint(os.getenv("PANINI_LOCAL_BASE_URL", ""))
+    except ModelError:
+        return False
+    return True
+
+
+def local_model_qualified(task_class: str) -> tuple[bool, str]:
+    if not local_model_configured():
+        return False, "Configure a loopback local model before using local tasks."
+    from panini_cli.agent.local_quality import qualified
+
+    return qualified(task_class)
+
+
 def jev_gates() -> bool:
     """Jev routing and completion checks (on by default whenever Jev is configured)."""
+    if os.getenv("PANINI_LOCAL_MODE", "off").strip().lower() == "private":
+        return False
     enabled = os.getenv("PANINI_JEV_GATES", "true").strip().lower() not in {"0", "false", "no", "off"}
     return enabled and configured("AI_GATEWAY_API_KEY")
 

@@ -31,6 +31,46 @@ class Setting:
 
 
 SETTINGS = [
+    Setting(
+        "PANINI_CALL_MAX_MINUTES",
+        "voice",
+        "Phone call maximum minutes",
+        "int",
+        "Maximum duration of an inbound call.",
+        default="30",
+        minimum=1,
+        maximum=120,
+    ),
+    Setting(
+        "PANINI_CALLS_PER_DAY",
+        "voice",
+        "Phone calls per day",
+        "int",
+        "Maximum accepted inbound calls per UTC day.",
+        default="20",
+        minimum=1,
+        maximum=1000,
+    ),
+    Setting(
+        "PANINI_CALL_MINUTES_PER_DAY",
+        "voice",
+        "Phone minutes per day",
+        "int",
+        "Daily total call duration; a new call is bounded by the remaining allowance.",
+        default="120",
+        minimum=1,
+        maximum=1440,
+    ),
+    Setting(
+        "PANINI_CALL_MAX_RUNS",
+        "voice",
+        "Requests per phone call",
+        "int",
+        "Maximum delegated requests during one call.",
+        default="12",
+        minimum=1,
+        maximum=100,
+    ),
     # Models & keys
     Setting(
         "OPENAI_API_KEY",
@@ -61,6 +101,28 @@ SETTINGS = [
         "Agent model",
         help="Model for the PANINI agent. Empty uses the CLI model.",
         default="",
+    ),
+    Setting(
+        "PANINI_LOCAL_BASE_URL",
+        "models",
+        "Local model server",
+        help="Loopback OpenAI-compatible endpoint, for example http://127.0.0.1:11434/v1. Test tool calling before use.",
+        default="",
+    ),
+    Setting(
+        "PANINI_LOCAL_MODEL",
+        "models",
+        "Local model name",
+        help="Exact model name served by the local endpoint. Local mode remains a development preview.",
+        default="",
+    ),
+    Setting(
+        "PANINI_LOCAL_QUALITY_REPORT",
+        "models",
+        "Local quality report",
+        help="Absolute path to a paired real cloud/local scorecard qualification report for this exact model and source build. Unqualified task classes stay unavailable.",
+        default="",
+        restart=True,
     ),
     Setting(
         "PANINI_PLANNER_MODEL",

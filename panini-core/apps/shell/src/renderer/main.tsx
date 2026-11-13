@@ -9,6 +9,8 @@ import { ShellLive } from './ShellLive';
 import { Avatar, type AvatarState, levelMeter } from './avatar/Avatar';
 import { avatarStateFor } from './avatar/state';
 import { Backdrop, Capabilities, Engine, Lexicon, StageTitle } from './Stage';
+import { presentation } from '../../../phone/lib/persona.mjs';
+import { eligibleContinuityVoiceCommand } from './continuityVoice';
 
 declare global {
   interface Window {
@@ -72,6 +74,8 @@ function App() {
   const [tools, setTools] = useState<ToolCall[]>([]);
   const [executionMode, setExecutionMode] = useState('compact');
   const [presence, setPresence] = useState('avatar');
+  const [continuation, setContinuation] = useState<any>(null);
+  const [continuityCards, setContinuityCards] = useState<any[]>([]);
   const [background, setBackground] = useState<any>(null);
   const executionTask = useRef('');
   const [outcome, setOutcome] = useState('');
@@ -103,12 +107,27 @@ function App() {
   const [input, setInput] = useState(''),
     [message, setMessage] = useState('Preparing your conversation…'),
     [phase, setPhase] = useState('connecting');
+  const [persona, setPersona] = useState(presentation(null));
+  const [voicePersona, setVoicePersona] = useState('panini');
+  const [voicePersonas, setVoicePersonas] = useState<ReturnType<typeof presentation>[]>([]);
+  const [personaMessages, setPersonaMessages] = useState<
+    { name: string; color: string; text: string }[]
+  >([]);
   const [caption, setCaption] = useState(''),
     [results, setResults] = useState<any[]>([]),
     [error, setError] = useState('');
   const [mic, setMic] = useState(false),
     [muted, setMuted] = useState(false),
     [connectingMic, setConnectingMic] = useState(false);
+  const [speechMode, setSpeechMode] = useState('off');
+  const [localSpeaking, setLocalSpeaking] = useState<'idle' | 'loading' | 'playing'>('idle');
+  const localSpeech = useRef<{ audio: HTMLAudioElement; url: string } | null>(null);
+  const localSpeechRequest = useRef(0);
+  const [recording, setRecording] = useState(false),
+    [dictating, setDictating] = useState(false);
+  const recorder = useRef<MediaRecorder | null>(null),
+    recordingStream = useRef<MediaStream | null>(null),
+    recordingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]),
     [microphone, setMicrophone] = useState('');
   const [pin, setPin] = useState(false),
@@ -174,10 +193,158 @@ function App() {
   const closeMic = async () => {
     const current = generation.current;
     releaseAudio();
-    await call('media-close', { generation: current });
+    return await call('media-close', { generation: current });
   };
-  const startMic = async () => {
-    if (mic || connectingMic) return;
+  const stopLocalSpeech = () => {
+    localSpeechRequest.current++;
+    if (localSpeech.current) {
+      localSpeech.current.audio.pause();
+      URL.revokeObjectURL(localSpeech.current.url);
+      localSpeech.current = null;
+    }
+    setLocalSpeaking('idle');
+  };
+  const playSpeechAudio = async (result: { audio_b64: string }, request: number) => {
+    if (disposed.current || request !== localSpeechRequest.current) return;
+    const raw = atob(result.audio_b64);
+    const bytes = Uint8Array.from(raw, (character) => character.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+    const spoken = new Audio(url);
+    localSpeech.current = { audio: spoken, url };
+    spoken.onended = () => stopLocalSpeech();
+    await spoken.play();
+    if (request === localSpeechRequest.current) setLocalSpeaking('playing');
+  };
+  const playLocalSpeech = async () => {
+    if (localSpeaking !== 'idle') {
+      stopLocalSpeech();
+      return;
+    }
+    if (!message.trim()) return;
+    const request = ++localSpeechRequest.current;
+    setLocalSpeaking('loading');
+    try {
+      const result = await api.invoke('synthesize-local', { text: message.slice(0, 500) });
+      await playSpeechAudio(result, request);
+    } catch (cause: any) {
+      if (request === localSpeechRequest.current) {
+        stopLocalSpeech();
+        setError(cause.message || 'Local speech playback failed.');
+      }
+    }
+  };
+  const speakHandoff = async () => {
+    if (
+      disposed.current ||
+      local.current ||
+      peer.current ||
+      recordingStream.current ||
+      recorder.current?.state === 'recording'
+    )
+      return;
+    stopLocalSpeech();
+    const request = ++localSpeechRequest.current;
+    setLocalSpeaking('loading');
+    try {
+      await playSpeechAudio(await api.invoke('synthesize-handoff'), request);
+    } catch {
+      if (request === localSpeechRequest.current) {
+        stopLocalSpeech();
+        setError('The conversation is ready, but the handoff voice could not play.');
+      }
+    }
+  };
+  const stopDictation = () => {
+    if (recordingTimer.current) clearTimeout(recordingTimer.current);
+    recordingTimer.current = null;
+    if (recorder.current?.state === 'recording') recorder.current.stop();
+  };
+  const startDictation = async () => {
+    if (recording || dictating || mic || !ready || !terminal) return;
+    setError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          ...(microphone ? { deviceId: { exact: microphone } } : {}),
+        },
+        video: false,
+      });
+      if (disposed.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      recordingStream.current = stream;
+      micMeter.current?.close();
+      micMeter.current = levelMeter(stream);
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : '';
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks: BlobPart[] = [];
+      recorder.current = mediaRecorder;
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size) chunks.push(event.data);
+      };
+      mediaRecorder.onerror = () => setError('Microphone recording failed. Try again.');
+      mediaRecorder.onstop = async () => {
+        recordingStream.current?.getTracks().forEach((track) => track.stop());
+        recordingStream.current = null;
+        recorder.current = null;
+        micMeter.current?.close();
+        micMeter.current = null;
+        if (disposed.current) return;
+        setRecording(false);
+        setDictating(true);
+        try {
+          const blob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+          if (blob.size < 500 || blob.size > 10 * 1024 * 1024)
+            throw new Error('Record between a brief utterance and 30 seconds.');
+          const audio = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('Could not read the recording.'));
+            reader.readAsDataURL(blob);
+          });
+          const result = await api.invoke('transcribe', { audio_b64: audio });
+          if (!disposed.current) {
+            if (!result?.text?.trim()) throw new Error('No speech detected. Try again.');
+            const transcript = result.text.trim();
+            const command = eligibleContinuityVoiceCommand(
+              transcript,
+              continuation?.thread_id,
+              input,
+            );
+            if (command) {
+              const response = await call('continuity', {
+                action: command,
+                thread_id: continuation.thread_id,
+              });
+              if (response) note(`VOICE_HANDOFF · ${command.toUpperCase()}`);
+            } else {
+              setInput((previous) => [previous.trim(), transcript].filter(Boolean).join(' '));
+              note('LOCAL_DICTATION · REVIEW THE TRANSCRIPT BEFORE SENDING');
+            }
+          }
+        } catch (error: any) {
+          if (!disposed.current) setError(error.message || 'Local transcription failed.');
+        } finally {
+          if (!disposed.current) setDictating(false);
+        }
+      };
+      mediaRecorder.start();
+      setRecording(true);
+      recordingTimer.current = setTimeout(stopDictation, 30000);
+    } catch (error: any) {
+      recordingStream.current?.getTracks().forEach((track) => track.stop());
+      recordingStream.current = null;
+      setRecording(false);
+      setError(error.message || 'Microphone unavailable.');
+    }
+  };
+  const startMic = async (personaId = voicePersona, reconnect = false) => {
+    if (!reconnect && (mic || connectingMic)) return;
     setConnectingMic(true);
     const current = ++generation.current;
     try {
@@ -244,6 +411,7 @@ function App() {
       if (generation.current !== current) return;
       const answer = await call('media', {
         generation: current,
+        persona_id: personaId,
         sdp: connection.localDescription?.sdp,
       });
       if (!answer || generation.current !== current) {
@@ -264,6 +432,15 @@ function App() {
         setError(e.message || 'Microphone connection failed.');
       }
     }
+  };
+  // A spoken handoff ("hand me to Scout"): reconnect audio in the next persona's voice after its goodbye line.
+  const handoff = useRef<(id: string) => void>(() => {});
+  handoff.current = (id: string) => {
+    setVoicePersona(id);
+    setTimeout(async () => {
+      const closed = await closeMic();
+      if (closed !== null) await startMic(id, true);
+    }, 1800);
   };
   const mute = (value: boolean) => {
     local.current?.getAudioTracks().forEach((t) => {
@@ -295,12 +472,36 @@ function App() {
           setSteps([]);
           setChoices([]);
           setTools([]);
+          setPersona(presentation(null));
+          setPersonaMessages([]);
+        }
+        if (data.persona) {
+          const p = presentation(data.persona);
+          setPersona(p);
+          if (data.agent_event === 'persona.message')
+            setPersonaMessages((all) =>
+              [
+                ...all,
+                { name: p.name, color: p.color, text: String(data.message || '').slice(0, 16000) },
+              ].slice(-20),
+            );
         }
         // V2-07: each agent tool call arrives as a card (redacted arguments and result).
         if (data.agent_event === 'tool.started' && data.tool?.id)
-          setTools((all) => [...all.filter((t) => t.id !== data.tool.id), { id: String(data.tool.id), name: String(data.tool.name || ''), args: data.tool.args }].slice(-12));
+          setTools((all) =>
+            [
+              ...all.filter((t) => t.id !== data.tool.id),
+              {
+                id: String(data.tool.id),
+                name: String(data.tool.name || ''),
+                args: data.tool.args,
+              },
+            ].slice(-12),
+          );
         if (data.agent_event === 'tool.finished' && data.tool?.id)
-          setTools((all) => all.map((t) => (t.id === data.tool.id ? { ...t, output: data.tool.output ?? '' } : t)));
+          setTools((all) =>
+            all.map((t) => (t.id === data.tool.id ? { ...t, output: data.tool.output ?? '' } : t)),
+          );
         if (data.execution) setExecution(data.execution);
         if (data.outcome) setOutcome(data.outcome);
         if (data.steps) setSteps(data.steps);
@@ -325,9 +526,32 @@ function App() {
         setView(data.view === 'compact' ? 'compact' : 'stage');
       } else if (event.type === 'shell.presence') {
         setPresence(data.presence);
+      } else if (event.type === 'continuity.handoff') {
+        setContinuation(data);
+        setMessage('Continuing from your phone');
+        void speakHandoff();
+      } else if (event.type === 'continuity.notification') {
+        setContinuityCards((cards) => [
+          ...cards.filter((card) => card.id !== data.id).slice(-4),
+          data,
+        ]);
+      } else if (event.type === 'continuity.retract') {
+        setContinuityCards((cards) => cards.filter((card) => card.id !== data.id));
       } else if (event.type === 'execution.viewer_error') {
         setError(data.message);
+      } else if (event.type === 'voice.handoff' && data.persona?.id) {
+        setPersona(presentation(data.persona));
+        note(`HANDOFF · ${String(data.persona.name || data.persona.id).toUpperCase()}`);
+        handoff.current(String(data.persona.id));
+      } else if (event.type === 'media.connected' && data.persona) {
+        setPersona(presentation(data.persona));
       } else if (event.type === 'media.closed' || event.type === 'session.closed') {
+        if (
+          event.type === 'media.closed' &&
+          data.generation != null &&
+          data.generation < generation.current
+        )
+          return;
         releaseAudio();
         if (event.type === 'session.closed') {
           setReady(false);
@@ -354,10 +578,26 @@ function App() {
       disposed.current = true;
       clearInterval(heartbeat);
       unsubscribe();
+      if (recordingTimer.current) clearTimeout(recordingTimer.current);
+      if (recorder.current?.state === 'recording') recorder.current.stop();
+      recordingStream.current?.getTracks().forEach((track) => track.stop());
       local.current?.getTracks().forEach((t) => t.stop());
       peer.current?.close();
+      if (localSpeech.current) {
+        localSpeech.current.audio.pause();
+        URL.revokeObjectURL(localSpeech.current.url);
+        localSpeech.current = null;
+      }
+      localSpeechRequest.current++;
     };
   }, []);
+  useEffect(() => {
+    if (!ready) return;
+    void api
+      .invoke('speech-status')
+      .then((status) => setSpeechMode(status?.mode || 'off'))
+      .catch(() => setSpeechMode('off'));
+  }, [ready]);
   useEffect(() => {
     const refreshDevices = async () => {
       try {
@@ -373,9 +613,9 @@ function App() {
   useEffect(() => {
     void api.invoke('window', {
       action: 'microphone-state',
-      value: mic && !muted ? 'on' : mic ? 'muted' : 'off',
+      value: recording || (mic && !muted) ? 'on' : mic ? 'muted' : 'off',
     });
-  }, [mic, muted]);
+  }, [mic, muted, recording]);
   useEffect(() => {
     if (ready)
       void api
@@ -395,6 +635,12 @@ function App() {
     );
   useEffect(() => {
     if (ready) loadBrowsers();
+  }, [ready]);
+  useEffect(() => {
+    if (ready)
+      void call('voice-personas').then((value) =>
+        setVoicePersonas((value?.personas || []).map(presentation)),
+      );
   }, [ready]);
   const chosenBrowser = snapshot?.selected_targets?.browser;
   useEffect(() => {
@@ -435,7 +681,7 @@ function App() {
     void api.invoke('window', { action: 'delegate', value: activeCap }).catch(() => {});
   }, [activeCap, phase, terminal, delegationOverlay]);
   // The avatar mirrors exactly what PANINI is doing (Visibility of System Status).
-  const avatarState: AvatarState = avatarStateFor({ phase, ready, mic, muted });
+  const avatarState: AvatarState = avatarStateFor({ phase, ready, mic: mic || recording, muted });
   // Minimized and PANINI needs the person: glow and notify once per request.
   const needsYou = avatarState === 'approval' || phase === 'needs_input' || phase === 'blocked';
   const called = useRef(false);
@@ -485,13 +731,23 @@ function App() {
           <Backdrop />
           <Engine
             state={avatarState}
+            personaColor={persona.color}
+            personaName={persona.name}
             capability={activeCap}
             micLevel={() => (muted ? 0 : (micMeter.current?.read() ?? 0))}
             voiceLevel={() => voiceMeter.current?.read() ?? 0}
             reducedMotion={reduced}
             anchors={anchors}
-            listening={mic}
-            onActivate={() => void (mic ? closeMic() : startMic())}
+            listening={mic || recording}
+            onActivate={() =>
+              void (speechMode === 'private'
+                ? recording
+                  ? stopDictation()
+                  : startDictation()
+                : mic
+                  ? closeMic()
+                  : startMic())
+            }
           />
           <Lexicon log={log} caps={caps} />
           <Capabilities
@@ -510,6 +766,7 @@ function App() {
       {!open && (
         <Bubble
           state={avatarState}
+          persona={persona}
           capability={activeCap}
           message={message}
           micLevel={() => (muted ? 0 : (micMeter.current?.read() ?? 0))}
@@ -527,6 +784,7 @@ function App() {
         >
           <Avatar
             state={avatarState}
+            personaColor={persona.color}
             capability={activeCap}
             micLevel={() => (muted ? 0 : (micMeter.current?.read() ?? 0))}
             voiceLevel={() => voiceMeter.current?.read() ?? 0}
@@ -534,17 +792,21 @@ function App() {
           />
         </button>
         <div className="brand">
-          <strong>PANINI</strong>
+          <strong title={persona.name}>{persona.name}</strong>
           <span>
-            {mic
-              ? muted
-                ? 'Microphone muted'
-                : 'Listening'
-              : !terminal
-                ? 'Working with you'
-                : ready
-                  ? 'Here when you need me'
-                  : 'Connecting'}
+            {recording
+              ? 'Recording locally'
+              : dictating
+                ? 'Transcribing locally'
+                : mic
+                  ? muted
+                    ? 'Microphone muted'
+                    : 'Listening'
+                  : !terminal
+                    ? 'Working with you'
+                    : ready
+                      ? 'Here when you need me'
+                      : 'Connecting'}
           </span>
         </div>
         {staged && <StageTitle state={avatarState} />}
@@ -604,6 +866,19 @@ function App() {
             <p className="message" role="status" aria-live="polite">
               {message}
             </p>
+            {personaMessages.length > 0 && (
+              <details className="persona-timeline">
+                <summary>Team conversation</summary>
+                {personaMessages.map((item, index) => (
+                  <div key={index}>
+                    <span className="persona-chip" data-color={item.color}>
+                      {item.name}
+                    </span>
+                    <p>{item.text}</p>
+                  </div>
+                ))}
+              </details>
+            )}
             {background &&
               (background.running || background.queued > 0 || background.reviews > 0) && (
                 <p className="background-work" role="status" aria-live="polite">
@@ -618,11 +893,83 @@ function App() {
                   {background.reviews > 0 && ` · ${background.reviews} to review`}
                 </p>
               )}
+            {['recording', 'starting'].includes(background?.recording?.state) && (
+              <p className="background-work" role="status">
+                <span className="pulse" aria-hidden="true" /> Recording your demonstration
+                <button onClick={() => void call('teachStop')}>Stop recording</button>
+              </p>
+            )}
+            {(background?.mcp ?? []).map(
+              (item: { run_id: string; client: string; tool: string; hand: string }) => (
+                <p className="background-work" role="status" key={item.run_id}>
+                  <span className="pulse" aria-hidden="true" />
+                  {item.client} is using{' '}
+                  {item.hand === 'desktop' ? 'your desktop' : `PANINI: ${item.tool}`}
+                </p>
+              ),
+            )}
             {caption && (
               <div className="captions" aria-label="Live captions">
                 {caption}
               </div>
             )}
+            {continuation && (
+              <section className="captions" aria-label="Continued conversation">
+                <strong>
+                  Continuing from your phone: {continuation.title || 'PANINI conversation'}
+                </strong>
+                <details>
+                  <summary>Previous conversation</summary>
+                  <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 240, overflow: 'auto' }}>
+                    {continuation.summary}
+                    {'\n'}
+                    {continuation.transcript}
+                  </pre>
+                </details>
+                <p>Your next agent request continues this same thread.</p>
+                <button
+                  onClick={() =>
+                    void call('continuity', {
+                      action: 'send_to_phone',
+                      thread_id: continuation.thread_id,
+                    })
+                  }
+                >
+                  Send to my phone
+                </button>
+                <button onClick={() => setContinuation(null)}>Dismiss</button>
+                <button
+                  onClick={() => {
+                    void call('continuity', {
+                      action: 'call_me',
+                      thread_id: continuation.thread_id,
+                    });
+                  }}
+                >
+                  Review a call to me
+                </button>
+              </section>
+            )}
+            {continuityCards.map((item) => (
+              <section className="background-work" key={item.id} aria-label="PANINI notification">
+                <span>{item.title}</span>
+                <button onClick={() => void call('admin', { page: '/inbox' })}>Open Inbox</button>
+                {!item.interrupt && (
+                  <button
+                    onClick={async () => {
+                      const result = await call('continuity', {
+                        action: 'seen',
+                        item_id: item.item_id,
+                      });
+                      if (result?.status === 'seen')
+                        setContinuityCards((cards) => cards.filter((card) => card.id !== item.id));
+                    }}
+                  >
+                    Seen
+                  </button>
+                )}
+              </section>
+            ))}
             {error && (
               <p className="error" role="alert">
                 {error}
@@ -849,24 +1196,55 @@ function App() {
               </div>
             </form>
             <div className="actions">
-              <button
-                className={mic ? 'mic active' : 'mic'}
-                disabled={!ready || connectingMic}
-                onClick={() => void (mic ? closeMic() : startMic())}
-              >
-                {connectingMic
-                  ? 'Connecting…'
-                  : mic
-                    ? muted
-                      ? 'Microphone muted · End call'
-                      : 'Listening · End call'
-                    : '◉ Talk to PANINI'}
-              </button>
+              {speechMode !== 'private' && (
+                <button
+                  className={mic ? 'mic active' : 'mic'}
+                  disabled={!ready || connectingMic || recording || dictating}
+                  onClick={() => void (mic ? closeMic() : startMic())}
+                >
+                  {connectingMic
+                    ? 'Connecting…'
+                    : mic
+                      ? muted
+                        ? 'Microphone muted · End call'
+                        : 'Listening · End call'
+                      : '◉ Talk to PANINI'}
+                </button>
+              )}
+              {['private', 'fallback'].includes(speechMode) && (
+                <button
+                  className={recording ? 'mic active' : 'mic'}
+                  disabled={!ready || dictating || mic || (!recording && !terminal)}
+                  onClick={() => void (recording ? stopDictation() : startDictation())}
+                >
+                  {dictating
+                    ? 'Transcribing locally…'
+                    : recording
+                      ? '■ Stop and transcribe'
+                      : '◉ Record locally'}
+                </button>
+              )}
+              {(['private', 'fallback'].includes(speechMode) || localSpeaking !== 'idle') &&
+                terminal &&
+                message.trim() && (
+                  <button disabled={!ready} onClick={() => void playLocalSpeech()}>
+                    {localSpeaking === 'loading'
+                      ? '■ Stop preparing voice'
+                      : localSpeaking === 'playing'
+                        ? '■ Stop local voice'
+                        : '▶ Read reply locally'}
+                  </button>
+                )}
               {mic && <button onClick={() => mute(!muted)}>{muted ? 'Unmute' : 'Mute'}</button>}
               <button className="stop" disabled={!ready} onClick={() => void call('stop')}>
                 ■ Stop
               </button>
             </div>
+            {['private', 'fallback'].includes(speechMode) && (
+              <p className="dictation-hint">
+                Local dictation fills the composer. Review the words before sending.
+              </p>
+            )}
             {mic && (
               <button
                 className="ptt"
@@ -996,6 +1374,34 @@ function App() {
                 </label>
                 <button onClick={() => void call('pair')}>Pair browser extension</button>
                 <CredentialSetup />
+                {voicePersonas.length > 0 && (
+                  <label className="microphone-picker">
+                    Voice specialist
+                    <select
+                      aria-label="Voice specialist"
+                      value={voicePersona}
+                      disabled={connectingMic}
+                      onChange={async (event) => {
+                        const id = event.target.value;
+                        setVoicePersona(id);
+                        if (mic) {
+                          const closed = await closeMic();
+                          if (closed !== null) await startMic(id, true);
+                        }
+                      }}
+                    >
+                      {voicePersonas.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <small>
+                      During a call, switching stops current work and reconnects audio in this
+                      conversation.
+                    </small>
+                  </label>
+                )}
                 <label className="microphone-picker">
                   Microphone
                   <select
@@ -1093,6 +1499,7 @@ function Bubble({
   state,
   capability,
   message,
+  persona,
   micLevel,
   voiceLevel,
   reducedMotion,
@@ -1101,6 +1508,7 @@ function Bubble({
   state: AvatarState;
   capability: string;
   message: string;
+  persona: { name: string; color: string };
   micLevel: () => number;
   voiceLevel: () => number;
   reducedMotion: boolean;
@@ -1116,7 +1524,7 @@ function Bubble({
       className={`bubble state-${state}`}
       role="button"
       tabIndex={0}
-      aria-label={`PANINI: ${status}. ${message}. Press Enter to open.`}
+      aria-label={`${persona.name}: ${status}. ${message}. Press Enter to open.`}
       title={`${status}: ${message}\nClick to open, drag to move`}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') onOpen();
@@ -1146,6 +1554,7 @@ function Bubble({
       <div className="bubble-avatar">
         <Avatar
           state={state}
+          personaColor={persona.color}
           capability={capability}
           micLevel={micLevel}
           voiceLevel={voiceLevel}

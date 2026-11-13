@@ -1,0 +1,1 @@
+CREATE TABLE page_reviews(run_id TEXT NOT NULL, tool_call_id TEXT NOT NULL, interrupt_id TEXT NOT NULL UNIQUE, operation TEXT NOT NULL, persona_id TEXT NOT NULL, result TEXT, PRIMARY KEY(run_id,tool_call_id));

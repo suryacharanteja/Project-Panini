@@ -18,6 +18,7 @@ import {
 import { proxy } from './proxy.mjs';
 import { attachComparisonSocket } from './comparison-socket.mjs';
 import { attachExtensionSocket } from './extension-socket.mjs';
+import { forwardToSignin } from './signin-gate.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BACKEND_ROUTES = new Set([
@@ -48,7 +49,7 @@ const BACKEND_ROUTES = new Set([
 const BACKEND_PREFIXES = [
   ['DELETE', '/api/extension/devices/'],
   // Harness: memories, skills, background tasks and reviews.
-  ...['GET', 'POST', 'PATCH', 'DELETE'].map((method) => [method, '/api/harness/']),
+  ...['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((method) => [method, '/api/harness/']),
   // PANINI Admin API.
   ...['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((method) => [method, '/api/admin/v1/']),
   // AG-UI agent runs (V2-07): server-sent event streams.
@@ -64,6 +65,9 @@ const OPEN_API = new Set([
 ]);
 // Pages anyone on this computer may open: the sign-in help and a sample site for the agent.
 const OPEN_PAGES = new Set(['/auth-required.html', '/browser-demo.html']);
+// Sign-in page, its assets and its APIs (PANINI-SIGNIN owns these routes).
+const SIGNIN_ROUTE =
+  /^\/(signin$|auth\.js$|auth-style\.css$|learning\.(js|css)$|vendor\/webauthn\.js$|api\/(auth|enroll|privacy|profile|learning)\/)/;
 
 function wantsDocument(req) {
   const destination = req.headers['sec-fetch-dest'];
@@ -87,8 +91,8 @@ export function createGateway({
   allowedOrigins = [],
   rateLimit = 60,
   searchLimit = 4,
-  // createConsoleAuth(...) from console-auth.mjs. null disables sign-in (unit tests only).
-  consoleAuth = null,
+  // createSigninGate(...) from signin-gate.mjs: the face-and-voice gate. null disables it (unit tests only).
+  signin = null,
   // Per-launch service token; the backend refuses console routes without it.
   consoleToken = '',
 }) {
@@ -100,6 +104,21 @@ export function createGateway({
   app.use(secureRequests(allowedOrigins));
   app.use(express.json({ limit: '15mb' }));
 
+  // MCP uses its own client credentials, with no browser Origin or console service token.
+  app.all('/mcp', limitRequests(limiter), (req, res) => {
+    if (req.path !== '/mcp') return res.sendStatus(404);
+    if (!['GET', 'POST', 'DELETE'].includes(req.method)) return res.sendStatus(405);
+    const host = req.headers.host || '';
+    const peer = req.socket.remoteAddress || '';
+    if (
+      req.headers.origin !== undefined ||
+      !/^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host) ||
+      !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(peer)
+    )
+      return res.status(403).json({ error: 'MCP requires loopback access without Origin.' });
+    return proxy(req, res, `${backendUrl}/mcp`, null, null);
+  });
+
   // The PANINI shell API authenticates every call itself.
   app.use('/api/panini', (req, res) =>
     proxy(
@@ -107,41 +126,46 @@ export function createGateway({
       res,
       `${backendUrl}${req.originalUrl}`,
       null,
-      req.path.endsWith('/events') ? null : 65000,
+      req.path.endsWith('/events') ? null : req.path.endsWith('/stt/transcribe') ? 95000 : 65000,
     ),
   );
 
-  app.get('/auth/login', (req, res) => {
-    if (!consoleAuth) return res.redirect(303, safeNext(req.query.next));
-    const session = consoleAuth.redeem(req.query.ticket);
-    if (!session) return res.redirect(303, '/auth-required.html?expired=1');
-    res.setHeader('Set-Cookie', consoleAuth.cookie(session));
-    return res.redirect(303, safeNext(req.query.next));
-  });
-  app.post('/auth/logout', (req, res) => {
-    if (consoleAuth) {
-      consoleAuth.signOut(req);
-      res.setHeader('Set-Cookie', consoleAuth.expiredCookie);
-    }
-    res.json({ status: 'signed_out' });
-  });
-
-  if (consoleAuth)
+  if (signin) {
+    // PANINI-SIGNIN owns sign-in: its page and APIs are relayed unchanged.
     app.use((req, res, next) => {
-      if (OPEN_PAGES.has(req.path) || OPEN_API.has(req.path) || consoleAuth.authenticated(req))
+      if (!SIGNIN_ROUTE.test(req.path)) return next();
+      // The page reads ?next= from the browser's own address, so the service gets plain /.
+      return forwardToSignin(signin, req, res, req.path === '/signin' ? '/' : req.originalUrl);
+    });
+    // Shell tickets only lead to the sign-in page; they never open the console on their own.
+    app.get('/auth/login', (req, res) =>
+      res.redirect(303, `/signin?next=${encodeURIComponent(safeNext(req.query.next))}`),
+    );
+    app.post('/auth/logout', async (req, res) => {
+      for (const cookie of await signin.lock(req.headers.cookie || '')) res.append('Set-Cookie', cookie);
+      res.json({ status: 'signed_out' });
+    });
+    app.use(async (req, res, next) => {
+      if (
+        OPEN_PAGES.has(req.path) ||
+        OPEN_API.has(req.path) ||
+        (await signin.unlocked(req.headers.cookie || ''))
+      )
         return next();
       const api =
         req.path.startsWith('/api/') ||
         req.path.startsWith('/search/api/') ||
         (req.path.startsWith('/search') && !['GET', 'HEAD'].includes(req.method));
       if (api)
-        return res
-          .status(401)
-          .json({ error: 'Sign in to the PANINI console.', code: 'CONSOLE_SIGN_IN_REQUIRED' });
+        return res.status(401).json({
+          error: 'Sign in to PANINI with your face and voice.',
+          code: 'CONSOLE_SIGN_IN_REQUIRED',
+        });
       if (req.method === 'GET' && wantsDocument(req))
-        return res.redirect(302, '/auth-required.html');
+        return res.redirect(302, `/signin?next=${encodeURIComponent(req.originalUrl)}`);
       return next(); // Static assets carry no user data.
     });
+  }
 
   app.use(limitRequests(limiter));
 
@@ -216,7 +240,8 @@ export function createGateway({
   app.get('/', home);
   app.get('/playground/compare', (_req, res) => res.sendFile(join(publicRoot, 'index.html')));
   app.get(
-    /^\/(inbox|conversations|runs|receipts|projects|memory|playground|audit)\/?$|^\/(build|capabilities|settings)\/[a-z-]+\/?$/,
+    // Spaces pages are deep links too: /spaces and /spaces/<space>/pages/<page> must survive a reload.
+    /^\/(inbox|conversations|runs|receipts|projects|memory|playground|audit|spaces)\/?$|^\/(build|capabilities|settings)\/[a-z-]+\/?$|^\/spaces\/[A-Za-z0-9_-]{1,80}\/pages\/[A-Za-z0-9_-]{1,80}\/?$/,
     home,
   );
   app.get('/browser', (_req, res) => res.sendFile(join(publicRoot, 'browser-use.html')));
@@ -263,7 +288,7 @@ export function createGateway({
     backendUrl,
     allowedOrigins,
     limiter,
-    consoleAuth,
+    authorize: signin ? (req) => signin.unlocked(req.headers.cookie || '') : null,
     consoleToken,
   });
   // Registered after the comparison socket so it can 404 unclaimed paths.

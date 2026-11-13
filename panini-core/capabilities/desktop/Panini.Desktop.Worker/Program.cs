@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 using System.Windows.Automation;
 
 // One disposable MTA worker per request bounds a hung third-party UIA provider.
-internal static class Program
+internal static partial class Program
 {
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
     private delegate bool EnumProc(IntPtr hwnd, IntPtr param);
@@ -67,6 +67,7 @@ internal static class Program
             if (line is null || line.Length > 4194304) throw new InvalidOperationException("INVALID_REQUEST");
             var request = JsonNode.Parse(line)!.AsObject();
             Interactive();
+            if (request["op"]?.GetValue<string>() == "record") { Record(request); return; }
             object result = request["op"]!.GetValue<string>() switch
             {
                 "health" or "capabilities" => new { protocol = 1, state = "ready", platform = "windows", interactive = Environment.UserInteractive,
@@ -78,6 +79,7 @@ internal static class Program
                 "launch" => Applications.Launch(request),
                 "window" => WindowIdentity(request),
                 "observe" => Observe(request),
+                "snapshot" => Snapshot(request),
                 "capture" => Capture(request),
                 "state" or "visual_state" => State(request),
                 "visual_action" => GraphicalActions.Execute(request, () => Target(request), () => { Interactive(); var (h, _) = Target(request); if (!TargetForeground(h)) throw new InvalidOperationException("FOREGROUND_CHANGED"); }, () => State(request)),
@@ -92,7 +94,7 @@ internal static class Program
             var code = ex is InvalidOperationException ? ex.Message : "UIA_UNAVAILABLE";
             // The type says what failed (for example COMException or ElementNotAvailableException)
             // without exposing application content.
-            var detail = ex is InvalidOperationException ? "" : ex.GetType().Name;
+            var detail = ex is InvalidOperationException ? ex.Data["reason"] as string ?? "" : ex.GetType().Name;
             Console.WriteLine(JsonSerializer.Serialize(new { ok = false, error = code, detail }, Json));
         }
     }
@@ -135,7 +137,8 @@ internal static class Program
                     }, IntPtr.Zero);
                     if (hostedPid is null) return true;
                 }
-                windows.Add(new { hwnd = hwnd.ToInt64(), pid, created = process.StartTime.ToUniversalTime().Ticks.ToString(), label = title.ToString(), application = name, hosted_hwnd = hostedHwnd, hosted_pid = hostedPid, hosted_created = hostedCreated });
+                var ownerWindow = GetWindow(hwnd, 4); // GW_OWNER
+                windows.Add(new { hwnd = hwnd.ToInt64(), pid, created = process.StartTime.ToUniversalTime().Ticks.ToString(), label = title.ToString(), application = name, hosted_hwnd = hostedHwnd, hosted_pid = hostedPid, hosted_created = hostedCreated, owner_hwnd = ownerWindow == IntPtr.Zero ? (long?)null : ownerWindow.ToInt64() });
             }
             catch (Exception) { /* A vanished/inaccessible window is not a target. */ }
             return true;
@@ -163,6 +166,18 @@ internal static class Program
         {
             return new { ready = false, interactive = false, input_desktop = "unknown", session = -1, reason = ex.Message, recovery = "Unlock the Windows desktop and return to the Default input desktop." };
         }
+    }
+
+    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hwnd, uint command);
+
+    /// <summary>The foreground window when it is a visible dialog owned by the target and in its process, else zero.</summary>
+    private static IntPtr OwnedDialog(IntPtr hwnd)
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero || foreground == hwnd || GetWindow(foreground, 4) != hwnd) return IntPtr.Zero;
+        GetWindowThreadProcessId(foreground, out var dialogPid);
+        GetWindowThreadProcessId(hwnd, out var ownerPid);
+        return dialogPid == ownerPid && IsWindowVisible(foreground) && !IsCloaked(foreground) ? foreground : IntPtr.Zero;
     }
 
     private static bool IsCloaked(IntPtr hwnd) => DwmGetWindowAttribute(hwnd, 14, out var value, 4) == 0 && value != 0;
@@ -280,39 +295,76 @@ internal static class Program
         var (hwnd, root) = Target(request);
         var action = request["action"]!;
         var kind = action["kind"]!.GetValue<string>();
-        if (kind == "focus")
+        if (kind == "focus" && action["element_id"] is null && action["expected_type"] is null)
         {
             SetForegroundWindow(hwnd);
             return new { dispatched = true, verified = TargetForeground(hwnd), effect = "foreground" };
         }
-        if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED");
+        if (kind != "activate" && !TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED");
+        if (request["expected_window_title"] is not null && root.Current.Name != request["expected_window_title"]!.GetValue<string>())
+            throw new InvalidOperationException("WINDOW_CHANGED");
         var observed = request["observed_at"]!.GetValue<long>();
         var age = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - observed;
         if (age > 5000 || age < -100) throw new InvalidOperationException("OBSERVATION_EXPIRED");
         var id = action["element_id"]!.GetValue<string>();
-        var matches = root.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>().Where(e => string.Join('.', e.GetRuntimeId()) == id).Take(2).ToArray();
+        var matches = action["expected_type"] is not null ? FineTargets(root, id) : root.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>().Where(e => string.Join('.', e.GetRuntimeId()) == id).Take(2).ToArray();
         if (matches.Length != 1) throw new InvalidOperationException("ELEMENT_CHANGED");
         var element = matches[0];
         var current = element.Current;
-        if (current.IsPassword || !current.IsEnabled || current.IsOffscreen || !VisibleWithinAncestors(element, root)) throw new InvalidOperationException("ELEMENT_UNAVAILABLE");
-        if (current.Name != action["expected_name"]!.GetValue<string>() || current.AutomationId != action["expected_automation_id"]!.GetValue<string>()) throw new InvalidOperationException("ELEMENT_CHANGED");
+        if (current.IsPassword || !current.IsEnabled || current.IsOffscreen
+            || !(kind == "activate" && Automation.Compare(element, root)) && !VisibleWithinAncestors(element, root)) throw new InvalidOperationException("ELEMENT_UNAVAILABLE");
+        if (current.Name != action["expected_name"]!.GetValue<string>() || current.AutomationId != action["expected_automation_id"]!.GetValue<string>()) throw ChangedElement("label");
+        if (action["expected_type"] is not null)
+        {
+            var b = current.BoundingRectangle;
+            var expected = action["expected_bounds"]!;
+            if (Credential(current.Name, current.AutomationId) || current.ControlType.ProgrammaticName != action["expected_type"]!.GetValue<string>()
+                || b.X != expected["x"]!.GetValue<double>() || b.Y != expected["y"]!.GetValue<double>()
+                || b.Width != expected["width"]!.GetValue<double>() || b.Height != expected["height"]!.GetValue<double>())
+                throw ChangedElement("type_or_bounds");
+            ValidateFineState(element, action);
+            if (kind == "keypress" && !Automation.Compare(AutomationElement.FocusedElement, element))
+                throw new InvalidOperationException("FOCUS_CHANGED");
+        }
         // Check identity/focus immediately before dispatch, including after potentially slow UIA calls.
         Target(request);
-        if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED");
+        if (kind != "activate" && !TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED");
+        if (request["expected_window_title"] is not null && root.Current.Name != request["expected_window_title"]!.GetValue<string>())
+            throw new InvalidOperationException("WINDOW_CHANGED");
         bool verified = false;
         switch (kind)
         {
+            case "activate":
+                if (action["expected_type"] is null || !Automation.Compare(element, root))
+                    throw new InvalidOperationException("WINDOW_ROOT_REQUIRED");
+                ActivateWindow(request, hwnd);
+                verified = true;
+                break;
+            case "focus":
+                if (action["expected_type"] is null) throw new InvalidOperationException("SNAPSHOT_REQUIRED");
+                element.SetFocus();
+                Target(request);
+                if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED");
+                verified = Automation.Compare(AutomationElement.FocusedElement, element);
+                if (!verified) throw new InvalidOperationException("FOCUS_CHANGED");
+                break;
             case "click":
-                GroundedInput.Click(hwnd, element, () => { Target(request); if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED"); }, 1);
+                GroundedInput.Click(hwnd, element, () => { Target(request); if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED"); }, 1,
+                    action["expected_type"] is not null ? (x, y) => ValidateBoundsHit(root, element, x, y) : null);
                 break;
             case "double_click":
-                GroundedInput.Click(hwnd, element, () => { Target(request); if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED"); }, 2);
+                GroundedInput.Click(hwnd, element, () => { Target(request); if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED"); }, 2,
+                    action["expected_type"] is not null ? (x, y) => ValidateBoundsHit(root, element, x, y) : null);
                 break;
             case "move":
                 GroundedInput.Move(action["x"]!.GetValue<int>(), action["y"]!.GetValue<int>(), () => { Target(request); if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED"); });
                 break;
             case "type_text":
                 GroundedInput.TypeText(element, action["text"]!.GetValue<string>(), () => { Target(request); if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED"); });
+                break;
+            case "fine_type":
+                if (action["expected_type"] is null) throw new InvalidOperationException("SNAPSHOT_REQUIRED");
+                verified = GroundedInput.TypeDocument(element, action["text"]!.GetValue<string>(), () => { Target(request); if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED"); }, action["replace"]?.GetValue<bool>() ?? false);
                 break;
             case "keypress":
                 GroundedInput.PressKey(action["key"]!.GetValue<string>(), () => { Target(request); if (!TargetForeground(hwnd)) throw new InvalidOperationException("FOREGROUND_CHANGED"); });

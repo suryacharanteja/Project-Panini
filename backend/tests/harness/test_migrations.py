@@ -1,4 +1,6 @@
+import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -27,6 +29,66 @@ def test_v1_database_upgrades_in_place(tmp_path):
     assert store.migrations[0] == "0001_baseline"
     assert store.one("SELECT title FROM sessions WHERE id='s'")["title"] == "old"
     store.close()
+
+
+def test_existing_call_history_survives_receipt_sync_upgrade(tmp_path):
+    source = Path(__file__).resolve().parents[2] / "harness" / "migrations"
+    previous = tmp_path / "previous"
+    previous.mkdir()
+    for path in source.glob("*.sql"):
+        if path.name < "0015":
+            (previous / path.name).write_bytes(path.read_bytes())
+    db = sqlite3.connect(":memory:", isolation_level=None)
+    db.executescript(SCHEMA)
+    migrate(db, previous)
+    db.execute(
+        "INSERT INTO calls(id,number,persona_id,state,started,duration_s) VALUES ('existing','unknown','panini','ended',1,42)"
+    )
+    applied = migrate(db, source)
+    assert applied[0] == "0015_call_receipt_sync"
+    assert "0016_spaces" in applied
+    assert db.execute("SELECT duration_s,receipt_synced FROM calls WHERE id='existing'").fetchone() == (42, 0)
+    assert migrate(db, source) == []
+    db.close()
+
+
+def test_spaces_alias_upgrade_preserves_grant_restrictions(tmp_path):
+    source = Path(__file__).resolve().parents[2] / "harness" / "migrations"
+    previous = tmp_path / "previous"
+    previous.mkdir()
+    for path in source.glob("*.sql"):
+        if path.name < "0016":
+            (previous / path.name).write_bytes(path.read_bytes())
+    db = sqlite3.connect(":memory:", isolation_level=None)
+    db.executescript(SCHEMA)
+    migrate(db, previous)
+    original = {
+        "id": "persona:scout:spaces_read",
+        "subject": "persona:scout",
+        "capability": "spaces",
+        "tools": ["spaces_list", "page_read", "page_search"],
+        "expires_at": 42,
+        "conditions": {"surfaces": ["agui"]},
+        "levels": {"observe": "deny"},
+    }
+    db.execute("INSERT INTO grants VALUES(?,?,1,'owner')", (original["id"], json.dumps(original)))
+    restricted = {
+        **original,
+        "id": "persona:other:spaces_read",
+        "subject": "persona:other",
+        "tools": ["page_read"],
+    }
+    db.execute("INSERT INTO grants VALUES(?,?,1,'owner')", (restricted["id"], json.dumps(restricted)))
+    migrate(db, source)
+    upgraded = json.loads(db.execute("SELECT data FROM grants WHERE id=?", (original["id"],)).fetchone()[0])
+    assert upgraded["tools"] == original["tools"] + ["pages_list", "pages_read", "pages_search"]
+    upgraded["tools"] = original["tools"]
+    assert upgraded == original
+    assert (
+        json.loads(db.execute("SELECT data FROM grants WHERE id=?", (restricted["id"],)).fetchone()[0])
+        == restricted
+    )
+    db.close()
 
 
 def _connection():

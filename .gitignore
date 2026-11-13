@@ -34,3 +34,6 @@ panini-core/apps/frontend/public/admin/
 
 # Harvested upstream snapshots: read for patterns, never imported at runtime (docs/panini-enhancements)
 references/*/
+.venv-bench/
+.bench/
+.paninidata/

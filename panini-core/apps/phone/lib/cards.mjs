@@ -30,6 +30,20 @@ export async function decisionStatement(interruptId, nonce, actionDigest, status
   return `${interruptId}|${nonce}|${actionDigest || ''}|${status}|${await sha256Hex(canonical(payload ?? {}))}`;
 }
 
+function sessionPermission(view) {
+  const permission = view.preview?.mcp_permission;
+  return (
+    (!view.status || view.status === 'open') &&
+    view.kind === 'approval' &&
+    view.reason === 'mcp_effect' &&
+    (view.level || 'tap') === 'tap' &&
+    permission?.seconds === 3600 &&
+    typeof permission.tool === 'string' &&
+    permission.tool.startsWith('browser_') &&
+    view.response_schema?.properties?.allow_for_session?.type === 'boolean'
+  );
+}
+
 /** What the card shows and which buttons it has. */
 export function card(view) {
   const level = view.level || 'tap';
@@ -43,13 +57,19 @@ export function card(view) {
   if (view.status && view.status !== 'open')
     return { ...base, buttons: [], note: `Already ${view.status}.` };
   if (level === 'local') return { ...base, buttons: [], note: 'Approve this on your PC.' };
-  if (level === 'verify')
+  if (level === 'verify') base.note = 'Confirm this exact decision with your passkey.';
+  if (view.kind === 'approval')
     return {
       ...base,
-      buttons: [],
-      note: 'This needs a passkey on your phone. Passkey approval is coming next.',
+      buttons: sessionPermission(view)
+        ? ['approve', 'allow_session', 'decline']
+        : ['approve', 'decline'],
+      ...(sessionPermission(view)
+        ? {
+            note: 'Allow for 1 hour covers this tool’s navigation and input. Submissions still ask.',
+          }
+        : {}),
     };
-  if (view.kind === 'approval') return { ...base, buttons: ['approve', 'decline'] };
   if (view.kind === 'takeover') return { ...base, buttons: ['done', 'decline'] };
   if (view.kind === 'question') return { ...base, buttons: ['answer', 'decline'], asks: true };
   return { ...base, buttons: ['decline'] };
@@ -57,6 +77,8 @@ export function card(view) {
 
 /** The decision a button means (status and payload), following the interrupt's response schema. */
 export function decision(view, button, answer = '') {
+  if (button === 'allow_session' && sessionPermission(view))
+    return { status: 'resolved', payload: { approved: true, allow_for_session: true } };
   if (button === 'approve') return { status: 'resolved', payload: { approved: true } };
   if (button === 'decline' && view.kind === 'approval')
     return { status: 'resolved', payload: { approved: false } };

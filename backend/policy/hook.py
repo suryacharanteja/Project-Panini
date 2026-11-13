@@ -26,13 +26,32 @@ class PolicyHook(Hooks):
     def policy(self):
         return self._policy or current()
 
+    def enforced(self, ctx, spec=None):
+        from ..channels import SURFACES
+
+        return (
+            self.mode == "enforce"
+            or ctx.principal.kind in {"persona", "mcp_client"}
+            or ctx.principal.surface in SURFACES
+            or (spec is not None and spec.capability == "android")
+            or (spec is not None and spec.capability == "desktop_fine")
+            or bool(getattr(ctx, "teach_replay", False))
+        )
+
     async def before(self, ctx, spec, args):
-        if self.mode == "off":
+        if spec.capability in {"android", "desktop_fine"}:
+            setattr(ctx, "desktop_policy" if spec.capability == "desktop_fine" else "android_policy", None)
+            ctx.decision = None
+            if spec.effect.value != "observe":
+                # The hand grounds the exact app, field and label from a fresh tree before asking once.
+                # A ref-only generic approval cannot authorize a changed target.
+                return None
+        if self.mode == "off" and not self.enforced(ctx, spec):
             return None
         background = bool(getattr(ctx.view, "background", False))
         decision = self.policy.decide(ctx.principal, spec, args, taint=ctx.taint, background=background)
         ctx.decision = decision
-        if self.mode != "enforce":
+        if not self.enforced(ctx, spec):
             return None
         from ..core_contracts import ToolResult
 
@@ -64,7 +83,15 @@ class PolicyHook(Hooks):
             title = f"{spec.title} ({decision.effect.value.replace('_', ' ')})"
             if decision.reasons:
                 title += " — " + "; ".join(decision.reasons)[:160]
-            if not await ctx.confirm(title[:200], detail[:3000]):
+            richer = getattr(ctx, "confirm_decision", None)
+            if richer is None and decision.level.value != "tap":
+                return refuse("This caller cannot present the required stronger approval.")
+            approved = (
+                await richer(title[:200], detail[:3000], decision)
+                if richer
+                else await ctx.confirm(title[:200], detail[:3000])
+            )
+            if not approved:
                 return refuse("The person did not approve this step. Try a safer approach.")
             ctx.preapproved = True
         return None
@@ -74,7 +101,7 @@ class PolicyHook(Hooks):
         token_asked = v1_asked.set(cell)
         token_pre = preapproved.set(bool(getattr(ctx, "preapproved", False)))
         try:
-            if self.mode != "enforce":
+            if not self.enforced(ctx, spec):
                 return await call()
             return await self._revocable(ctx, spec, args, call)
         finally:
@@ -86,27 +113,59 @@ class PolicyHook(Hooks):
     async def _revocable(self, ctx, spec, args, call):
         """Run the hand; if PANINI is paused or the call's decision tightens meanwhile, cancel it (I7)."""
         work = asyncio.ensure_future(call())
-        while True:
-            change = asyncio.ensure_future(self.policy.wait_change())
-            done, _ = await asyncio.wait({work, change}, return_when=asyncio.FIRST_COMPLETED)
-            if work in done:
-                change.cancel()
-                return work.result()
-            again = self.policy.decide(ctx.principal, spec, args, taint=ctx.taint)
-            before = getattr(ctx, "decision", None)
-            tightened = again.action == "deny" or (
-                again.action != "allow" and before is not None and before.action == "allow"
-            )
-            if tightened:
-                work.cancel()
-                from ..core_contracts import ToolResult
-
-                message = (
-                    "Stopped: PANINI was paused or a permission changed."
-                    if again.action == "deny"
-                    else ("Stopped: a permission changed while this step ran.")
+        change = None
+        try:
+            while True:
+                change = asyncio.ensure_future(self.policy.wait_change())
+                done, _ = await asyncio.wait({work, change}, return_when=asyncio.FIRST_COMPLETED)
+                if work in done:
+                    change.cancel()
+                    return work.result()
+                ctx.check()  # Also checks a compound MCP/persona authority after its grants change.
+                bound = (
+                    getattr(ctx, "android_policy", None)
+                    if spec.capability == "android"
+                    else getattr(ctx, "desktop_policy", None)
+                    if spec.capability == "desktop_fine"
+                    else None
                 )
-                return ToolResult("cancelled", message, data={"error": message}, dispatched=True)
+                current_spec, current_args = bound or (spec, args)
+                again = self.policy.decide(ctx.principal, current_spec, current_args, taint=ctx.taint)
+                before = getattr(ctx, "decision", None)
+                tightened = again.action == "deny" or (
+                    again.action != "allow" and before is not None and before.action == "allow"
+                )
+                if spec.capability == "desktop_fine":
+                    from .. import v2flags
+                    from ..core_contracts import LEVEL_ORDER
+
+                    tightened = (
+                        tightened
+                        or v2flags.value("PANINI_DESKTOP_TOOLS") != "fine"
+                        or not v2flags.enabled("PANINI_V2_LEDGER")
+                    )
+                    tightened = (
+                        tightened
+                        or before is not None
+                        and LEVEL_ORDER.index(again.level) > LEVEL_ORDER.index(before.level)
+                    )
+                if tightened:
+                    work.cancel()
+                    from ..core_contracts import ToolResult
+
+                    message = (
+                        "Stopped: PANINI was paused or a permission changed."
+                        if again.action == "deny"
+                        else ("Stopped: a permission changed while this step ran.")
+                    )
+                    return ToolResult("cancelled", message, data={"error": message}, dispatched=True)
+        finally:
+            # Parent cancellation (MCP revoke/disconnect) must not leave the hand running.
+            if not work.done():
+                work.cancel()
+            if change is not None and not change.done():
+                change.cancel()
+            await asyncio.gather(work, *([change] if change is not None else []), return_exceptions=True)
 
     async def after(self, ctx, spec, args, result):
         decision = getattr(ctx, "decision", None)

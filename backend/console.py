@@ -14,7 +14,7 @@ from starlette.responses import JSONResponse
 
 HEADER = "x-panini-console"
 # /a2a and the agent card carry their own bearer tokens (other agents, not people).
-OPEN_PATHS = {"/api/health", "/health", "/api/extension/pair", "/a2a", "/.well-known/agent-card.json"}
+OPEN_PATHS = {"/api/health", "/health", "/api/extension/pair", "/a2a", "/.well-known/agent-card.json", "/mcp"}
 
 
 def console_route(path):

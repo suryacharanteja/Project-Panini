@@ -1,0 +1,17 @@
+id: chat.local-subtraction
+title: Local comparison exact subtraction
+modes:
+- live
+- local
+needs:
+- openai
+turn: What is 100 minus 37? Answer with the number.
+files: {}
+expect:
+  outcome_in:
+  - verified_complete
+  - reply
+  message_contains_all:
+  - '63'
+tags:
+- simple

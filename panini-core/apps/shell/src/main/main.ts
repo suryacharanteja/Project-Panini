@@ -15,6 +15,7 @@ import {
   shell,
   safeStorage,
   clipboard,
+  powerMonitor,
 } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -30,6 +31,9 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'panini', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 app.setName('PANINI');
+// Honour Electron's explicit profile directory for isolated installations and developer qualification.
+const profileDirectory = app.commandLine.getSwitchValue('user-data-dir');
+if (profileDirectory) app.setPath('userData', resolve(profileDirectory));
 // Windows groups taskbar buttons by this ID; without it PANINI shows as "Electron".
 if (process.platform === 'win32') app.setAppUserModelId('ai.ndimensions.panini');
 const locked = app.requestSingleInstanceLock();
@@ -264,6 +268,100 @@ function setPresence(value: 'avatar' | 'background') {
   else win?.hide();
   trayMenu();
   emit({ type: 'shell.presence', data: { presence: value } });
+  void signalPresence();
+}
+let pcLocked = false;
+let pcSuspended = false;
+let continuityPolling = false;
+let pcSignalBusy = false;
+let pcSignalAgain = false;
+const continuityNotes = new Map<string, Notification>();
+let continuityLive: BrowserWindow | null = null;
+async function openContinuityLive() {
+  if (continuityLive && !continuityLive.isDestroyed()) {
+    continuityLive.show();
+    return;
+  }
+  continuityLive = new BrowserWindow({
+    width: 1100,
+    height: 850,
+    title: 'PANINI · Live view',
+    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+  });
+  continuityLive.on('closed', () => {
+    continuityLive = null;
+  });
+  await continuityLive.loadURL(consoleLink('/build/live'));
+}
+async function signalPresence() {
+  if (!connected || !client) return;
+  if (pcSignalBusy) {
+    pcSignalAgain = true;
+    return;
+  }
+  pcSignalBusy = true;
+  try {
+    do {
+      pcSignalAgain = false;
+      await client
+        .call('/harness/presence/pc', {
+          idle_s: Math.min(604800, powerMonitor.getSystemIdleTime()),
+          locked: pcLocked,
+          suspended: pcSuspended,
+          avatar_visible: Boolean(win && !win.isDestroyed() && win.isVisible()),
+        })
+        .catch(() => {});
+    } while (pcSignalAgain && connected);
+  } finally {
+    pcSignalBusy = false;
+  }
+}
+async function pollContinuity() {
+  if (!connected || !client || continuityPolling) return;
+  continuityPolling = true;
+  try {
+    const { commands } = await client.call('/harness/presence/commands');
+    for (const command of commands) {
+      try {
+        const data = command.data || {};
+        if (command.kind === 'retract') {
+          continuityNotes.get(data.id)?.close();
+          continuityNotes.delete(data.id);
+          emit({ type: 'continuity.retract', data });
+        } else if (command.kind === 'handoff') {
+          if (pcLocked || pcSuspended) continue;
+          const restored = await client.call('/harness/presence/handoff/accept', {
+            seq: command.seq,
+            session_id: client.sessionId,
+          });
+          show(true);
+          emit({ type: 'continuity.handoff', data: restored });
+          await openContinuityLive();
+        } else if (command.kind === 'notification') {
+          if (!Notification.isSupported()) continue;
+          const note = new Notification({
+            title: 'PANINI',
+            body: String(data.title || 'Check your Inbox').slice(0, 200),
+          });
+          const previous = continuityNotes.get(data.id);
+          previous?.close();
+          continuityNotes.set(data.id, note);
+          note.on('close', () => {
+            if (continuityNotes.get(data.id) === note) continuityNotes.delete(data.id);
+          });
+          note.on('click', () => void shell.openExternal(consoleLink('/inbox')).catch(() => {}));
+          note.show();
+          emit({ type: 'continuity.notification', data });
+        } else continue;
+        await client.call('/harness/presence/commands/ack', { seq: command.seq });
+      } catch {
+        /* A busy handoff must not prevent later notification retractions. */
+      }
+    }
+  } catch {
+  } finally {
+    continuityPolling = false;
+  }
 }
 async function pollHarness() {
   if (!connected || !client) return;
@@ -279,7 +377,7 @@ async function pollHarness() {
       emit({ type: 'harness.status', data: next });
     }
     // In background mode, notifications are how the person knows PANINI is working.
-    if (Notification.isSupported() && (newNotices || newReviews)) {
+    if (!next.presence?.enabled && Notification.isSupported() && (newNotices || newReviews)) {
       const note = new Notification({
         title: 'PANINI',
         body: newReviews
@@ -463,6 +561,7 @@ async function startRuntime() {
         throw new Error('Runtime identity mismatch.');
       await client.connect(bootstrap);
       connected = true;
+      await signalPresence();
       break;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -731,11 +830,33 @@ function ipc() {
       return preferences;
     }
     if (operation === 'admin') {
+      if (!connected || runtimeFailed)
+        throw new Error('PANINI is still connecting. Open Admin when the conversation is ready.');
       // PANINI Admin, already signed in: pairing, keys, models, usage and every setting.
       const page =
         typeof input?.page === 'string' && /^\/[a-z/-]*$/.test(input.page) ? input.page : '/';
       await shell.openExternal(consoleLink(page));
       return;
+    }
+    if (operation === 'continuity') {
+      if (!connected || runtimeFailed)
+        throw new Error('PANINI is still connecting. Try again when the conversation is ready.');
+      if (
+        input.action === 'seen' &&
+        typeof input.item_id === 'string' &&
+        /^(notice|result|handoff):[A-Za-z0-9_-]{1,200}$/.test(input.item_id)
+      )
+        return client.call(`/harness/presence/items/${encodeURIComponent(input.item_id)}/seen`, {});
+      if (
+        (input.action === 'send_to_phone' || input.action === 'call_me') &&
+        typeof input.thread_id === 'string' &&
+        /^[A-Za-z0-9_-]{1,200}$/.test(input.thread_id)
+      )
+        return client.call('/harness/presence/handoff', {
+          thread_id: input.thread_id,
+          destination: input.action === 'call_me' ? 'call' : 'phone',
+        });
+      throw new Error('Unsupported continuity action.');
     }
     if (operation === 'live') {
       // Live view (V2-12): the renderer has no token, so main relays only well-formed live paths.
@@ -789,6 +910,7 @@ function ipc() {
       const lease = await client.scoped('/lease/acquire', { command_id: randomUUID() });
       client.epoch = lease.lease_epoch;
       connected = true;
+      await signalPresence();
       return client.scoped('');
     }
     if (!connected) throw new Error('PANINI is connecting.');
@@ -820,6 +942,20 @@ function ipc() {
           resume_choice_id: input.resume_choice_id ? text(input.resume_choice_id, 200) : null,
           expected_task_id: input.expected_task_id ? text(input.expected_task_id, 100) : null,
         });
+      case 'speech-status':
+        return client.scoped('/stt/status');
+      case 'transcribe': {
+        const audio = String(input?.audio_b64 || '');
+        if (!audio.startsWith('data:audio/') || audio.length > 14_000_000)
+          throw new Error('Record up to 30 seconds of audio for dictation.');
+        return client.scoped('/stt/transcribe', { audio_b64: audio }, undefined, 95000);
+      }
+      case 'synthesize-local': {
+        const spoken = text(input?.text, 500);
+        return client.scoped('/tts/synthesize', { text: spoken }, undefined, 30000);
+      }
+      case 'synthesize-handoff':
+        return client.scoped('/tts/handoff', {}, undefined, 30000);
       case 'feedback':
         return client.scoped('/feedback', {
           command_id: randomUUID(),
@@ -829,6 +965,8 @@ function ipc() {
         });
       case 'stop':
         return client.scoped('/stop', { command_id: randomUUID() });
+      case 'teachStop':
+        return client.call('/harness/teach/stop', {});
       case 'end':
         return client.scoped('/end', { command_id: randomUUID() });
       case 'media':
@@ -836,7 +974,10 @@ function ipc() {
           command_id: randomUUID(),
           media_generation: input.generation,
           sdp: text(input.sdp, 100000),
+          persona_id: String(input.persona_id || 'panini'),
         });
+      case 'voice-personas':
+        return client.scoped('/voice-personas', undefined, 'GET');
       case 'media-close':
         return client.scoped(
           '/media',
@@ -957,6 +1098,44 @@ if (locked)
     tray = new Tray(icon);
     trayMenu();
     setInterval(() => void pollHarness(), 5000);
+    const signalTrigger = (kind: string) =>
+      void client.call('/harness/triggers/os', { kind }).catch(() => {});
+    let wasOnline = net.isOnline();
+    setInterval(() => {
+      const online = net.isOnline();
+      if (online !== wasOnline) {
+        wasOnline = online;
+        signalTrigger(online ? 'online' : 'offline');
+      }
+    }, 2000);
+    pcLocked = powerMonitor.getSystemIdleState(120) === 'locked';
+    powerMonitor.on('lock-screen', () => {
+      pcLocked = true;
+      void signalPresence();
+      signalTrigger('locked');
+    });
+    powerMonitor.on('unlock-screen', () => {
+      pcLocked = false;
+      void signalPresence();
+      signalTrigger('unlocked');
+    });
+    powerMonitor.on('suspend', () => {
+      pcSuspended = true;
+      void signalPresence();
+      signalTrigger('suspended');
+    });
+    powerMonitor.on('resume', () => {
+      pcSuspended = false;
+      void signalPresence();
+      signalTrigger('resumed');
+    });
+    powerMonitor.on('on-ac', () => signalTrigger('on_ac'));
+    powerMonitor.on('on-battery', () => signalTrigger('on_battery'));
+    win.on('show', () => void signalPresence());
+    win.on('hide', () => void signalPresence());
+    void signalPresence();
+    setInterval(() => void signalPresence(), 15000);
+    setInterval(() => void pollContinuity(), 1000);
     tray.on('click', () => show(true));
     screen.on('display-removed', () => resize(expanded));
     screen.on('display-metrics-changed', () => resize(expanded));

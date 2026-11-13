@@ -26,6 +26,10 @@ REQUIREMENTS = {
     "browser_v2",
     "sandbox",
     "live",
+    "spaces",
+    "android",
+    "teach",
+    "desktop_fine",
 }
 
 

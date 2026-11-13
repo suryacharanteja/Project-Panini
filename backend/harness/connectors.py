@@ -38,6 +38,10 @@ class Server(McpStdio):
         self.error = ""
 
     async def start(self):
+        from .. import private_mode
+
+        if private_mode.active():
+            raise ConnectorError(private_mode.reason())
         if self.alive:
             return
         env = {**os.environ, **{k: str(v) for k, v in (self.spec.get("env") or {}).items()}}
@@ -165,7 +169,21 @@ class Connectors:
         return await self.status()
 
     async def status(self):
+        from .. import private_mode
         from .mcp_http import SignInRequired
+
+        if private_mode.active():
+            return [
+                {
+                    "name": server.name,
+                    "kind": "remote" if hasattr(server, "url") else "local",
+                    "state": "unavailable",
+                    "error": private_mode.reason(),
+                    "signed_in": False,
+                    "tools": [],
+                }
+                for server in self.servers.values()
+            ]
 
         rows = []
         for server in self.servers.values():

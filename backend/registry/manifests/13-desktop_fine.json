@@ -1,0 +1,574 @@
+{
+ "schema": "panini.capability/1",
+ "id": "desktop_fine",
+ "title": "Fine Windows controls",
+ "version": "1.1.0",
+ "summary": "Observation-scoped Windows UIA tools with opaque refs and concrete policy checks.",
+ "entry": "backend.hands.desktop_fine:DesktopFineHand",
+ "tools": [
+  {
+   "name": "desktop_windows",
+   "hand": "desktop_fine",
+   "title": "Windows on Windows",
+   "description": "List allowed Windows applications and opaque window choice IDs. Select one in desktop_snapshot.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {},
+    "required": []
+   },
+   "effect": "observe",
+   "dynamic_effect": false,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 180,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_snapshot",
+   "hand": "desktop_fine",
+   "title": "Snapshot on Windows",
+   "description": "Read the hierarchical UIA tree with fresh Windows refs. window is a choice_id from desktop_windows; omit to reuse this run's window. Old refs expire on the next published snapshot or any effect. Password values are hidden.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "window": {
+      "type": "string",
+      "maxLength": 64
+     },
+     "depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 30
+     }
+    },
+    "required": []
+   },
+   "effect": "observe",
+   "dynamic_effect": false,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 181,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_applications",
+   "hand": "desktop_fine",
+   "title": "Installed Windows applications",
+   "description": "List fixed, installed and allowed application IDs. Use an ID with desktop_open_application; no path, arguments, document or URL is accepted.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {},
+    "required": []
+   },
+   "effect": "observe",
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 180,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_open_application",
+   "hand": "desktop_fine",
+   "title": "Open installed Windows application",
+   "description": "Open one reviewed application from desktop_applications. PANINI requires a new native window before claiming success; no path or arguments are accepted.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "application_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,39}$",
+      "maxLength": 40
+     }
+    },
+    "required": [
+     "application_id"
+    ]
+   },
+   "effect": "local_exec",
+   "dynamic_effect": true,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 181,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_click",
+   "hand": "desktop_fine",
+   "title": "Click on Windows",
+   "description": "Click a fresh ref, invoking a supported control pattern or paced pointer input. Permissions use the actual current label; changed targets are refused.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "ref": {
+      "type": "string",
+      "pattern": "^w[0-9]+$",
+      "maxLength": 24
+     },
+     "double": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "ref"
+    ]
+   },
+   "effect": "submit",
+   "dynamic_effect": true,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 182,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_type",
+   "hand": "desktop_fine",
+   "title": "Type on Windows",
+   "description": "Set an editable field value, or type plain Unicode text into a document. replace=true selects and replaces the whole document in the same grounded control. submit=true then presses Enter in the same field, reviewed once as a submit action (for search boxes and single-line forms). Other Enter/Tab keys are separate reviewed desktop_press steps. Credentials are never typed. Snapshot and verify afterward.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "ref": {
+      "type": "string",
+      "pattern": "^w[0-9]+$",
+      "maxLength": 24
+     },
+     "text": {
+      "type": "string",
+      "maxLength": 4000
+     },
+     "replace": {
+      "type": "boolean"
+     },
+     "submit": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "ref",
+     "text"
+    ]
+   },
+   "effect": "input",
+   "dynamic_effect": true,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 183,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_select",
+   "hand": "desktop_fine",
+   "title": "Select on Windows",
+   "description": "Select a visible selection-item ref, or the uniquely named visible option under a list ref. Open closed lists and snapshot first.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "ref": {
+      "type": "string",
+      "pattern": "^w[0-9]+$",
+      "maxLength": 24
+     },
+     "option": {
+      "type": "string",
+      "maxLength": 500
+     }
+    },
+    "required": [
+     "ref"
+    ]
+   },
+   "effect": "input",
+   "dynamic_effect": true,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 184,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_toggle",
+   "hand": "desktop_fine",
+   "title": "Toggle on Windows",
+   "description": "Toggle a control with a native toggle pattern. Current label determines policy. Assert the resulting state.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "ref": {
+      "type": "string",
+      "pattern": "^w[0-9]+$",
+      "maxLength": 24
+     }
+    },
+    "required": [
+     "ref"
+    ]
+   },
+   "effect": "input",
+   "dynamic_effect": true,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 185,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_scroll",
+   "hand": "desktop_fine",
+   "title": "Scroll on Windows",
+   "description": "Scroll a visible native scroll-pattern container. Take a new snapshot afterward.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "ref": {
+      "type": "string",
+      "pattern": "^w[0-9]+$",
+      "maxLength": 24
+     },
+     "direction": {
+      "type": "string",
+      "enum": [
+       "up",
+       "down"
+      ]
+     }
+    },
+    "required": [
+     "ref",
+     "direction"
+    ]
+   },
+   "effect": "navigate",
+   "dynamic_effect": true,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 186,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_press",
+   "hand": "desktop_fine",
+   "title": "Press on Windows",
+   "description": "Press one key or a Ctrl/Shift/Alt/Win chord into the unique focused control. Enter, Save, delete and system shortcuts receive their concrete effect classes. Password focus is refused.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "key": {
+      "type": "string",
+      "maxLength": 32
+     }
+    },
+    "required": [
+     "key"
+    ]
+   },
+   "effect": "input",
+   "dynamic_effect": true,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 187,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_verify_text",
+   "hand": "desktop_fine",
+   "title": "Verify text on Windows",
+   "description": "Assert that text appears in a fresh accessible name or value. Returns explicit assertion evidence.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+     }
+    },
+    "required": [
+     "text"
+    ]
+   },
+   "effect": "observe",
+   "dynamic_effect": false,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 188,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_verify_value",
+   "hand": "desktop_fine",
+   "title": "Verify value on Windows",
+   "description": "Assert a fresh text-field value for a ref from the latest snapshot, uniquely matching the same role, name and bounds. Credential values are refused.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "ref": {
+      "type": "string",
+      "pattern": "^w[0-9]+$",
+      "maxLength": 24
+     },
+     "value": {
+      "type": "string",
+      "maxLength": 2000
+     }
+    },
+    "required": [
+     "ref",
+     "value"
+    ]
+   },
+   "effect": "observe",
+   "dynamic_effect": false,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 189,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_verify_element",
+   "hand": "desktop_fine",
+   "title": "Verify element on Windows",
+   "description": "Assert that an element with exact accessible role and name is visible in a fresh tree. An optional current ref binds the assertion to that element's anchor.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "ref": {
+      "type": "string",
+      "pattern": "^w[0-9]+$",
+      "maxLength": 24
+     },
+     "role": {
+      "type": "string",
+      "maxLength": 40
+     },
+     "name": {
+      "type": "string",
+      "maxLength": 500
+     }
+    },
+    "required": [
+     "role",
+     "name"
+    ]
+   },
+   "effect": "observe",
+   "dynamic_effect": false,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 190,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_focus",
+   "hand": "desktop_fine",
+   "title": "Focus on Windows",
+   "description": "Focus one non-credential control from the latest snapshot without invoking or clicking it. Snapshot afterward and verify focused_ref before pressing keys.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "ref": {
+      "type": "string",
+      "pattern": "^w[0-9]+$",
+      "maxLength": 24
+     }
+    },
+    "required": [
+     "ref"
+    ]
+   },
+   "effect": "input",
+   "dynamic_effect": true,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 191,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_activate",
+   "hand": "desktop_fine",
+   "title": "Activate window on Windows",
+   "description": "Bring one explicitly selected allowed window to the foreground without clicking or invoking any control. The current window title and application are reviewed; snapshot afterward before using refs. This is an input action, never a side effect of observation.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "window": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+     }
+    },
+    "required": [
+     "window"
+    ]
+   },
+   "effect": "navigate",
+   "dynamic_effect": true,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 192,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_draw",
+   "hand": "desktop_fine",
+   "title": "Draw on Windows",
+   "description": "Draw a picture in the selected canvas app (for example Paint) with the visual drawing planner. Give only the subject (\"a simple elephant\"); the planner chooses tools and strokes and asks before acting where policy requires. Select the window with desktop_snapshot first.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "subject": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 300
+     }
+    },
+    "required": [
+     "subject"
+    ]
+   },
+   "effect": "submit",
+   "dynamic_effect": false,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 189,
+   "concurrency": "desktop_fine"
+  },
+  {
+   "name": "desktop_drag",
+   "hand": "desktop_fine",
+   "title": "Drag on Windows",
+   "description": "Drag from one control to another in the selected window (reorder an item, move a slider, drop a file onto a folder). Both refs come from the latest desktop_snapshot. Reviewed as one action; snapshot and verify afterward.",
+   "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "ref": {
+      "type": "string",
+      "pattern": "^w[0-9]+$",
+      "maxLength": 24
+     },
+     "to_ref": {
+      "type": "string",
+      "pattern": "^w[0-9]+$",
+      "maxLength": 24
+     }
+    },
+    "required": [
+     "ref",
+     "to_ref"
+    ]
+   },
+   "effect": "submit",
+   "dynamic_effect": true,
+   "requires": [
+    "desktop_fine",
+    "private",
+    "foreground",
+    "ledger"
+   ],
+   "strict": false,
+   "order": 188,
+   "concurrency": "desktop_fine"
+  }
+ ],
+ "prompt": {
+  "principles": [
+   "Windows: desktop_applications lists reviewed fixed app IDs; desktop_open_application requires owner review and a verified new window. Then desktop_windows and desktop_activate(window=choice_id) select a window. desktop_snapshot observes only; it never activates a window. Use only fresh refs and verify after every action.",
+   "Press requires a unique focused non-credential control. Credentials are always reserved for the person. Never guess a ref, window ID or native UIA ID.",
+   "Fine desktop tools are opt-in. The coarse drawing planner remains available for canvas tasks."
+  ]
+ }
+}

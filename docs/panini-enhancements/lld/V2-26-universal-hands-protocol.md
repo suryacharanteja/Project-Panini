@@ -5,7 +5,7 @@
 | Phase / priority / size | Phase 6 · P2 · L (2 weeks) |
 | Depends on | V2-10 (browser vocabulary), V2-21 (Android tree); desktop worker |
 | Flag | `PANINI_DESKTOP_TOOLS` = `coarse` (default) · `fine` |
-| Status | Not started |
+| Status | In progress: grammar, fine Windows hand, normalizers, draw macro and type-and-submit built; live comparison gate pending |
 
 ## 1. Outcome
 
@@ -137,9 +137,24 @@ the macro): success ≥ coarse, fewer model calls per task, p50 latency ≤ coar
 
 ## 8. Acceptance criteria
 
-- [ ] Desktop snapshot works in Win32, WPF and WinUI apps (including where `FromPoint` fails).
+- [x] Desktop snapshot works in Win32, WPF and WinUI apps (including where `FromPoint` fails).
 - [ ] Fine tools meet the evaluation gate on the desktop golden tasks.
-- [ ] One grammar across web, Windows, Android and sandbox (shared parser tests).
+- [x] One grammar across web, Windows, Android and sandbox (shared parser tests).
+
+The [Windows checkpoint report](../qualification-desktop-fine-2026-10-05.md) records genuine Win32 and
+WPF fixture runs, plus installed Notepad with Win32/XAML providers. Fine pointer actions use bounded tree
+hit-testing, bypassing UIA `FromPoint`. The Notepad task types, asserts and saves a disposable file; its
+contents are checked on disk. These runs do not establish the coarse-planner comparison gate. The fine
+hand now lists fixed installed application IDs and launches one only after a fresh owner review, with
+policy and catalog checked again before dispatch. It claims success only after a new native window is
+verified. A real registry smoke opened a new File Explorer window and closed only that verified HWND.
+Dedicated draw macros and combined type-and-submit were added on 2026-10-06 (below). Selected-window
+desktop recording/replay and non-invoking focus are delivered in the [Windows teaching checkpoint](../qualification-teach-desktop-2026-10-05.md);
+remaining recording qualification is explicit there.
+Browser snapshots now expose a normalized grammar alongside their original driver output. Sandbox snapshots
+return `s` refs mapped server-side to the exact upstream `snapshotId`; a subsequent snapshot or action invalidates
+them. The shared parser tests cover all four prefixes and an Android accessibility tree. This does not establish
+the live OpenBot sandbox or the golden-task comparison gate.
 
 ## 9. Rollout and rollback
 
@@ -149,3 +164,16 @@ the macro): success ≥ coarse, fewer model calls per task, p50 latency ≤ coar
 
 - Expose `desktop_snapshot` and fine tools to MCP clients (V2-23)? Recommendation: yes, observe tools by
   default, effects with approvals, once the gate passes.
+
+
+## Draw macro and type-and-submit — 2026-10-06
+
+- `desktop_type(ref, text, submit=true)`: one action classified (and reviewed, where policy asks) as **submit**.
+  After typing, a fresh snapshot re-finds the same control by its tree anchor (typing changes its identity) and
+  presses Enter there only if it is unique, foreground and in the same window; otherwise the result says typing
+  happened and nothing was submitted. Declining sends nothing.
+- `desktop_draw(subject)`: the drawing macro. The visual planner draws in the selected window; it plans its own
+  strokes and asks where policy requires. Refs are invalidated afterwards.
+- Tests: three new cases in `backend/tests/hands/test_desktop_fine.py`.
+
+Still open: the evaluation gate on the live desktop golden tasks (it needs real model runs).

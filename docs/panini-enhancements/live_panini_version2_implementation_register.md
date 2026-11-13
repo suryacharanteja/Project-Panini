@@ -1,6 +1,6 @@
 # PANINI enhancements: live PANINI version 2 implementation register
 
-**Created:** 2026-10-02 · **Status:** planning complete, implementation not started · **Owner:** Charan
+**Created:** 2026-10-02 · **Status:** implementation in progress, release qualification incomplete · **Owner:** Charan
 **Scope:** PANINI v2, "one brain, many bodies, many hands". Harvests CopilotKit OpenDots, OpenBot and
 OpenMuse, and Playwright 1.63, and goes beyond them where PANINI's position (a real PC, a real browser, a
 real phone line) allows.
@@ -94,21 +94,21 @@ Sizes: **S** ≤ 2 days · **M** 3–5 days · **L** 1–2 weeks.
 | V2-10 | Browser vocabulary v2, verification, traces | 2 | P0 | M | V2-08, V2-09 | (driver) | [LLD](lld/V2-10-browser-vocabulary.md) | 80 Playwright tools mapped to effect classes; stale-ref guard; password refusal; verify-tools as evidence; trace/video artifacts | Done |
 | V2-11 | Sandbox computers (OpenBot on Docker) | 2 | P1 | L | V2-02 – V2-04 | `PANINI_SANDBOX` | [LLD](lld/V2-11-sandbox-computers.md) | Per-persona computers; isolation checks (second computer cannot see first's files); persistence across stop/start; revocation cancels | Done |
 | V2-12 | Live view and human takeover | 2 | P1 | M | V2-07, V2-08, V2-11 | `PANINI_LIVE_VIEW` | [LLD](lld/V2-12-live-view-takeover.md) | Frames from Chrome, managed, sandbox and desktop in one panel; take/release with resume-snapshot rule | Done |
-| V2-13 | Injection firewall and guardian | 3 | P0 | M | V2-03, V2-01 | `PANINI_GUARDIAN` | [LLD](lld/V2-13-guardian.md) | Red-team suite ≥ 95 %; taint provenance end to end; guardian pre-dispatch review on tainted effects | Partial (red-team work in progress) |
-| V2-14 | Remote fabric: device keys, Tailscale, blind relay, ingress, push | 3 | P0 | L | V2-05 | `PANINI_REMOTE_MODE` | [LLD](lld/V2-14-remote-fabric.md) | QR pairing with device keys; E2E envelopes through the relay (I6); webhook ingress verified on the PC; Web Push delivered | Built (gated) |
-| V2-15 | Phone app v2: approvals, passkeys, push, share, live | 3 | P0 | L | V2-14, V2-12 | (remote) | [LLD](lld/V2-15-phone-app.md) | Approve from a notification (tap) and with a passkey (verify); share target creates runs; live view and Stop | Not started |
-| V2-16 | Phone line: inbound calls over SIP | 3 | P1 | L | V2-14, V2-15, V2-06 | `PANINI_PHONE_LINE` | [LLD](lld/V2-16-phone-line-inbound.md) | Allow-listed caller reaches PANINI; PIN gate; effects approved on the phone; call receipt in the thread | Not started |
-| V2-17 | Messaging channels: Slack, Telegram, WhatsApp, email | 3 | P1 | L | V2-06, V2-13, V2-14 | `PANINI_CHANNELS` | [LLD](lld/V2-17-channels.md) | Slack and Telegram live; WhatsApp through ingress; allow-lists; safe failures; thread bindings | Not started |
-| V2-18 | Personas and delegation (group threads) | 4 | P1 | M | V2-03, V2-06 | `PANINI_PERSONAS` | [LLD](lld/V2-18-personas.md) | Persona CRUD in Admin; per-persona grants and memory scope; `delegate_to_persona`; group-thread demo | Not started |
-| V2-19 | Spaces and pages notebook | 4 | P1 | M | V2-05, V2-07 | `PANINI_SPACES` | [LLD](lld/V2-19-spaces-pages.md) | Editor with autosave and revision checks; review-before-save via interrupts; page conversations; FTS search | Not started |
-| V2-20 | Outbound calls on your behalf | 5 | P2 | L | V2-16 | `PANINI_OUTBOUND_CALLS` | [LLD](lld/V2-20-outbound-calls.md) | Approved brief → call with disclosure → DTMF/IVR → outcome receipt; compliance checklist signed | Not started |
-| V2-21 | Android hands | 5 | P2 | L | V2-08, V2-03 | `PANINI_ANDROID` | [LLD](lld/V2-21-android-hands.md) | Wireless-debugging pairing; UI snapshot with refs; tap/fill/swipe with policy; Chrome on Android via Playwright | Not started |
-| V2-22 | Teach by demonstration and self-healing skills | 5 | P2 | L | V2-10, V2-04 | `PANINI_TEACH` | [LLD](lld/V2-22-teach-by-demonstration.md) | Browser and desktop recordings become reviewed skills; replay passes; healer repairs a changed locator | Not started |
-| V2-23 | PANINI as an MCP server | 5 | P2 | M | V2-02, V2-03, V2-05 | `PANINI_MCP_SERVER` | [LLD](lld/V2-23-mcp-server.md) | `panini-mcp` usable from Claude Code; observe tools free; every effect interrupts the owner | Not started |
-| V2-24 | Continuity and presence | 5 | P2 | M | V2-14 – V2-17 | `PANINI_PRESENCE` | [LLD](lld/V2-24-continuity-presence.md) | Start on a call, continue on PC; approvals routed by presence; watch-actionable notifications | Not started |
-| V2-25 | Ambient triggers and responsibilities | 5 | P2 | L | V2-06, V2-14, V2-18 | `PANINI_TRIGGERS` | [LLD](lld/V2-25-triggers-responsibilities.md) | File, email, calendar, webhook and OS triggers; rules with cooldown; responsibility lifecycle and digests | Not started |
-| V2-26 | Universal hands protocol (one snapshot/ref vocabulary) | 6 | P2 | L | V2-10, V2-21 | `PANINI_DESKTOP_TOOLS=fine` | [LLD](lld/V2-26-universal-hands-protocol.md) | Desktop UIA snapshot with refs; same `*_snapshot/_click/_type` across web, Windows, Android, sandbox | Not started |
-| V2-27 | Local and offline mode | 6 | P3 | L | V2-06 | `PANINI_LOCAL_MODE` | [LLD](lld/V2-27-local-offline-mode.md) | On-device STT/TTS; local model fallback for routing and simple tasks; privacy mode blocks cloud calls | Not started |
+| V2-13 | Injection firewall and guardian | 3 | P0 | M | V2-03, V2-01 | `PANINI_GUARDIAN` | [LLD](lld/V2-13-guardian.md) | Red-team suite ≥ 95 %; taint provenance end to end; guardian pre-dispatch review on tainted effects | Red-team disabled/deferred by owner; guardian remains partial |
+| V2-14 | Remote fabric: device keys, Tailscale, blind relay, ingress, push | 3 | P0 | L | V2-05 | `PANINI_REMOTE_MODE` | [LLD](lld/V2-14-remote-fabric.md) | QR pairing with device keys; E2E envelopes through the relay (I6); webhook ingress verified on the PC; Web Push delivered | Built; red-team enforcement disabled; production transport qualification pending |
+| V2-15 | Phone app v2: approvals, passkeys, push, share, live | 3 | P0 | L | V2-14, V2-12 | (remote) | [LLD](lld/V2-15-phone-app.md) | Passkeys verified through real fabric with virtual authenticator; phone notebook and exports; hardware, input and conversation qualification pending | In progress |
+| V2-16 | Phone line: inbound calls over SIP | 3 | P1 | L | V2-14, V2-15, V2-06 | `PANINI_PHONE_LINE` | [LLD](lld/V2-16-phone-line-inbound.md) | Allow-listed caller reaches PANINI; PIN gate; effects approved on the phone; call receipt in the thread | In progress: SIP lifecycle, phone controls, unknown-caller message/ask modes and priced cost built; real SIP qualification pending |
+| V2-17 | Messaging channels: Slack, Telegram, WhatsApp, email | 3 | P1 | L | V2-06, V2-13, V2-14 | `PANINI_CHANNELS` | [LLD](lld/V2-17-channels.md) | Slack and Telegram live; WhatsApp through ingress; allow-lists; safe failures; thread bindings | In progress: Telegram, Slack, WhatsApp and email built and tested; live accounts pending |
+| V2-18 | Personas and delegation (group threads) | 4 | P1 | M | V2-03, V2-06 | `PANINI_PERSONAS` | [LLD](lld/V2-18-personas.md) | Persona CRUD in Admin; per-persona grants and memory scope; `delegate_to_persona`; group-thread demo | In progress: acceptance criteria met with tests; multi-speaker voice handoff built (spoken request, recap, reconnect in the next voice) and two persona scorecard cases in npm test; live audible handoff and live team benchmark pending |
+| V2-19 | Spaces and pages notebook | 4 | P1 | M | V2-05, V2-07 | `PANINI_SPACES` | [LLD](lld/V2-19-spaces-pages.md) | Editor/reviews, saved sources including approved Teach skill versions, PDF export, library controls and one live citation verified; channel, real-service Teach integration and release qualification pending | In progress |
+| V2-20 | Outbound calls on your behalf | 5 | P2 | L | V2-16 | `PANINI_OUTBOUND_CALLS` | [LLD](lld/V2-20-outbound-calls.md) | Approved brief → call with disclosure → DTMF/IVR → outcome receipt; compliance checklist signed | In progress: reviewed SIP lifecycle, scheduled windows, PC/PWA controls, usage receipts, quote-cited interpretations and scoped availability reads built; real calls, keypad and live qualification pending |
+| V2-21 | Android hands | 5 | P2 | L | V2-08, V2-03 | `PANINI_ANDROID` | [LLD](lld/V2-21-android-hands.md) | Wireless-debugging pairing; UI snapshot with refs; tap/fill/swipe with policy; Chrome on Android via Playwright | In progress: registry hand, Admin/PWA stop controls and shared grammar built; physical Android and remaining acceptance pending |
+| V2-22 | Teach by demonstration and self-healing skills | 5 | P2 | L | V2-10, V2-04 | `PANINI_TEACH` | [LLD](lld/V2-22-teach-by-demonstration.md) | Browser and desktop recordings become reviewed skills; replay passes; healer repairs a changed locator | In progress: browser, multiple top-level named-iframe and one cross-origin loopback layout, WPF and Notepad recording/replay built; reviewed app launch, per-step crops, drag gestures and Save As (owned dialogs) recorded and replayed live; nested/external frames and live healer qualification pending |
+| V2-23 | PANINI as an MCP server | 5 | P2 | M | V2-02, V2-03, V2-05 | `PANINI_MCP_SERVER` | [LLD](lld/V2-23-mcp-server.md) | `panini-mcp` usable from Claude Code; observe tools free; every effect interrupts the owner | In progress |
+| V2-24 | Continuity and presence | 5 | P2 | M | V2-14 – V2-17 | `PANINI_PRESENCE` | [LLD](lld/V2-24-continuity-presence.md) | Start on a call, continue on PC; approvals routed by presence; watch-actionable notifications | In progress |
+| V2-25 | Ambient triggers and responsibilities | 5 | P2 | L | V2-06, V2-14, V2-18 | `PANINI_TRIGGERS` | [LLD](lld/V2-25-triggers-responsibilities.md) | File, email, calendar, webhook and OS triggers; rules with cooldown; responsibility lifecycle and digests | In progress: development path tested, live qualification pending |
+| V2-26 | Universal hands protocol (one snapshot/ref vocabulary) | 6 | P2 | L | V2-10, V2-21 | `PANINI_DESKTOP_TOOLS=fine` | [LLD](lld/V2-26-universal-hands-protocol.md) | Desktop UIA snapshot with refs; same `*_snapshot/_click/_type` across web, Windows, Android, sandbox | In progress: shared grammar, Windows fine hand, app launch, normalizers, draw macro and type-and-submit built; live golden-task comparison pending |
+| V2-27 | Local and offline mode | 6 | P3 | L | V2-06 | `PANINI_LOCAL_MODE` | [LLD](lld/V2-27-local-offline-mode.md) | On-device STT/TTS; local model fallback for routing and simple tasks; privacy mode blocks cloud calls | In progress: local fallback, coordinator/desktop admission, catalog-grounded short draft route, offline dictation and paired-scorecard quality guard built; installed model passed 0/8 planner and 1/1 reviewed safety cases under tightened scoring, with no cloud baseline or qualified tier; live task, blocking-proxy, TTS and physical microphone pending |
 
 ### 4.1 Your 16 ideas → items
 
@@ -235,6 +235,9 @@ command output summary.
 | 2026-10-03 | V2-12 | Live view and takeover for every hand | npm test; backend/tests/live (incl. real-browser screencast); Admin Live page live | green; frames <=4 fps only while watched; take/input/give back live; pointer seen in frames |
 | 2026-10-03 | V2-13 | Quarantine, poisoning rules, gate, Safety page; guardian and red-team cases not built | npm test; Admin Safety page live | green; gate holds gated surfaces off |
 | 2026-10-03 | V2-14 | Fabric built and tested; off until the V2-13 red-team gate passes | npm test; backend/tests/fabric (incl. Node relay e2e + I6); Admin Remote access live | green; 28 fabric tests; relay saw ciphertext only |
+| 2026-10-06 | V2-22 | Save As dialog recorded and replayed in real Notepad | python scripts/panini-teach-notepad-smoke.py; npm test | passed: saveAsDialogQualified true, 2 dialog steps, replayed file verified on disk; npm test green |
+| 2026-10-06 | V2-18 | Persona handoff unit tests and persona scorecard cases | pytest backend/tests/panini/test_voice_adapter.py evals/tests; panini-eval run --mode offline; npm test | passed: handoff tests; 18/18 offline evals incl. personas.offline-delegation and personas.offline-isolation; npm test green |
+| 2026-10-06 | V2-00 | Whole-product test for UAT ([guide](uat-whole-product.md)) | npm run product:test | 64 passed, 0 failed, 5 skipped (live provider, Docker, packaged); found and fixed Spaces deep links, Keys page crash, desktop pipe start/Stop race, delegate run attribution |
 | — | — | — | — | — |
 
 ---
@@ -244,3 +247,48 @@ command output summary.
 | Date | Change |
 | --- | --- |
 | 2026-10-02 | Register, HLD, harvest map and 28 LLDs created from the capability analysis and the harvest of OpenDots, OpenBot, OpenMuse and Playwright 1.63 |
+
+### 2026-10-04 — Full-program delivery authorization
+
+Owner authorized delivery of all v2 LLDs. Work continues on `codex/v2-delivery`. Existing Done labels describe prior implementation evidence, not a new release certification. V2-13 red-team work remains in progress and aside by owner instruction; its remote enablement gate remains binding. V2-15 has an Android PWA implementation (commits `1f6dd35`, `90ed7bb`) and browser smoke evidence, but passkeys, physical Android and production HTTPS qualification remain incomplete. V2-18 persona implementation is in progress; no full-program completion or Dot parity is claimed.
+
+## Voice and inbound phone checkpoint — 2026-10-04
+
+The latest owner instruction supersedes the 2026-10-04 checkpoint's earlier red-team wording: qualification and enforcement are disabled and deferred to future development. `PANINI_REDTEAM_ENFORCE` is off by default; pairing and action permissions continue to apply. Original red-team acceptance criteria remain future work.
+
+V2-18 now includes an authenticated avatar voice chooser, selected-persona startup, scoped reconnect history and protection against delayed old-media close events. Two real synthetic WebRTC probes (Marin/Cedar) reached connected media and first assistant transcript output using the backend-result speech path. Full playback, multi-speaker handoff and a live team benchmark are not qualified.
+
+V2-16 includes signed ingress, SIP accept/attach/reject/hangup, caller registry and salted keypad PINs, paired-device identity confirmation, forced policy enforcement for call actions, durable delegation replay protection, bounded calls and daily budgets, call transcript/receipt finalization and Android PWA call controls. Local lifecycle/approval tests pass. Real SIP number, public HTTPS ingress, audio quality, provider cost accounting and the remaining LLD lifecycle cases are pending. V2-16 and V2-18 remain In progress.
+
+Evidence: [qualification record](qualification-2026-10-04.md). Full suite passed with 755 backend tests; final focused suite passed 41 after budget and finalization fixes. Admin, phone and avatar browser smokes and builds passed. This checkpoint ships as a local developer bundle, not a signed production installer or full-program delivery.
+
+
+### Decoded audio and lifecycle continuation — 2026-10-04
+
+Two real Live synthetic browser probes passed decoded audio/quiet-tail checks and clean provider closure. The preceding analyser-only failure remains in the evidence. V2-16 now delivers call receipts into its thread and phone Inbox with restart/crash deduplication, retains late transcript evidence, honors pause and records hangup/cancellation uncertainty. Full suite: 768 backend tests passed; final focused suite: 36 passed; phone smoke and builds passed. ADB found no connected Android device; real SIP/HTTPS infrastructure remains unavailable. V2-16/V2-18 remain In progress; priced call cost, unknown-caller modes, full surface integration, physical/live qualification and other LLDs remain open. Red-team remains disabled/deferred. [Qualification record](qualification-2026-10-04.md).
+
+### 2026-10-04 — Android hands development checkpoint
+
+V2-21 registry tools, grounded effects, mandatory ledger, shadow-mode cancellation, authenticated Admin setup, one-fps live view and PC/PWA stop controls implemented. V2-26 shared grammar and role mapping started. Physical Android and remaining LLD acceptance remain open. See [qualification report](qualification-android-hands-2026-10-04.md). Red-team remains disabled and deferred.
+
+### 2026-10-05 — MCP development checkpoint
+
+V2-23 now has the official SDK HTTP transport, protected per-client stdio credentials, owner Admin
+registration/grants/revocation, isolated browser contexts, mandatory effect approvals, progress/images,
+receipts and an external task runner without owner memories or connectors. Source integration uses
+real transports, a scripted model, fixture browser/desktop hands and real Windows AppContainer commands.
+The follow-up adds isolated sandbox scope, explicitly shared personas with intersected permissions,
+signed interrupt-card grants and actual slot activity. V2-23 remains In progress: live external-agent,
+desktop/browser and model qualification remain open.
+See [qualification record](qualification-mcp-2026-10-05.md). Red-team remains disabled and deferred.
+
+### 2026-10-05 — Continuity development checkpoint
+
+V2-24 implements expiring native/phone presence, durable configurable routing and quiet hours,
+notification retraction, same-thread native handoff/Live view and a fixed owner-call review.
+Native Electron and encrypted Android-sized Chromium have source integration evidence.
+An opt-in, locally approved urgent responsibility escalation path now exists with a fixed owner brief,
+five-minute timer, caps and revocation; it has fixture-provider evidence only. Native PC handoff now
+plays a fixed local speech cue in the source Electron smoke. Voice-initiated handoffs, physical Android/Wear OS,
+live push/channel and owner SIP qualification remain open. V2-24 remains In progress. See
+[the continuity qualification record](qualification-continuity-2026-10-05.md).

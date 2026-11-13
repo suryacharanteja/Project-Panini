@@ -2,6 +2,7 @@ id: chat.small-talk
 title: Small talk
 modes:
 - live
+- local
 needs:
 - openai
 turn: Hey PANINI, how are you?

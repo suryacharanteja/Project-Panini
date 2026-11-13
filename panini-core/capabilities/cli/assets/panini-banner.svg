@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 420" width="1280" height="420" role="img" aria-labelledby="t d">
+  <title id="t">PANINI CLI</title>
+  <desc id="d">PANINI CLI: a local-first terminal coding agent. Gold terminal-style P and copper wordmark on a dark background.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b1f27"/>
+      <stop offset="1" stop-color="#0d0f14"/>
+    </linearGradient>
+    <linearGradient id="cu" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4c9a8"/>
+      <stop offset="0.5" stop-color="#d98a5a"/>
+      <stop offset="1" stop-color="#a85a34"/>
+    </linearGradient>
+    <linearGradient id="terminal-gold" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="100" y2="130">
+      <stop offset="0" stop-color="#fff4d8"/>
+      <stop offset="0.55" stop-color="#dfc397"/>
+      <stop offset="1" stop-color="#937758"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="420" rx="28" fill="url(#bg)"/>
+  <rect x="1" y="1" width="1278" height="418" rx="27" fill="none" stroke="#d98a5a" stroke-opacity="0.25"/>
+
+  <!-- Vector terminal P from assets/panini-cli.ico: bowl, prompt chevron and cursor. -->
+  <g transform="translate(166 62) scale(2.28)" fill="url(#terminal-gold)">
+    <path d="M1 0H62C82.5 0 99 16 99 36S82.5 72 62 72H47L53 62H62C76.7 62 88 50.5 88 36S76.7 10 62 10H11V22L1 12Z"/>
+    <path d="M5 27L39 64L5 101" fill="none" stroke="url(#terminal-gold)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect y="119" width="99" height="11" rx="1.5"/>
+  </g>
+
+  <!-- wordmark -->
+  <g font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" fill="url(#cu)">
+    <text x="470" y="215" font-size="132" font-weight="300" letter-spacing="20">PANINI</text>
+    <text x="1010" y="215" font-size="132" font-weight="700" letter-spacing="6" fill="#f4e4d6">CLI</text>
+  </g>
+  <line x1="474" y1="248" x2="1220" y2="248" stroke="#d98a5a" stroke-opacity="0.45"/>
+  <g font-family="'Cascadia Mono',Consolas,'Courier New',monospace" fill="#b8bcc6" font-size="24" letter-spacing="5">
+    <text x="474" y="292">LOCAL-FIRST  ·  ROUTED  ·  VERIFIED</text>
+  </g>
+  <g font-family="'Cascadia Mono',Consolas,'Courier New',monospace" font-size="20">
+    <text x="474" y="340" fill="#d98a5a">$</text>
+    <text x="500" y="340" fill="#e6e8ee">panini-cli exec "fix the failing test"</text>
+    <text x="474" y="374" fill="#7f8595">→ ollama/qwen2.5  ·  gpt-4.1-mini  ·  gpt-4.1   (chosen per task)</text>
+  </g>
+</svg>

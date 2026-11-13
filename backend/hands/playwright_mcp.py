@@ -122,6 +122,8 @@ def managed_preset(data_dir: Path, artifacts: Path, *, browser="msedge", headles
         "omit",
         "--codegen",
         "none",
+        "--init-page",
+        str(SIDECAR / "init-teach.cjs"),
         "--init-script",
         str(SIDECAR / "init-overlay.js"),
         "--timeout-action",
@@ -178,6 +180,8 @@ def chrome_preset(relay, artifacts: Path, *, caps="pdf,devtools,testing") -> Pre
         "omit",
         "--codegen",
         "none",
+        "--init-page",
+        str(SIDECAR / "init-teach.cjs"),
         "--timeout-action",
         "8000",
     ]
@@ -267,6 +271,9 @@ class PlaywrightSession:
             self.restarts.append(self.clock())
         command, args = self._command()
         env, args = self._live(self.env if self.env is not None else clean_env(), args)
+        if "--output-dir" in args:
+            output_dir = Path(args[args.index("--output-dir") + 1])
+            env["PANINI_TEACH_EVIDENCE_ROOT"] = str(output_dir / "panini-teach")
         client = McpStdio(f"Browser driver ({self.preset.key})", BrowserDriverError)
         try:
             await client.spawn(command, args, env=env)
